@@ -76,7 +76,8 @@ def component_data_update(port, name, data, n_intervals):
 
 
 @callback(
-    Output("component-data-dropdown", "options"), Input("component-data-store", "data")
+    Output("component-data-dropdown", "options"),
+    Input("component-data-store", "data"),
 )
 def component_data_dropdown(data: dict):
     return list(data["data_vars"].keys())
