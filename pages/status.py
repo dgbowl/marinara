@@ -6,6 +6,7 @@ import json
 
 CTXT = zmq.Context()
 TOUT = 1000
+PORT = 1234
 kwargs = dict(timeout=TOUT, context=CTXT)
 
 dash.register_page(__name__, path_template="/")
@@ -16,12 +17,12 @@ header = html.Header(
     children=[
         "tomato port:",
         dcc.Input(
-            # placeholder=PORT,
-            value=1234,
+            value=PORT,
             type="number",
-            id="tomato-port",
+            id="tomato-port-setter",
         ),
         html.Button("Reload", id="tomato-status"),
+        dcc.Store(id="tomato-port", data=PORT),
     ],
 )
 
@@ -45,10 +46,15 @@ content = html.Div(
 )
 
 
+@callback(Output("tomato-port", "data"), Input("tomato-port-setter", "value"))
+def store_tomato_port(value):
+    return int(value)
+
+
 @callback(
     Output("store-tomato-status", "data"),
     Input("tomato-status", "n_clicks"),
-    State("tomato-port", "value"),
+    State("tomato-port", "data"),
 )
 def store_tomato_status(n_clicks, port):
     ret = tomato.status(stgrp="tomato", port=port, **kwargs)
@@ -62,7 +68,7 @@ def store_tomato_status(n_clicks, port):
     Output("tomato-stgrp", "children"),
     Input("store-tomato-status", "data"),
     Input("tomato-stgrp-tab", "value"),
-    Input("tomato-port", "value"),
+    State("tomato-port", "data"),
 )
 def update_tomato_stgrp(data, stgrp, port):
     try:

@@ -3,6 +3,8 @@ from dash import html, dcc, callback, Input, State, Output
 from tomato import passata, tomato
 import zmq
 import json
+import xarray as xr
+import plotly.express as px
 
 CTXT = zmq.Context()
 TOUT = 1000
@@ -11,20 +13,21 @@ dash.register_page(__name__, path_template="/components/<port>/<name>")
 
 
 @callback(
-    Input("component-measure", "n_clicks"),
-    State("tomato-port", "data"),
-    State("component-name", "data"),
+    Input("component-measure-button", "n_clicks"),
+    State("tomato-port-store", "data"),
+    State("component-name-store", "data"),
 )
 def component_measure(n_clicks, port, name):
     passata.measure(port=port, name=name, **kwargs)
 
 
 @callback(
-    Output("component-running", "children"),
-    Input("tomato-port", "data"),
-    State("component-name", "data"),
+    Output("component-running-div", "children"),
+    State("tomato-port-store", "data"),
+    State("component-name-store", "data"),
+    Input("component-interval", "n_intervals"),
 )
-def component_running(port, name):
+def component_running(port, name, n_intervals):
     ret = passata.status(**kwargs, port=port, name=name)
     if ret.success:
         return str(ret.data["running"])
@@ -33,11 +36,12 @@ def component_running(port, name):
 
 
 @callback(
-    Output("component-attrs", "children"),
-    Input("tomato-port", "data"),
-    State("component-name", "data"),
+    Output("component-attrs-div", "children"),
+    State("tomato-port-store", "data"),
+    State("component-name-store", "data"),
+    Input("component-interval", "n_intervals"),
 )
-def component_attrs(port, name):
+def component_attrs(port, name, n_intervals):
     ret = passata.attrs(**kwargs, port=port, name=name)
     if ret.success:
         attrs = []
@@ -52,16 +56,49 @@ def component_attrs(port, name):
 
 
 @callback(
-    Output("component-data", "children"),
-    Input("tomato-port", "data"),
-    State("component-name", "data"),
+    Output("component-data-store", "data"),
+    State("tomato-port-store", "data"),
+    State("component-name-store", "data"),
+    State("component-data-store", "data"),
+    Input("component-interval", "n_intervals"),
 )
-def component_data(port, name):
+def component_data_update(port, name, data, n_intervals):
     ret = passata.get_last_data(**kwargs, port=port, name=name)
-    if ret.success:
-        return str(ret.data)
-    else:
+    if not ret.success:
         return ret.msg
+    if data is None:
+        ndata = ret.data
+    else:
+        odata = xr.Dataset.from_dict(data)
+        ndata = xr.merge([odata, ret.data])
+
+    return ndata.to_dict()
+
+
+@callback(
+    Output("component-data-dropdown", "options"), Input("component-data-store", "data")
+)
+def component_data_dropdown(data: dict):
+    return list(data["data_vars"].keys())
+
+
+@callback(
+    Output("component-data-graph", "figure"),
+    Input("component-data-dropdown", "value"),
+    Input("component-data-store", "data"),
+)
+def component_data(keys, ds):
+    if keys is None or len(keys) == 0:
+        keys = list(ds["data_vars"].keys())
+    data = []
+    for key in keys:
+        data.append(
+            {
+                "x": ds["coords"]["uts"]["data"],
+                "y": ds["data_vars"][key]["data"],
+            }
+        )
+    return {"data": data, "layout": {"uirevision": True}}
 
 
 def layout(port: int, name: str, **_):
@@ -69,8 +106,10 @@ def layout(port: int, name: str, **_):
     header = html.Div(
         children=[
             html.Div(f"The user requested component {name=} on {port=}"),
-            dcc.Store(id="tomato-port", data=port),
-            dcc.Store(id="component-name", data=name),
+            dcc.Store(id="tomato-port-store", data=port),
+            dcc.Store(id="component-name-store", data=name),
+            dcc.Store(id="component-data-store", data=None),
+            dcc.Interval(id="component-interval", interval=2000),
         ]
     )
     content = html.Table(
@@ -78,24 +117,34 @@ def layout(port: int, name: str, **_):
             html.Tr(
                 children=[
                     html.Td("Running:"),
-                    html.Td(id="component-running"),
+                    html.Td(id="component-running-div"),
                 ]
             ),
             html.Tr(
                 children=[
                     html.Td("Attrs:"),
-                    html.Td(id="component-attrs"),
+                    html.Td(id="component-attrs-div"),
                 ]
             ),
             html.Tr(
                 children=[
                     html.Td("Data:"),
-                    html.Td(id="component-data"),
+                    html.Td(
+                        children=[
+                            dcc.Dropdown(
+                                id="component-data-dropdown",
+                                multi=True,
+                                clearable=True,
+                                placeholder="all data_vars",
+                            ),
+                            dcc.Graph(id="component-data-graph"),
+                        ]
+                    ),
                 ]
             ),
         ]
     )
-    measure = html.Button("Measure", id="component-measure")
+    measure = html.Button("Measure", id="component-measure-button")
 
     return [header, content, measure]
 
