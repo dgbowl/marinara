@@ -27,7 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 testing = [
     "pytest",
-    "tomato-example-counter >= 2.0.0",
+    "tomato-example-counter >= 2.0.1",
     "tomato-psutil >= 1.0.0",
 ]
 docs = [

@@ -1,0 +1,19 @@
+.component {
+    border-color: black;
+    border-style: solid;
+    border-width: 0.5pt;
+    padding: 2pt;
+    margin: 2pt;
+}
+
+.component-attrs {
+    border-color: green;
+    border-style: solid;
+    border-width: 2pt;
+}
+
+.component-data {
+    border-color: red;
+    border-style: solid;
+    border-width: 2pt;
+}
