@@ -15,6 +15,10 @@ kwargs = dict(timeout=TOUT, context=CTXT)
 def get_data_fields(pname, dname):
     if dname == "example_counter":
         return {"uts", "val"}
+    elif dname == "bronkhorst":
+        return {"uts", "flow", "setpoint", "control_mode"}
+    else:
+        return {"uts"}
 
 
 
@@ -133,9 +137,16 @@ def create_component_div(cname, port, pname):
 
     attrs = passata.attrs(**kwargs, port=port, name=cname).data
     avals = passata.get_attrs(**kwargs, port=port, name=cname, attrs=attrs.keys()).data
+    print(f"{attrs=}")
+    print(f"{avals=}")
     div_attrs_ch = []
     for attr, params in attrs.items():
-        value = avals[attr].m if params.units is not None else avals[attr]
+        try:
+            value = avals[attr].m
+        except Exception as e:
+            print(e)
+            value = avals[attr]
+        #value = avals[attr].m if params.units is not None else avals[attr]
         units = params.units if params.units is not None else ""
         div_attrs_ch.append(
             html.Div(
@@ -146,7 +157,7 @@ def create_component_div(cname, port, pname):
                         disabled=False if params.rw else True,
                         debounce=True,
                         value=value,
-                        type="text" if params.type == "str" else "number",
+                        type="text" if params.type == str else "number",
                     ),
                     f"{units}",
                 ],
@@ -159,6 +170,7 @@ def create_component_div(cname, port, pname):
     )
 
     data = passata.get_last_data(**kwargs, port=port, name=cname).data
+    print(f"{data=}")
 
     div_data_ch = []
     for key in get_data_fields(pname, cmp.driver):
@@ -259,10 +271,10 @@ def components_periodic_update_attr_store(_, cmps, data, port, name):
         attrs = passata.attrs(**kwargs, port=port, name=cmp).data
         avals = passata.get_attrs(**kwargs, port=port, name=cmp, attrs=attrs.keys()).data
         for key in attrs.keys():
-            if attrs[key].units is not None:
-                val = avals[key].to(attrs[key].units).m
-            else:
-                val = avals[key]
+            #if attrs[key].units is not None:
+            #    val = avals[key].to(attrs[key].units).m
+            #else:
+            val = avals[key]
             newdata[cmp][key] = val
     if newdata == data:
         return dash.no_update
@@ -281,11 +293,11 @@ def components_periodic_update_attr_store(_, cmps, data, port, name):
 def components_periodic_update_data_store(_, cmps, data, port, name):
     newdata = {}
     for cmp in cmps:
+        newdata[cmp] = {}
         ds = passata.get_last_data(**kwargs, port=port, name=cmp).data
         if ds is None:
             continue
         dd = ds.to_dict()
-        newdata[cmp] = {}
         for k, v in dd["coords"].items():
             newdata[cmp][k] = v["data"][-1]
         for k, v in dd["data_vars"].items():
@@ -368,7 +380,10 @@ def pipeline_update_param_display(data, ready, sampleid, jobid):
 )
 def components_update_data_display(data, value, id, port, name):
     cname, key = id["index"].split("/")
-    if value == data[cname][key]:
+    print(f"{data=}")
+    if data is None or key not in data[cname]:
+        return dash.no_update
+    elif value == data[cname][key]:
         return dash.no_update
     else:
         return data[cname][key]
