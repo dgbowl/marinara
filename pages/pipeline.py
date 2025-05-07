@@ -27,11 +27,13 @@ def create_header_div(port: int, name: str):
         children=[
             dcc.Store(id="store-tomato-port", data=port),
             dcc.Store(id="store-pipeline-name", data=name),
-            dcc.Store(id="store-pipeline-components", data=None),
-            dcc.Store(id="store-pipeline-attrs", data=None),
+            dcc.Store(id="store-pipeline-components-names", data=None),
+            dcc.Store(id="store-pipeline-attrs-vals", data=None),
+            dcc.Store(id="store-pipeline-attrs-units", data=None),
+            dcc.Store(id="store-pipeline-attrs-rw", data=None),
             dcc.Store(id="store-pipeline-params", data=None),
             dcc.Store(id="store-pipeline-data", data=None),
-            dcc.Interval(id="interval-pipeline-content", interval=1000),
+            dcc.Interval(id="interval-pipeline-content", interval=2000),
         ],
         className = "header-store",
     )
@@ -106,123 +108,126 @@ def create_content_div(port, name):
         ]
     )
 
+    attrs_vals_store = {}
+    attrs_units_store = {}
+    attrs_rw_store = {}
     components = []
     for cname in pip.components:
-        components.append(create_component_div(cname, port, name))
-    set_props("store-pipeline-components", {"data": pip.components})
+        cmp = tomato.status(**kwargs, port=port, stgrp="components").data[cname]
+        div_info = html.Div(
+            children = [
+                html.Div(f"name: {cmp.name}"),
+                html.Div(f"role: {cmp.role}"),
+                html.Div(f"address: {cmp.address!r}, channel: {cmp.channel!r}")
+            ]
+        )
+
+        status = passata.status(**kwargs, port=port, name=cname).data
+        div_status = html.Div(
+            children = [
+                html.Div(f"running: {status['running']}")
+            ]
+        )
+
+        attrs = passata.attrs(**kwargs, port=port, name=cname).data
+        avals = passata.get_attrs(**kwargs, port=port, name=cname, attrs=attrs.keys()).data
+        attrs_vals_store[cname] = {k: v.m if attrs[k].units is not None else v for k, v in avals.items()}
+        attrs_units_store[cname] = {k: attrs[k].units for k in attrs.keys()}
+        attrs_rw_store[cname] = {k: attrs[k].rw for k in attrs.keys()}
+        
+        div_attrs_ch = []
+        for attr, params in attrs.items():
+            value = avals[attr].m if params.units is not None else avals[attr]
+            units = params.units if params.units is not None else ""
+            div_attrs_ch.append(
+                html.Div(
+                    children = [
+                        f"{attr}:",
+                        dcc.Input(
+                            id={"type": "component-attr-val", "index": f"{cname}/{attr}"},
+                            disabled=False if params.rw else True,
+                            debounce=True,
+                            value=value,
+                            type="text" if params.type == str else "number",
+                        ),
+                        f"{units}",
+                    ],
+                    id=f"component-{cname}-attr",
+                )
+            )
+        div_attrs = html.Div(
+            children = div_attrs_ch,
+            className="component-attrs",
+        )
+
+        data = passata.get_last_data(**kwargs, port=port, name=cname).data
+        div_data_ch = []
+        for key in get_data_fields(name, cmp.driver):
+            if data is None:
+                value = None
+                units = ""
+            else:
+                value = data[key].values[-1]
+                units = data[key].attrs.get("units", "")
+            div_data_ch.append(
+                html.Div(
+                    children=[
+                        f"{key}:",
+                        dcc.Input(
+                            id={"type": "component-data-val", "index": f"{cname}/{key}"},
+                            disabled=True,
+                            value=value,
+                        ),
+                        f"{units}",
+                    ],
+                    id={"type": "component-data-key", "index": f"{cname}/{key}"}
+
+                )
+            )
+        div_data = html.Div(
+            children = div_data_ch,
+            className="component-data",
+        )
+        components.append(
+            html.Div(
+                id=f"component-{cname}",
+                children=[div_info, div_status, div_attrs, div_data],
+                className="component",
+            )
+        )
+    print(f"{pip.components=}")
+    set_props("store-pipeline-components-names", {"data": pip.components})
+    set_props("store-pipeline-attrs-vals", {"data": attrs_vals_store})
+    set_props("store-pipeline-attrs-units", {"data": attrs_units_store})
+    set_props("store-pipeline-attrs-rw", {"data": attrs_rw_store})
+    
 
     children = [
         html.Div(children=[ready, jobid, sampleid], className="pipeline-params-wrapper"),
         html.Div(children=components, className="pipeline-components-wrapper")
     ]
-
-    return children
-
-def create_component_div(cname, port, pname):
-    cmp = tomato.status(**kwargs, port=port, stgrp="components").data[cname]
-    div_info = html.Div(
-        children = [
-            html.Div(f"name: {cmp.name}"),
-            html.Div(f"role: {cmp.role}"),
-            html.Div(f"address: {cmp.address!r}, channel: {cmp.channel!r}")
-        ]
-    )
-
-    status = passata.status(**kwargs, port=port, name=cname).data
-    div_status = html.Div(
-        children = [
-            html.Div(f"running: {status['running']}")
-        ]
-    )
-
-    attrs = passata.attrs(**kwargs, port=port, name=cname).data
-    avals = passata.get_attrs(**kwargs, port=port, name=cname, attrs=attrs.keys()).data
-    print(f"{attrs=}")
-    print(f"{avals=}")
-    div_attrs_ch = []
-    for attr, params in attrs.items():
-        try:
-            value = avals[attr].m
-        except Exception as e:
-            print(e)
-            value = avals[attr]
-        #value = avals[attr].m if params.units is not None else avals[attr]
-        units = params.units if params.units is not None else ""
-        div_attrs_ch.append(
-            html.Div(
-                children = [
-                    f"{attr}:",
-                    dcc.Input(
-                        id={"type": "component-attr-val", "index": f"{cname}/{attr}"},
-                        disabled=False if params.rw else True,
-                        debounce=True,
-                        value=value,
-                        type="text" if params.type == str else "number",
-                    ),
-                    f"{units}",
-                ],
-                id=f"component-{cname}-attr",
-            )
-        )
-    div_attrs = html.Div(
-        children = div_attrs_ch,
-        className="component-attrs",
-    )
-
-    data = passata.get_last_data(**kwargs, port=port, name=cname).data
-    print(f"{data=}")
-
-    div_data_ch = []
-    for key in get_data_fields(pname, cmp.driver):
-        if data is None:
-            value = None
-            units = ""
-        else:
-            value = data[key].values[-1]
-            units = data[key].attrs.get("units", "")
-        div_data_ch.append(
-            html.Div(
-                children=[
-                    f"{key}:",
-                    dcc.Input(
-                        id={"type": "component-data-val", "index": f"{cname}/{key}"},
-                        disabled=True,
-                        value=value,
-                    ),
-                    f"{units}",
-                ],
-                id={"type": "component-data-key", "index": f"{cname}/{key}"}
-
-            )
-        )
-    div_data = html.Div(
-        children = div_data_ch,
-        className="component-data",
-    )
-
-
-    return html.Div(
-        id=f"component-{cname}",
-        children=[div_info, div_status, div_attrs, div_data],
-        className="component",
-    )
+    return children    
 
 @callback(
     Output({"type": "component-attr-val", "index": MATCH}, "value"),
     Input({"type": "component-attr-val", "index": MATCH}, "value"),
     State({"type": "component-attr-val", "index": MATCH}, "id"),
+    State("store-pipeline-attrs-rw", "data"),
     State("store-tomato-port", "data"),
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
-def component_attr_interaction(value, id, port, name):
+def component_attr_interaction(value, id, arw, port, name):
     cname, attr = id["index"].split("/")
-    ret = passata.set_attr(**kwargs, port=port, name=cname, attr=attr, val=value)
-    print(f"{ret=}")
-    if ret.success:
-        return dash.no_update
+    if arw[cname][attr]:
+        ret = passata.set_attr(**kwargs, port=port, name=cname, attr=attr, val=value)
+        if ret.success:
+            return dash.no_update
+        else:
+            return None
     else:
-        return None
+        return dash.no_update
+    
 
 @callback(
     Output("pipeline-input-ready", "value"),
@@ -256,27 +261,27 @@ def pipeline_param_interaction_sampleid(sampleid, port, name):
 # Background store update using passata / tomato
 
 @callback(
-    Output("store-pipeline-attrs", "data"),
+    Output("store-pipeline-attrs-vals", "data"),
     Input("interval-pipeline-content", "n_intervals"),
-    State("store-pipeline-components", "data"),
-    State("store-pipeline-attrs", "data"),
+    State("store-pipeline-components-names", "data"),
+    State("store-pipeline-attrs-vals", "data"),
+    State("store-pipeline-attrs-units", "data"),
     State("store-tomato-port", "data"),
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
-def components_periodic_update_attr_store(_, cmps, data, port, name):
+def components_periodic_update_attrs_vals_store(_, cmps, avals, aunits, port, name):
     newdata = {}
     for cmp in cmps:
         newdata[cmp] = {}
-        attrs = passata.attrs(**kwargs, port=port, name=cmp).data
-        avals = passata.get_attrs(**kwargs, port=port, name=cmp, attrs=attrs.keys()).data
-        for key in attrs.keys():
-            #if attrs[key].units is not None:
-            #    val = avals[key].to(attrs[key].units).m
-            #else:
-            val = avals[key]
+        nvals = passata.get_attrs(**kwargs, port=port, name=cmp, attrs=avals[cmp].keys()).data
+        for key in avals[cmp].keys():
+            if aunits[cmp][key] is not None:
+                val = nvals[key].to(aunits[cmp][key]).m
+            else:
+                val = nvals[key]
             newdata[cmp][key] = val
-    if newdata == data:
+    if newdata == avals:
         return dash.no_update
     else:
         return newdata
@@ -284,7 +289,7 @@ def components_periodic_update_attr_store(_, cmps, data, port, name):
 @callback(
     Output("store-pipeline-data", "data"),
     Input("interval-pipeline-content", "n_intervals"),
-    State("store-pipeline-components", "data"),
+    State("store-pipeline-components-names", "data"),
     State("store-pipeline-data", "data"),
     State("store-tomato-port", "data"),
     State("store-pipeline-name", "data"),
@@ -333,16 +338,18 @@ def pipeline_periodic_update_params_store(_, data, port, name):
 
 @callback(
     Output({"type": "component-attr-val", "index": MATCH}, "value", allow_duplicate=True),
-    Input("store-pipeline-attrs", "data"),
+    Input("store-pipeline-attrs-vals", "data"),
     State({"type": "component-attr-val", "index": MATCH}, "value"),
     State({"type": "component-attr-val", "index": MATCH}, "id"),
     State("store-tomato-port", "data"),
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
-def components_update_attr_display(data, value, id, port, name):
+def components_update_attr_display(avals, value, id, port, name):
     cname, key = id["index"].split("/")
-    newval = data[cname][key]
+    newval = avals[cname][key]
+    if isinstance(newval, float):
+        newval = round(newval, 3)
     if newval == value:
         return dash.no_update
     else:
@@ -380,13 +387,15 @@ def pipeline_update_param_display(data, ready, sampleid, jobid):
 )
 def components_update_data_display(data, value, id, port, name):
     cname, key = id["index"].split("/")
-    print(f"{data=}")
     if data is None or key not in data[cname]:
         return dash.no_update
     elif value == data[cname][key]:
         return dash.no_update
     else:
-        return data[cname][key]
+        val = data[cname][key]
+        if isinstance(val, float):
+            val = round(val, 3)
+        return val
 
 
 
