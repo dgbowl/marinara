@@ -14,11 +14,13 @@ kwargs = dict(timeout=TOUT, context=CTXT)
 
 def get_data_fields(pname, dname):
     if dname == "example_counter":
-        return {"uts", "val"}
+        return ("uts", "val")
     elif dname == "bronkhorst":
-        return {"uts", "flow", "setpoint", "control_mode"}
+        return ("uts", "setpoint", "flow", "control_mode")
+    elif dname == "jumo":
+        return ("uts", "setpoint", "temperature", "duty_cycle", "ramp_rate", "ramp_target")
     else:
-        return {"uts"}
+        return ("uts", )
 
 
 
@@ -33,7 +35,7 @@ def create_header_div(port: int, name: str):
             dcc.Store(id="store-pipeline-attrs-rw", data=None),
             dcc.Store(id="store-pipeline-params", data=None),
             dcc.Store(id="store-pipeline-data", data=None),
-            dcc.Interval(id="interval-pipeline-content", interval=2000),
+            dcc.Interval(id="interval-pipeline-content", interval=5000),
         ],
         className = "header-store",
     )
