@@ -1,6 +1,5 @@
 import dash
-from dash import html, dcc, ctx, callback, set_props, Input, Output, State, MATCH, ALL, Patch
-import dash_daq as daq
+from dash import html, dcc, callback, set_props, Input, Output, State, MATCH
 from tomato import passata, tomato
 from zmq import Context
 import logging
@@ -14,14 +13,28 @@ kwargs = dict(timeout=TOUT, context=CTXT)
 
 def get_data_fields(pname, dname):
     if dname == "example_counter":
-        return ("uts", "val")
+        return (
+            "uts",
+            "val",
+        )
     elif dname == "bronkhorst":
-        return ("uts", "setpoint", "flow", "control_mode")
+        return (
+            "uts",
+            "setpoint",
+            "flow",
+            "control_mode",
+        )
     elif dname == "jumo":
-        return ("uts", "setpoint", "temperature", "duty_cycle", "ramp_rate", "ramp_target")
+        return (
+            "uts",
+            "setpoint",
+            "temperature",
+            "duty_cycle",
+            "ramp_rate",
+            "ramp_target",
+        )
     else:
-        return ("uts", )
-
+        return ("uts",)
 
 
 def create_header_div(port: int, name: str):
@@ -37,15 +50,12 @@ def create_header_div(port: int, name: str):
             dcc.Store(id="store-pipeline-data", data=None),
             dcc.Interval(id="interval-pipeline-content", interval=5000),
         ],
-        className = "header-store",
+        className="header-store",
     )
 
     banner = html.Div(
-        children=[
-            html.Div(f"The user requested pipeline {name!r} on port {port}.")
-        ],
-        className = "header-banner",
-
+        children=[html.Div(f"The user requested pipeline {name!r} on port {port}.")],
+        className="header-banner",
     )
 
     return html.Div(
@@ -71,42 +81,39 @@ def create_content_div(port, name):
                 "sampleid": str(pip.sampleid) if pip.sampleid is not None else "",
                 "ready": ["ready"] if pip.ready else [],
             }
-        }
+        },
     )
 
     jobid = html.Div(
-        children = [
+        children=[
             "jobid:",
             dcc.Input(
-                id="pipeline-input-jobid",
-                type="number",
-                value=pip.jobid,
-                disabled=True
-            )
+                id="pipeline-input-jobid", type="number", value=pip.jobid, disabled=True
+            ),
         ]
     )
 
     sampleid = html.Div(
-        children = [
+        children=[
             "sampleid:",
             dcc.Input(
                 id="pipeline-input-sampleid",
                 type="text",
                 value=str(pip.sampleid) if pip.sampleid is not None else "",
                 debounce=True,
-            )
+            ),
         ]
     )
 
     ready = html.Div(
-        children = [
+        children=[
             "ready:",
             dcc.Checklist(
                 options=["ready"],
-                value = ["ready"] if pip.ready else [],
+                value=["ready"] if pip.ready else [],
                 id="pipeline-input-ready",
                 inline=True,
-            )
+            ),
         ]
     )
 
@@ -117,36 +124,39 @@ def create_content_div(port, name):
     for cname in pip.components:
         cmp = tomato.status(**kwargs, port=port, stgrp="components").data[cname]
         div_info = html.Div(
-            children = [
+            children=[
                 html.Div(f"name: {cmp.name}"),
                 html.Div(f"role: {cmp.role}"),
-                html.Div(f"address: {cmp.address!r}, channel: {cmp.channel!r}")
+                html.Div(f"address: {cmp.address!r}, channel: {cmp.channel!r}"),
             ]
         )
 
         status = passata.status(**kwargs, port=port, name=cname).data
-        div_status = html.Div(
-            children = [
-                html.Div(f"running: {status['running']}")
-            ]
-        )
+        div_status = html.Div(children=[html.Div(f"running: {status['running']}")])
 
         attrs = passata.attrs(**kwargs, port=port, name=cname).data
-        avals = passata.get_attrs(**kwargs, port=port, name=cname, attrs=attrs.keys()).data
-        attrs_vals_store[cname] = {k: v.m if attrs[k].units is not None else v for k, v in avals.items()}
+        avals = passata.get_attrs(
+            **kwargs, port=port, name=cname, attrs=attrs.keys()
+        ).data
+        attrs_vals_store[cname] = {
+            k: v.m if attrs[k].units is not None else v for k, v in avals.items()
+        }
         attrs_units_store[cname] = {k: attrs[k].units for k in attrs.keys()}
         attrs_rw_store[cname] = {k: attrs[k].rw for k in attrs.keys()}
-        
+
         div_attrs_ch = []
         for attr, params in attrs.items():
             value = avals[attr].m if params.units is not None else avals[attr]
             units = params.units if params.units is not None else ""
             div_attrs_ch.append(
                 html.Div(
-                    children = [
+                    children=[
                         f"{attr}:",
                         dcc.Input(
-                            id={"type": "component-attr-val", "index": f"{cname}/{attr}"},
+                            id={
+                                "type": "component-attr-val",
+                                "index": f"{cname}/{attr}",
+                            },
                             disabled=False if params.rw else True,
                             debounce=True,
                             value=value,
@@ -158,7 +168,7 @@ def create_content_div(port, name):
                 )
             )
         div_attrs = html.Div(
-            children = div_attrs_ch,
+            children=div_attrs_ch,
             className="component-attrs",
         )
 
@@ -176,18 +186,20 @@ def create_content_div(port, name):
                     children=[
                         f"{key}:",
                         dcc.Input(
-                            id={"type": "component-data-val", "index": f"{cname}/{key}"},
+                            id={
+                                "type": "component-data-val",
+                                "index": f"{cname}/{key}",
+                            },
                             disabled=True,
                             value=value,
                         ),
                         f"{units}",
                     ],
-                    id={"type": "component-data-key", "index": f"{cname}/{key}"}
-
+                    id={"type": "component-data-key", "index": f"{cname}/{key}"},
                 )
             )
         div_data = html.Div(
-            children = div_data_ch,
+            children=div_data_ch,
             className="component-data",
         )
         components.append(
@@ -202,13 +214,15 @@ def create_content_div(port, name):
     set_props("store-pipeline-attrs-vals", {"data": attrs_vals_store})
     set_props("store-pipeline-attrs-units", {"data": attrs_units_store})
     set_props("store-pipeline-attrs-rw", {"data": attrs_rw_store})
-    
 
     children = [
-        html.Div(children=[ready, jobid, sampleid], className="pipeline-params-wrapper"),
-        html.Div(children=components, className="pipeline-components-wrapper")
+        html.Div(
+            children=[ready, jobid, sampleid], className="pipeline-params-wrapper"
+        ),
+        html.Div(children=components, className="pipeline-components-wrapper"),
     ]
-    return children    
+    return children
+
 
 @callback(
     Output({"type": "component-attr-val", "index": MATCH}, "value"),
@@ -229,7 +243,7 @@ def component_attr_interaction(value, id, arw, port, name):
             return None
     else:
         return dash.no_update
-    
+
 
 @callback(
     Output("pipeline-input-ready", "value"),
@@ -247,6 +261,7 @@ def pipeline_param_interaction_ready(values, data, port, name):
         tomato.pipeline_ready(**kwargs, port=port, pipeline=name)
     return ["ready"]
 
+
 @callback(
     Input("pipeline-input-sampleid", "value"),
     State("store-tomato-port", "data"),
@@ -262,6 +277,7 @@ def pipeline_param_interaction_sampleid(sampleid, port, name):
 
 # Background store update using passata / tomato
 
+
 @callback(
     Output("store-pipeline-attrs-vals", "data"),
     Input("interval-pipeline-content", "n_intervals"),
@@ -276,7 +292,9 @@ def components_periodic_update_attrs_vals_store(_, cmps, avals, aunits, port, na
     newdata = {}
     for cmp in cmps:
         newdata[cmp] = {}
-        nvals = passata.get_attrs(**kwargs, port=port, name=cmp, attrs=avals[cmp].keys()).data
+        nvals = passata.get_attrs(
+            **kwargs, port=port, name=cmp, attrs=avals[cmp].keys()
+        ).data
         for key in avals[cmp].keys():
             if aunits[cmp][key] is not None:
                 val = nvals[key].to(aunits[cmp][key]).m
@@ -287,6 +305,7 @@ def components_periodic_update_attrs_vals_store(_, cmps, avals, aunits, port, na
         return dash.no_update
     else:
         return newdata
+
 
 @callback(
     Output("store-pipeline-data", "data"),
@@ -316,6 +335,7 @@ def components_periodic_update_data_store(_, cmps, data, port, name):
     else:
         return newdata
 
+
 @callback(
     Output("store-pipeline-params", "data"),
     Input("interval-pipeline-content", "n_intervals"),
@@ -336,10 +356,14 @@ def pipeline_periodic_update_params_store(_, data, port, name):
     else:
         return newdata
 
+
 # UI update if background stores have been changed
 
+
 @callback(
-    Output({"type": "component-attr-val", "index": MATCH}, "value", allow_duplicate=True),
+    Output(
+        {"type": "component-attr-val", "index": MATCH}, "value", allow_duplicate=True
+    ),
     Input("store-pipeline-attrs-vals", "data"),
     State({"type": "component-attr-val", "index": MATCH}, "value"),
     State({"type": "component-attr-val", "index": MATCH}, "id"),
@@ -356,6 +380,7 @@ def components_update_attr_display(avals, value, id, port, name):
         return dash.no_update
     else:
         return newval
+
 
 @callback(
     Output("pipeline-input-ready", "value", allow_duplicate=True),
@@ -379,7 +404,9 @@ def pipeline_update_param_display(data, ready, sampleid, jobid):
 
 
 @callback(
-    Output({"type": "component-data-val", "index": MATCH}, "value", allow_duplicate=True),
+    Output(
+        {"type": "component-data-val", "index": MATCH}, "value", allow_duplicate=True
+    ),
     Input("store-pipeline-data", "data"),
     State({"type": "component-data-val", "index": MATCH}, "value"),
     State({"type": "component-data-val", "index": MATCH}, "id"),
@@ -400,14 +427,13 @@ def components_update_data_display(data, value, id, port, name):
         return val
 
 
-
 dash.register_page(__name__, path_template="/pipelines/<port>/<name>")
+
 
 def layout(port=None, name=None, **_):
     port = int(port)
 
     return [
         create_header_div(port, name),
-        html.Div(children=[], id="content-wrapper", className="content-wrapper")
+        html.Div(children=[], id="content-wrapper", className="content-wrapper"),
     ]
-
