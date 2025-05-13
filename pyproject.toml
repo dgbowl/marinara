@@ -20,14 +20,14 @@ classifiers = [
 ]
 requires-python = ">= 3.10"
 dependencies = [
-    "tomato >= 2.0",
+    "tomato >= 2.1rc1",
     "dash >= 2.18",
 ]
 
 [project.optional-dependencies]
 testing = [
     "pytest",
-    "tomato-example-counter >= 2.0.1",
+    "tomato-example-counter >= 2.1.0",
     "tomato-psutil >= 1.0.0",
 ]
 docs = [
