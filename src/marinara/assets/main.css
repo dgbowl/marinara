@@ -4,6 +4,7 @@
     border-width: 0.5pt;
     padding: 2pt;
     margin: 2pt;
+    width: 400pt;
 }
 
 .component-attrs {
@@ -16,4 +17,31 @@
     border-color: red;
     border-style: solid;
     border-width: 2pt;
+}
+
+.float-left {
+    float: left;
+}
+
+.block {
+    display: block;
+}
+
+.inline {
+    display: inline;
+}
+
+.inline-block {
+    display: inline-block;
+}
+
+div {
+    font-size: 14pt;
+}
+
+.dash-dropdown {
+    display: inline-block;
+    width: 30%;
+    height: 14pt;
+    line-height: 14pt;
 }
