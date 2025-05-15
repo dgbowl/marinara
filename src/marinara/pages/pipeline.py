@@ -23,6 +23,7 @@ def get_data_fields(pname, dname):
             "uts",
             "setpoint",
             "flow",
+            "pressure",
             "control_mode",
         )
     elif dname == "jumo":
@@ -33,6 +34,11 @@ def get_data_fields(pname, dname):
             "duty_cycle",
             "ramp_rate",
             "ramp_target",
+        )
+    elif dname == "drycal":
+        return (
+            "uts",
+            "flow",
         )
     else:
         return ("uts",)
@@ -232,7 +238,7 @@ def create_content_div(port, name):
         data = passata.get_last_data(**kwargs, port=port, name=cname).data
         div_data_ch = []
         for key in get_data_fields(name, cmp.driver):
-            if data is None:
+            if data is None or key not in data:
                 value = None
                 units = ""
             else:
