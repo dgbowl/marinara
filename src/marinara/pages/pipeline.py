@@ -291,14 +291,15 @@ def create_content_div(port, name):
     Output({"type": "component-attr-val", "index": MATCH}, "value"),
     Input({"type": "component-attr-val", "index": MATCH}, "value"),
     State({"type": "component-attr-val", "index": MATCH}, "id"),
+    State({"type": "component-attr-val", "index": MATCH}, "disabled"),
     State("store-pipeline-component-attrs-rw", "data"),
     State("store-tomato-port", "data"),
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
-def component_attr_interaction(value, id, arw, port, name):
+def component_attr_interaction(value, id, disabled, arw, port, name):
     cname, attr = id["index"].split("/")
-    if arw[cname][attr]:
+    if arw[cname][attr] and not disabled:
         ret = passata.set_attr(**kwargs, port=port, name=cname, attr=attr, val=value)
         if ret.success:
             return dash.no_update
