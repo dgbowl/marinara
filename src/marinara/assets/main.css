@@ -393,6 +393,7 @@ button:active {
     font-size: 12px;
     font-weight: 600;
     text-transform: uppercase;
+    white-space: nowrap;
 }
 
 .badge-success {
@@ -893,6 +894,8 @@ label {
 
 /* Port Input Custom Style */
 .port-input {
+    width: 70px !important;
+    height: 28px !important;
     border: none !important;
     background: transparent !important;
     padding: 0 !important;
@@ -901,8 +904,8 @@ label {
 }
 
 .port-input input {
-    width: 70px !important;
-    height: 28px !important;
+    width: 100% !important;
+    height: 100% !important;
     padding: 0 8px !important;
     border-radius: 4px !important;
     border: 1px solid var(--border-color) !important;
@@ -982,3 +985,73 @@ table.stgrp-4col th:nth-child(1), table.stgrp-4col td:nth-child(1) { width: 30%;
 table.stgrp-4col th:nth-child(2), table.stgrp-4col td:nth-child(2) { width: 25%; }
 table.stgrp-4col th:nth-child(3), table.stgrp-4col td:nth-child(3) { width: 25%; }
 table.stgrp-4col th:nth-child(4), table.stgrp-4col td:nth-child(4) { width: 20%; }
+
+/* Fix double borders on dcc.Input with debounce=True */
+div.parameter-control {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    display: inline-block !important;
+}
+
+div.parameter-control input {
+    width: 100% !important;
+    height: 100% !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 4px !important;
+    padding: 0 10px !important;
+    background-color: var(--card-bg) !important;
+    color: var(--text-color) !important;
+    box-sizing: border-box !important;
+    outline: none !important;
+    transition: border-color 0.2s ease !important;
+}
+
+div.parameter-control input:focus {
+    border-color: var(--accent-color) !important;
+}
+
+div.parameter-control input:disabled {
+    cursor: not-allowed;
+    background-color: var(--sidebar-bg) !important;
+    opacity: 0.65;
+}
+
+/* Adaptable input styling for top status cards */
+.top-card-input {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    display: inline-block !important;
+    flex-grow: 1 !important;
+    flex-shrink: 1 !important;
+}
+
+.top-card-input input {
+    width: 100% !important;
+    height: 36px !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 4px !important;
+    padding: 0 10px !important;
+    background-color: var(--card-bg) !important;
+    color: var(--text-color) !important;
+    box-sizing: border-box !important;
+    outline: none !important;
+    transition: border-color 0.2s ease !important;
+}
+
+.top-card-input input:focus {
+    border-color: var(--accent-color) !important;
+}
+
+/* Theme toggle button visibility fix */
+.theme-toggle-btn {
+    color: var(--sidebar-text) !important;
+    transition: color 0.2s ease;
+}
+
+.theme-toggle-btn:hover {
+    color: var(--sidebar-text-hover) !important;
+}

@@ -1,5 +1,6 @@
 import dash
 from dash import html, dcc, Output, Input, State, ALL
+from marinara.icons import get_icon
 
 app = dash.Dash(__name__, use_pages=True, suppress_callback_exceptions=True, title="Marinara")
 
@@ -9,19 +10,19 @@ sidebar = html.Div(
         html.Div(
             className="sidebar-logo",
             children=[
-                html.Span("🍅", style={"font-size": "26px"}),
+                get_icon("tomato", size=26),
                 html.H3("marinara")
             ]
         ),
         html.Div(
             className="sidebar-menu",
             children=[
-                dcc.Link([html.Span("📊", style={"margin-right": "10px"}), "Dashboard"], href="/", className="sidebar-link", id="link-dashboard"),
-                dcc.Link([html.Span("🔄", style={"margin-right": "10px"}), "Pipelines"], href="/pipelines", className="sidebar-link", id="link-pipelines"),
-                dcc.Link([html.Span("⚙️", style={"margin-right": "10px"}), "Drivers"], href="/drivers", className="sidebar-link", id="link-drivers"),
-                dcc.Link([html.Span("🔌", style={"margin-right": "10px"}), "Devices"], href="/devices", className="sidebar-link", id="link-devices"),
-                dcc.Link([html.Span("🧩", style={"margin-right": "10px"}), "Components"], href="/components", className="sidebar-link", id="link-components"),
-                dcc.Link([html.Span("📋", style={"margin-right": "10px"}), "Jobs"], href="/jobs", className="sidebar-link", id="link-jobs"),
+                dcc.Link([get_icon("dashboard", size=16, style={"margin-right": "10px"}), "Dashboard"], href="/", className="sidebar-link", id="link-dashboard"),
+                dcc.Link([get_icon("pipelines", size=16, style={"margin-right": "10px"}), "Pipelines"], href="/pipelines", className="sidebar-link", id="link-pipelines"),
+                dcc.Link([get_icon("drivers", size=16, style={"margin-right": "10px"}), "Drivers"], href="/drivers", className="sidebar-link", id="link-drivers"),
+                dcc.Link([get_icon("devices", size=16, style={"margin-right": "10px"}), "Devices"], href="/devices", className="sidebar-link", id="link-devices"),
+                dcc.Link([get_icon("components", size=16, style={"margin-right": "10px"}), "Components"], href="/components", className="sidebar-link", id="link-components"),
+                dcc.Link([get_icon("jobs", size=16, style={"margin-right": "10px"}), "Jobs"], href="/jobs", className="sidebar-link", id="link-jobs"),
             ]
         ),
         html.Div(
@@ -39,7 +40,7 @@ sidebar = html.Div(
                         ),
                         html.Button(
                             id="theme-toggle-btn",
-                            children="🌙",
+                            children=get_icon("moon", size=18),
                             className="theme-toggle-btn",
                             style={
                                 "background": "none",
@@ -60,10 +61,11 @@ sidebar = html.Div(
                     children=[
                         html.Span("Port:", style={"font-weight": "600", "font-size": "13px", "color": "var(--text-color)"}),
                         dcc.Input(
-                            value=1234,
-                            type="number",
+                            value=str(1234),
+                            type="text",
                             id="tomato-port-setter",
-                            className="port-input"
+                            className="port-input",
+                            debounce=True
                         ),
                     ],
                     style={"display": "flex", "align-items": "center", "gap": "8px", "width": "100%"}
@@ -117,11 +119,11 @@ def update_theme_class(theme):
 def toggle_theme(n_clicks, current_theme):
     if n_clicks is None:
         theme = current_theme or "light"
-        icon = "🌙" if theme == "light" else "☀️"
+        icon = get_icon("moon", size=18) if theme == "light" else get_icon("sun", size=18)
         return theme, icon
         
     new_theme = "dark" if current_theme == "light" else "light"
-    icon = "🌙" if new_theme == "light" else "☀️"
+    icon = get_icon("moon", size=18) if new_theme == "light" else get_icon("sun", size=18)
     return new_theme, icon
 
 @app.callback(
@@ -131,7 +133,10 @@ def toggle_theme(n_clicks, current_theme):
 def store_tomato_port(value):
     if value is None:
         return 1234
-    return int(value)
+    try:
+        return int(value)
+    except ValueError:
+        return 1234
 
 @app.callback(
     Output("sidebar-port-display", "children"),

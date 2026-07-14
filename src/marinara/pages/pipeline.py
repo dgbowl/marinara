@@ -96,7 +96,7 @@ def create_header_div(port: int, name: str):
         children=[
             html.Div(
                 children=[
-                    dcc.Link("← Back to Dashboard", href=f"/", className="btn inline-block", style={"margin-right": "20px", "text-decoration": "none", "background-color": "var(--accent-color)", "color": "white", "padding": "8px 16px", "border-radius": "4px"}),
+                    dcc.Link("← Back to Pipelines", href="/pipelines", className="btn inline-block", style={"margin-right": "20px", "text-decoration": "none", "background-color": "var(--accent-color)", "color": "white", "padding": "8px 16px", "border-radius": "4px"}),
                     html.H2(f"Pipeline: {name}", className="inline", style={"margin": 0, "font-size": "22px"}),
                 ],
                 style={"display": "flex", "align-items": "center"}
@@ -172,42 +172,42 @@ def create_content_div(port, name):
 
     jobid = html.Div(
         children=[
-            html.Span("Job ID:", style={"font-weight": "600", "margin-right": "8px"}),
+            html.Span("Job ID:", style={"font-weight": "600", "margin-right": "12px", "font-size": "14px", "flex-shrink": "0"}),
             dcc.Input(
                 id="pipeline-input-jobid", type="number", value=pip.jobid, disabled=True,
-                style={"width": "100px"}
+                className="top-card-input",
+                style={"width": "100%", "height": "36px"}
             ),
         ],
-        className="inline",
-        style={"margin-right": "20px"}
+        style={"display": "flex", "align-items": "center", "flex": "1 1 auto", "min-width": "100px", "max-width": "180px"}
     )
 
     sampleid = html.Div(
         children=[
-            html.Span("Sample ID:", style={"font-weight": "600", "margin-right": "8px"}),
+            html.Span("Sample ID:", style={"font-weight": "600", "margin-right": "12px", "font-size": "14px", "flex-shrink": "0"}),
             dcc.Input(
                 id="pipeline-input-sampleid",
                 type="text",
                 value=str(pip.sampleid) if pip.sampleid is not None else "",
                 debounce=True,
-                style={"width": "180px"}
+                className="top-card-input",
+                style={"width": "100%", "height": "36px"}
             ),
         ],
-        className="inline",
-        style={"margin-right": "20px"}
+        style={"display": "flex", "align-items": "center", "flex": "1.5 1 auto", "min-width": "150px", "max-width": "260px"}
     )
 
     ready = html.Div(
-        className="measurement-section inline",
         children=[
-            html.Span("Pipeline Ready:", style={"font-weight": "600"}),
+            html.Span("Pipeline Status:", style={"font-weight": "600", "margin-right": "12px", "font-size": "14px", "flex-shrink": "0"}),
             dcc.Checklist(
-                options=[{"label": "Ready", "value": "ready"}],
+                options=[{"label": " Ready", "value": "ready"}],
                 value=["ready"] if pip.ready else [],
                 id="pipeline-input-ready",
-                className="dash-checklist"
+                style={"display": "inline-block", "font-size": "14px", "font-weight": "500", "flex-shrink": "0"}
             ),
         ],
+        style={"display": "flex", "align-items": "center", "flex-shrink": "0"}
     )
 
     running_store = {}
@@ -314,6 +314,7 @@ def create_content_div(port, name):
                         children=[
                             html.Div(f"{attr}:", className="parameter-label"),
                             object_from_attrs(cname, attr, params, value),
+                            html.Div(style={"width": "66px", "flex-shrink": "0"}),
                             html.Span(f" {units}{constraints_str}", className="parameter-unit")
                         ],
                         id=f"component-{cname}-attr-{attr}",
@@ -347,7 +348,7 @@ def create_content_div(port, name):
             div_data_ch.append(
                 html.Div(
                     children=[
-                        html.Span(f"{key}:", className="inline", style={"width": "100px", "font-size": "13px"}),
+                        html.Div(f"{key}:", className="parameter-label"),
                         dcc.Input(
                             id={
                                 "type": "component-data-val",
@@ -355,12 +356,14 @@ def create_content_div(port, name):
                             },
                             disabled=True,
                             value=value,
-                            style={"width": "100px"}
+                            className="parameter-control",
+                            style={"width": "200px"}
                         ),
-                        html.Span(f" {units_str}", className="text-secondary", style={"margin-left": "6px", "font-size": "12px"}),
+                        html.Div(style={"width": "66px", "flex-shrink": "0"}),
+                        html.Span(f" {units_str}", className="parameter-unit")
                     ],
                     id={"type": "component-data-key", "index": f"{cname}/{key}"},
-                    style={"display": "inline-flex", "align-items": "center", "margin-right": "15px", "margin-bottom": "8px"}
+                    className="parameter-row"
                 )
             )
         div_data = html.Div(
@@ -386,8 +389,20 @@ def create_content_div(port, name):
     children = [
         html.Div(
             children=[ready, jobid, sampleid], 
-            className="card flex-row", 
-            style={"background-color": "rgba(0,123,255,0.05)", "border": "1px solid rgba(0,123,255,0.15)", "padding": "15px"}
+            className="card", 
+            style={
+                "display": "flex",
+                "flex-direction": "row",
+                "flex-wrap": "nowrap",
+                "align-items": "center",
+                "gap": "30px",
+                "background-color": "var(--card-bg)",
+                "border": "1px solid var(--border-color)",
+                "padding": "15px 25px",
+                "margin-bottom": "25px",
+                "border-radius": "var(--radius)",
+                "overflow": "hidden"
+            }
         ),
         html.Div(children=components, className="component-grid"),
     ]

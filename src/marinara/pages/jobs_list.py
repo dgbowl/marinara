@@ -3,6 +3,8 @@ from dash import html, dcc, callback, Input, Output, State
 import json
 from marinara.utils import clean_dict_values
 
+from marinara.icons import get_icon
+
 dash.register_page(__name__, path="/jobs", title="Jobs")
 
 # Layout with only a single card for raw jobs data
@@ -15,7 +17,7 @@ layout = html.Div(
                 html.Div(
                     children=[
                         html.H2("Jobs Queue (Raw Data)", className="inline", style={"margin": 0, "font-size": "22px"}),
-                        html.Button("⟳", id="tomato-status", className="btn-reload", title="Reload status data"),
+                        html.Button(get_icon("refresh", size=14, stroke_width=2.5), id="tomato-status", className="btn-reload", title="Reload status data"),
                     ],
                     style={"display": "flex", "align-items": "center"}
                 )

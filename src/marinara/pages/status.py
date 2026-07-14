@@ -5,6 +5,7 @@ import zmq
 import json
 import xarray as xr
 from datetime import datetime
+from marinara.icons import get_icon
 
 CTXT = zmq.Context()
 TOUT = 1000
@@ -47,7 +48,7 @@ header = html.Div(
         html.Div(
             children=[
                 html.H2("Experiment Tracking Dashboard", className="inline", style={"margin": 0, "font-size": "22px"}),
-                html.Button("⟳", id="tomato-status", className="btn-reload", title="Reload status data"),
+                html.Button(get_icon("refresh", size=14, stroke_width=2.5), id="tomato-status", className="btn-reload", title="Reload status data"),
             ],
             style={"display": "flex", "align-items": "center"}
         )
@@ -79,10 +80,10 @@ dashboard_layout = html.Div(
         html.Div(
             className="kpi-row",
             children=[
-                create_kpi_card("Active Pipelines", "kpi-pipelines", "0", "🔄"),
-                create_kpi_card("Connected Devices", "kpi-devices", "0", "🔌"),
-                create_kpi_card("Running Drivers", "kpi-drivers", "0", "⚙️"),
-                create_kpi_card("Active Components", "kpi-components", "0", "🧩"),
+                create_kpi_card("Active Pipelines", "kpi-pipelines", "0", get_icon("pipelines", size=32, stroke="var(--accent-color)", stroke_width=1.5)),
+                create_kpi_card("Connected Devices", "kpi-devices", "0", get_icon("devices", size=32, stroke="var(--accent-color)", stroke_width=1.5)),
+                create_kpi_card("Running Drivers", "kpi-drivers", "0", get_icon("drivers", size=32, stroke="var(--accent-color)", stroke_width=1.5)),
+                create_kpi_card("Active Components", "kpi-components", "0", get_icon("components", size=32, stroke="var(--accent-color)", stroke_width=1.5)),
             ]
         ),
         

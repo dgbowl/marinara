@@ -2,6 +2,8 @@ import dash
 from dash import html, dcc, callback, Input, Output, State
 from marinara.utils import format_obj
 
+from marinara.icons import get_icon
+
 dash.register_page(__name__, path="/components", title="Components")
 
 layout = html.Div(
@@ -13,19 +15,16 @@ layout = html.Div(
                 html.Div(
                     children=[
                         html.H2("Components", className="inline", style={"margin": 0, "font-size": "22px"}),
-                        html.Button("⟳", id="tomato-status", className="btn-reload", title="Reload status data"),
+                        html.Button(get_icon("refresh", size=14, stroke_width=2.5), id="tomato-status", className="btn-reload", title="Reload status data"),
                     ],
                     style={"display": "flex", "align-items": "center"}
                 )
             ]
         ),
         html.Div(
-            className="card",
-            children=[
-                html.Div("Loading data or service inactive. Please click the reload button above to check status.", 
-                         id="tomato-list-components",
-                         className="text-secondary", style={"text-align": "center", "padding": "40px"})
-            ]
+            id="tomato-list-components",
+            className="text-secondary",
+            children="Loading data..."
         )
     ]
 )

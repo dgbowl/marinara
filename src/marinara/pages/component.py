@@ -99,7 +99,7 @@ def layout(port: int, name: str, **_):
         children=[
             html.Div(
                 children=[
-                    dcc.Link("← Back to Dashboard", href=f"/", className="btn inline-block", style={"margin-right": "20px", "text-decoration": "none", "background-color": "var(--accent-color)", "color": "white", "padding": "8px 16px", "border-radius": "4px"}),
+                    dcc.Link("← Back to Components", href="/components", className="btn inline-block", style={"margin-right": "20px", "text-decoration": "none", "background-color": "var(--accent-color)", "color": "white", "padding": "8px 16px", "border-radius": "4px"}),
                     html.H2(f"Component: {name}", className="inline", style={"margin": 0, "font-size": "22px"}),
                     html.Span(status_text, id="component-status-badge", className=status_badge_class, style={"margin-left": "15px"}),
                 ],

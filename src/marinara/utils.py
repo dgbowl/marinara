@@ -44,12 +44,16 @@ def format_obj(obj, headers, attrs, otype, port):
         
     cards = []
     for k, v in obj.items():
+        name_str = str(k)
+        
         # Determine plurality/path type for links
         path_type = otype
         if otype == "device":
             path_type = "devices"
+        elif otype == "driver":
+            path_type = "drivers"
             
-        name_str = str(k)
+        # Title as a link to detail page (only for components and pipelines)
         if otype in ["pipelines", "components"]:
             title_el = dcc.Link(
                 name_str,
@@ -61,47 +65,81 @@ def format_obj(obj, headers, attrs, otype, port):
                 name_str,
                 style={"font-size": "18px", "font-weight": "700", "color": "var(--accent-color)"}
             )
-            
-        # The table headers and attrs excluding the first one (Name)
-        table_headers = headers[1:]
-        table_attrs = attrs[1:]
         
-        # Determine table column class based on columns count
-        col_class = "stgrp-5col" if len(table_headers) == 5 else "stgrp-3col" if len(table_headers) == 3 else ""
+        # Build metadata elements
+        metadata_items = []
         
-        row_cells = []
-        for attr in table_attrs:
+        # We skip the first attribute (name) because it is the title
+        for idx, attr in enumerate(attrs[1:]):
+            header_label = headers[idx + 1]
             val = get_field(v, attr, "")
             if isinstance(val, list) or isinstance(val, tuple) or isinstance(val, set):
                 val_str = ", ".join(str(x) for x in val)
             else:
                 val_str = str(val)
-            row_cells.append(html.Td(val_str))
+                
+            # Skip capabilities in metadata block (will render separately)
+            if attr == "capabilities":
+                continue
+                
+            metadata_items.append(
+                html.Div(
+                    children=[
+                        html.Strong(f"{header_label}: "),
+                        html.Span(val_str)
+                    ],
+                    style={"margin-right": "35px"}
+                )
+            )
             
-        table_el = html.Table(
-            children=[
-                html.Tr(children=[html.Th(h) for h in table_headers]),
-                html.Tr(children=row_cells)
-            ],
-            className=f"stgrp {col_class}",
-            style={"margin-top": "10px", "border": "1px solid var(--border-color)", "font-size": "13px"}
+        details_row = html.Div(
+            children=metadata_items,
+            style={"display": "flex", "flex-wrap": "wrap", "margin-bottom": "10px", "font-size": "14px", "gap": "10px"}
         )
         
+        card_children = [
+            html.Div(
+                children=[title_el],
+                style={"display": "flex", "align-items": "center", "margin-bottom": "15px"}
+            ),
+            details_row
+        ]
+        
+        # If there are capabilities, render them beautifully
+        if "capabilities" in attrs:
+            cap_val = get_field(v, "capabilities", [])
+            if cap_val:
+                cap_str = ", ".join(str(x) for x in cap_val) if isinstance(cap_val, (list, set, tuple)) else str(cap_val)
+            else:
+                cap_str = "None"
+            
+            card_children.append(
+                html.Div(
+                    children=[
+                        html.Div(
+                            "Capabilities Info",
+                            style={"font-weight": "600", "font-size": "14px", "margin-top": "15px", "border-bottom": "1px solid var(--border-color)", "padding-bottom": "5px", "margin-bottom": "10px"}
+                        ),
+                        html.Div(
+                            cap_str,
+                            className="text-secondary",
+                            style={"font-size": "13px"}
+                        )
+                    ]
+                )
+            )
+            
         cards.append(
             html.Div(
                 className="card",
                 style={"margin-bottom": "20px", "padding": "20px"},
-                children=[
-                    html.Div(
-                        children=[title_el],
-                        style={"display": "flex", "align-items": "center", "margin-bottom": "15px"}
-                    ),
-                    table_el
-                ]
+                children=card_children
             )
         )
         
     return html.Div(cards)
+
+
 
 def get_tomato_status(port):
     try:
