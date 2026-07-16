@@ -5,24 +5,46 @@ from marinara.icons import get_icon
 app = dash.Dash(__name__, use_pages=True, suppress_callback_exceptions=True, title="Marinara")
 
 sidebar = html.Div(
+    id="app-sidebar",
     className="sidebar",
     children=[
         html.Div(
             className="sidebar-logo",
             children=[
-                get_icon("tomato", size=26),
-                html.H3("marinara")
-            ]
+                html.Div(
+                    children=[
+                        get_icon("tomato", size=26),
+                        html.H3("marinara", id="sidebar-logo-text")
+                    ],
+                    style={"display": "flex", "align-items": "center", "gap": "12px", "flex-grow": "1"}
+                ),
+                html.Button(
+                    id="sidebar-toggle-btn",
+                    children=get_icon("chevron-left", size=18),
+                    className="sidebar-toggle-btn",
+                    style={
+                        "background": "none",
+                        "border": "none",
+                        "color": "var(--sidebar-text)",
+                        "cursor": "pointer",
+                        "padding": "5px",
+                        "display": "flex",
+                        "align-items": "center",
+                        "justify-content": "center"
+                    }
+                )
+            ],
+            style={"display": "flex", "align-items": "center", "justify-content": "space-between", "width": "100%"}
         ),
         html.Div(
             className="sidebar-menu",
             children=[
-                dcc.Link([get_icon("dashboard", size=16, style={"margin-right": "10px"}), "Dashboard"], href="/", className="sidebar-link", id="link-dashboard"),
-                dcc.Link([get_icon("pipelines", size=16, style={"margin-right": "10px"}), "Pipelines"], href="/pipelines", className="sidebar-link", id="link-pipelines"),
-                dcc.Link([get_icon("drivers", size=16, style={"margin-right": "10px"}), "Drivers"], href="/drivers", className="sidebar-link", id="link-drivers"),
-                dcc.Link([get_icon("devices", size=16, style={"margin-right": "10px"}), "Devices"], href="/devices", className="sidebar-link", id="link-devices"),
-                dcc.Link([get_icon("components", size=16, style={"margin-right": "10px"}), "Components"], href="/components", className="sidebar-link", id="link-components"),
-                dcc.Link([get_icon("jobs", size=16, style={"margin-right": "10px"}), "Jobs"], href="/jobs", className="sidebar-link", id="link-jobs"),
+                dcc.Link([get_icon("dashboard", size=16), html.Span("Dashboard", className="sidebar-link-text")], href="/", className="sidebar-link", id="link-dashboard"),
+                dcc.Link([get_icon("pipelines", size=16), html.Span("Pipelines", className="sidebar-link-text")], href="/pipelines", className="sidebar-link", id="link-pipelines"),
+                dcc.Link([get_icon("drivers", size=16), html.Span("Drivers", className="sidebar-link-text")], href="/drivers", className="sidebar-link", id="link-drivers"),
+                dcc.Link([get_icon("devices", size=16), html.Span("Devices", className="sidebar-link-text")], href="/devices", className="sidebar-link", id="link-devices"),
+                dcc.Link([get_icon("components", size=16), html.Span("Components", className="sidebar-link-text")], href="/components", className="sidebar-link", id="link-components"),
+                dcc.Link([get_icon("jobs", size=16), html.Span("Jobs", className="sidebar-link-text")], href="/jobs", className="sidebar-link", id="link-jobs"),
             ]
         ),
         html.Div(
@@ -30,12 +52,13 @@ sidebar = html.Div(
             children=[
                 # Row 1: System status and Theme toggle icon button
                 html.Div(
+                    id="sidebar-footer-row1",
                     children=[
                         html.Div(
                             className="system-status-container",
                             children=[
                                 html.Span(className="status-dot"),
-                                html.Span("System: Connected", style={"color": "#10b981", "font-weight": "600", "font-size": "13px"})
+                                html.Span("System: Connected", className="system-status-text", style={"color": "#10b981", "font-weight": "600", "font-size": "13px"})
                             ]
                         ),
                         html.Button(
@@ -58,6 +81,7 @@ sidebar = html.Div(
                 ),
                 # Row 2: Port setter input only
                 html.Div(
+                    className="sidebar-footer-row2",
                     children=[
                         html.Span("Port:", style={"font-weight": "600", "font-size": "13px", "color": "var(--text-color)"}),
                         dcc.Input(
@@ -83,6 +107,7 @@ app.layout = html.Div(
         dcc.Location(id="url", refresh=False),
         dcc.Store(id="app-theme-store", storage_type="local", data="light"),
         dcc.Store(id="tomato-port", storage_type="local", data=1234),
+        dcc.Store(id="sidebar-state-store", storage_type="local", data="expanded"),
         html.Div(
             className="main-layout",
             children=[
@@ -113,6 +138,7 @@ def update_theme_class(theme):
 @app.callback(
     Output("app-theme-store", "data"),
     Output("theme-toggle-btn", "children"),
+    Output("theme-toggle-btn", "title"),
     Input("theme-toggle-btn", "n_clicks"),
     State("app-theme-store", "data"),
 )
@@ -120,11 +146,13 @@ def toggle_theme(n_clicks, current_theme):
     if n_clicks is None:
         theme = current_theme or "light"
         icon = get_icon("moon", size=18) if theme == "light" else get_icon("sun", size=18)
-        return theme, icon
+        tooltip = "Dark Mode" if theme == "light" else "Light Mode"
+        return theme, icon, tooltip
         
     new_theme = "dark" if current_theme == "light" else "light"
     icon = get_icon("moon", size=18) if new_theme == "light" else get_icon("sun", size=18)
-    return new_theme, icon
+    tooltip = "Dark Mode" if new_theme == "light" else "Light Mode"
+    return new_theme, icon, tooltip
 
 @app.callback(
     Output("tomato-port", "data"),
@@ -172,6 +200,27 @@ def update_sidebar_active_classes(pathname):
     elif pathname.startswith("/jobs"):
         classes[5] = "sidebar-link active"
     return tuple(classes)
+
+@app.callback(
+    Output("sidebar-state-store", "data"),
+    Input("sidebar-toggle-btn", "n_clicks"),
+    State("sidebar-state-store", "data"),
+)
+def toggle_sidebar_state(n_clicks, current_state):
+    if n_clicks is None or n_clicks == 0:
+        return current_state or "expanded"
+    return "collapsed" if current_state == "expanded" else "expanded"
+
+@app.callback(
+    Output("app-sidebar", "className"),
+    Output("sidebar-toggle-btn", "children"),
+    Output("sidebar-toggle-btn", "title"),
+    Input("sidebar-state-store", "data"),
+)
+def apply_sidebar_state(state):
+    if state == "collapsed":
+        return "sidebar collapsed", get_icon("chevron-right", size=18), "Open the sidebar"
+    return "sidebar", get_icon("chevron-left", size=18), "Close the sidebar"
 
 if __name__ == "__main__":
     app.run(debug=True, host="127.0.0.1")

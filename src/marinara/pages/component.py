@@ -70,6 +70,8 @@ def layout(port: int, name: str, **_):
     try:
         attrs_ret = passata.attrs(**kwargs, port=port, name=name)
         attrs_dict = attrs_ret.data if (attrs_ret and attrs_ret.success) else {}
+        if "choice" in attrs_dict:
+            del attrs_dict["choice"]
     except Exception:
         attrs_dict = {}
 
@@ -208,7 +210,7 @@ def layout(port: int, name: str, **_):
                 ],
                 className="block",
             ),
-            dcc.Graph(id="component-data-graph"),
+            dcc.Graph(id="component-data-graph", style={"height": "400px"}, responsive=True),
         ],
         className="card component-data"
     )
@@ -451,6 +453,7 @@ def component_data_graph(keys, ds, theme):
         )
         
     layout = {
+        "autosize": True,
         "uirevision": True,
         "template": "plotly_dark" if theme == "dark" else "plotly",
         "paper_bgcolor": "rgba(0,0,0,0)",

@@ -260,6 +260,8 @@ def create_content_div(port, name):
         try:
             attrs_ret = passata.attrs(**kwargs, port=port, name=cname)
             attrs = attrs_ret.data if (attrs_ret and attrs_ret.success) else {}
+            if "choice" in attrs:
+                del attrs["choice"]
         except Exception:
             attrs = {}
             
@@ -404,7 +406,7 @@ def create_content_div(port, name):
                 "overflow": "hidden"
             }
         ),
-        html.Div(children=components, className="component-grid"),
+        html.Div(children=components, className="pipeline-component-grid"),
     ]
     return children
 

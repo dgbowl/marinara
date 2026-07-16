@@ -151,4 +151,26 @@ def get_icon(name, size=16, className=None, style=None, fill="none", stroke="cur
             ]
         )
 
+    elif name == "chevron-left":
+        return Svg(
+            viewBox="0 0 24 24", className=className, style=svg_style,
+            children=[
+                Path(
+                    d="m15 18-6-6 6-6",
+                    fill=fill, stroke=stroke, strokeWidth=str(stroke_width), strokeLinecap="round", strokeLinejoin="round"
+                )
+            ]
+        )
+        
+    elif name == "chevron-right":
+        return Svg(
+            viewBox="0 0 24 24", className=className, style=svg_style,
+            children=[
+                Path(
+                    d="m9 18 6-6-6-6",
+                    fill=fill, stroke=stroke, strokeWidth=str(stroke_width), strokeLinecap="round", strokeLinejoin="round"
+                )
+            ]
+        )
+
     return html.Div()

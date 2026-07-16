@@ -118,7 +118,7 @@ dashboard_layout = html.Div(
                             ],
                             style={"display": "flex", "align-items": "center", "margin-bottom": "15px", "border-bottom": "1px solid var(--border-color)", "padding-bottom": "10px"}
                         ),
-                        dcc.Graph(id="dash-live-graph", style={"height": "320px"}),
+                        dcc.Graph(id="dash-live-graph", style={"height": "320px"}, responsive=True),
                         dcc.Interval(id="dash-graph-interval", interval=2000)
                     ]
                 )
@@ -231,6 +231,7 @@ def update_dashboard_live_view(n_intervals, selected_cmp, port, historical_data,
     if not selected_cmp:
         empty_fig = {
             "layout": {
+                "autosize": True,
                 "xaxis": {"visible": False},
                 "yaxis": {"visible": False},
                 "annotations": [{
@@ -257,6 +258,8 @@ def update_dashboard_live_view(n_intervals, selected_cmp, port, historical_data,
         # 1. Fetch attributes/parameters
         attrs_ret = passata.attrs(**kwargs, port=port, name=selected_cmp)
         attrs_meta = attrs_ret.data if (attrs_ret and attrs_ret.success) else {}
+        if "choice" in attrs_meta:
+            del attrs_meta["choice"]
         
         vals_ret = passata.get_attrs(**kwargs, port=port, name=selected_cmp, attrs=list(attrs_meta.keys()))
         vals = vals_ret.data if (vals_ret and vals_ret.success) else {}
@@ -317,6 +320,7 @@ def update_dashboard_live_view(n_intervals, selected_cmp, port, historical_data,
         figure = {
             "data": traces,
             "layout": {
+                "autosize": True,
                 "template": "plotly_dark" if theme == "dark" else "plotly",
                 "paper_bgcolor": "rgba(0,0,0,0)",
                 "plot_bgcolor": "rgba(0,0,0,0)",
@@ -337,6 +341,7 @@ def update_dashboard_live_view(n_intervals, selected_cmp, port, historical_data,
     except Exception as e:
         empty_fig = {
             "layout": {
+                "autosize": True,
                 "xaxis": {"visible": False},
                 "yaxis": {"visible": False},
                 "annotations": [{
