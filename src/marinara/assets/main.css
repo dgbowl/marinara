@@ -601,22 +601,22 @@ input.Select__input,
     background-color: rgba(239, 68, 68, 0.03) !important;
 }
 
-/* Parameter Alignment System */
-.parameter-row {
+/* Attribute Alignment System */
+.attr-row {
     display: flex;
     align-items: center;
     gap: 12px;
     margin-bottom: 12px;
 }
 
-.parameter-label {
+.attr-label {
     width: 130px;
     font-weight: 600;
     color: var(--text-color);
     flex-shrink: 0;
 }
 
-.parameter-control {
+.attr-control {
     width: 200px !important;
     height: 36px !important;
     box-sizing: border-box !important;
@@ -624,7 +624,7 @@ input.Select__input,
     margin: 0 !important;
 }
 
-.parameter-unit {
+.attr-unit {
     color: var(--text-secondary);
     font-size: 13px;
     margin-left: 4px;
@@ -642,8 +642,8 @@ input[type=number] {
     -moz-appearance: textfield;
 }
 
-/* Parameter Apply Button styling */
-.parameter-apply-btn {
+/* Attribute Apply Button styling */
+.attr-apply-btn {
     height: 36px !important;
     padding: 0 12px !important;
     font-size: 13px !important;
@@ -661,7 +661,7 @@ input[type=number] {
     justify-content: center !important;
 }
 
-.parameter-apply-btn:hover {
+.attr-apply-btn:hover {
     background-color: var(--accent-color) !important;
     color: white !important;
 }
@@ -1044,7 +1044,7 @@ table.stgrp-4col th:nth-child(3), table.stgrp-4col td:nth-child(3) { width: 25%;
 table.stgrp-4col th:nth-child(4), table.stgrp-4col td:nth-child(4) { width: 20%; }
 
 /* Fix double borders on dcc.Input with debounce=True */
-div.parameter-control {
+div.attr-control {
     border: none !important;
     background: transparent !important;
     padding: 0 !important;
@@ -1052,7 +1052,7 @@ div.parameter-control {
     display: inline-block !important;
 }
 
-div.parameter-control input {
+div.attr-control input {
     width: 100% !important;
     height: 100% !important;
     border: 1px solid var(--border-color) !important;
@@ -1065,11 +1065,11 @@ div.parameter-control input {
     transition: border-color 0.2s ease !important;
 }
 
-div.parameter-control input:focus {
+div.attr-control input:focus {
     border-color: var(--accent-color) !important;
 }
 
-div.parameter-control input:disabled {
+div.attr-control input:disabled {
     cursor: not-allowed;
     background-color: var(--sidebar-bg) !important;
     opacity: 0.65;
@@ -1138,4 +1138,22 @@ div.parameter-control input:disabled {
     flex-direction: column;
     gap: 20px;
     width: 100%;
+}
+
+/* Grid style for 2-column listings (Pipelines and Components) */
+.card-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+}
+
+@media (min-width: 992px) {
+    .card-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* Override card margins when inside a grid layout to maintain clean spacing */
+.card-grid .card {
+    margin-bottom: 0 !important;
 }

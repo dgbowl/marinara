@@ -2,9 +2,8 @@ import dash
 from dash import html, dcc, callback, set_props, Input, Output, State, MATCH
 from tomato import passata, tomato
 from zmq import Context
-import zmq
 import logging
-import pint
+from marinara.utils import get_field, clean_value, get_unit_str, format_constraint
 
 logger = logging.getLogger(__name__)
 
@@ -12,36 +11,6 @@ CTXT = Context()
 TOUT = 1000
 kwargs = dict(timeout=TOUT, context=CTXT)
 
-def clean_value(val):
-    """Safely coerces Pint Quantity objects and numpy types to standard serializable types."""
-    if hasattr(val, "magnitude"):
-        val = val.magnitude
-    if hasattr(val, "m"):
-        val = val.m
-    if hasattr(val, "item") and callable(val.item):
-        try:
-            val = val.item()
-        except Exception:
-            pass
-    return val
-
-def get_field(obj, field, default=None):
-    """Safely gets a field from an Attr object or dict."""
-    if hasattr(obj, field):
-        return getattr(obj, field)
-    elif isinstance(obj, dict):
-        return obj.get(field, default)
-    return default
-
-def get_unit_str(units):
-    """Formats unit names for human-friendly display."""
-    if units is None or units == "":
-        return ""
-    try:
-        q = pint.Quantity(1, units)
-        return f"{q.units:~H}"
-    except Exception:
-        return str(units)
 
 def get_data_fields(pname, dname):
     if dname == "example_counter":
@@ -96,10 +65,26 @@ def create_header_div(port: int, name: str):
         children=[
             html.Div(
                 children=[
-                    dcc.Link("← Back to Pipelines", href="/pipelines", className="btn inline-block", style={"margin-right": "20px", "text-decoration": "none", "background-color": "var(--accent-color)", "color": "white", "padding": "8px 16px", "border-radius": "4px"}),
-                    html.H2(f"Pipeline: {name}", className="inline", style={"margin": 0, "font-size": "22px"}),
+                    dcc.Link(
+                        "← Back to Pipelines",
+                        href="/pipelines",
+                        className="btn inline-block",
+                        style={
+                            "margin-right": "20px",
+                            "text-decoration": "none",
+                            "background-color": "var(--accent-color)",
+                            "color": "white",
+                            "padding": "8px 16px",
+                            "border-radius": "4px",
+                        },
+                    ),
+                    html.H2(
+                        f"Pipeline: {name}",
+                        className="inline",
+                        style={"margin": 0, "font-size": "22px"},
+                    ),
                 ],
-                style={"display": "flex", "align-items": "center"}
+                style={"display": "flex", "align-items": "center"},
             )
         ],
         className="theme-header",
@@ -114,8 +99,7 @@ def create_header_div(port: int, name: str):
 def object_from_attrs(cname, attr, params, value):
     options = get_field(params, "options")
     is_rw = get_field(params, "rw", False)
-    attr_type = get_field(params, "type")
-    
+
     if options is not None:
         obj = dcc.Dropdown(
             id={
@@ -123,10 +107,12 @@ def object_from_attrs(cname, attr, params, value):
                 "index": f"{cname}/{attr}",
             },
             disabled=False if is_rw else True,
-            options=list(options),
+            options=sorted(list(options)),
             value=value,
             clearable=False,
-            className="parameter-control mutable-input" if is_rw else "parameter-control immutable-input"
+            className="attr-control mutable-input"
+            if is_rw
+            else "attr-control immutable-input",
         )
     else:
         obj = dcc.Input(
@@ -138,7 +124,9 @@ def object_from_attrs(cname, attr, params, value):
             debounce=True,
             value=value,
             type="text",
-            className="parameter-control mutable-input" if is_rw else "parameter-control immutable-input"
+            className="attr-control mutable-input"
+            if is_rw
+            else "attr-control immutable-input",
         )
     return obj
 
@@ -155,7 +143,7 @@ def create_content_div(port, name):
         pip = pip_ret.data[name] if (pip_ret and pip_ret.success) else None
     except Exception:
         pip = None
-        
+
     if not pip:
         return html.Div("Failed to load pipeline.", className="card")
 
@@ -172,42 +160,86 @@ def create_content_div(port, name):
 
     jobid = html.Div(
         children=[
-            html.Span("Job ID:", style={"font-weight": "600", "margin-right": "12px", "font-size": "14px", "flex-shrink": "0"}),
+            html.Span(
+                "Job ID:",
+                style={
+                    "font-weight": "600",
+                    "margin-right": "12px",
+                    "font-size": "14px",
+                    "flex-shrink": "0",
+                },
+            ),
             dcc.Input(
-                id="pipeline-input-jobid", type="number", value=pip.jobid, disabled=True,
+                id="pipeline-input-jobid",
+                type="number",
+                value=pip.jobid,
+                disabled=True,
                 className="top-card-input",
-                style={"width": "100%", "height": "36px"}
+                style={"width": "100%", "height": "36px"},
             ),
         ],
-        style={"display": "flex", "align-items": "center", "flex": "1 1 auto", "min-width": "100px", "max-width": "180px"}
+        style={
+            "display": "flex",
+            "align-items": "center",
+            "flex": "1 1 auto",
+            "min-width": "100px",
+            "max-width": "180px",
+        },
     )
 
     sampleid = html.Div(
         children=[
-            html.Span("Sample ID:", style={"font-weight": "600", "margin-right": "12px", "font-size": "14px", "flex-shrink": "0"}),
+            html.Span(
+                "Sample ID:",
+                style={
+                    "font-weight": "600",
+                    "margin-right": "12px",
+                    "font-size": "14px",
+                    "flex-shrink": "0",
+                },
+            ),
             dcc.Input(
                 id="pipeline-input-sampleid",
                 type="text",
                 value=str(pip.sampleid) if pip.sampleid is not None else "",
                 debounce=True,
                 className="top-card-input",
-                style={"width": "100%", "height": "36px"}
+                style={"width": "100%", "height": "36px"},
             ),
         ],
-        style={"display": "flex", "align-items": "center", "flex": "1.5 1 auto", "min-width": "150px", "max-width": "260px"}
+        style={
+            "display": "flex",
+            "align-items": "center",
+            "flex": "1.5 1 auto",
+            "min-width": "150px",
+            "max-width": "260px",
+        },
     )
 
     ready = html.Div(
         children=[
-            html.Span("Pipeline Status:", style={"font-weight": "600", "margin-right": "12px", "font-size": "14px", "flex-shrink": "0"}),
+            html.Span(
+                "Pipeline Status:",
+                style={
+                    "font-weight": "600",
+                    "margin-right": "12px",
+                    "font-size": "14px",
+                    "flex-shrink": "0",
+                },
+            ),
             dcc.Checklist(
                 options=[{"label": " Ready", "value": "ready"}],
                 value=["ready"] if pip.ready else [],
                 id="pipeline-input-ready",
-                style={"display": "inline-block", "font-size": "14px", "font-weight": "500", "flex-shrink": "0"}
+                style={
+                    "display": "inline-block",
+                    "font-size": "14px",
+                    "font-weight": "500",
+                    "flex-shrink": "0",
+                },
             ),
         ],
-        style={"display": "flex", "align-items": "center", "flex-shrink": "0"}
+        style={"display": "flex", "align-items": "center", "flex-shrink": "0"},
     )
 
     running_store = {}
@@ -215,31 +247,45 @@ def create_content_div(port, name):
     attrs_units_store = {}
     attrs_rw_store = {}
     components = []
-    
+
     for cname in pip.components:
         try:
             cmp = tomato.status(**kwargs, port=port, stgrp="components").data[cname]
         except Exception:
             continue
-            
+
         div_info = html.Div(
             children=[
                 html.H4(f"Component: {cmp.name}", style={"margin": "0 0 5px 0"}),
-                html.Div(f"Role: {cmp.role} | Address: {cmp.address!r} | Channel: {cmp.channel!r}", className="text-secondary", style={"font-size": "12px"}),
+                html.Div(
+                    f"Role: {cmp.role} | Address: {cmp.address!r} | Channel: {cmp.channel!r}",
+                    className="text-secondary",
+                    style={"font-size": "12px"},
+                ),
             ],
             className="block",
-            style={"border-bottom": "1px solid var(--border-color)", "padding-bottom": "8px", "margin-bottom": "10px"}
+            style={
+                "border-bottom": "1px solid var(--border-color)",
+                "padding-bottom": "8px",
+                "margin-bottom": "10px",
+            },
         )
 
         try:
             status_ret = passata.status(**kwargs, port=port, name=cname)
-            status = status_ret.data if (status_ret and status_ret.success) else {"running": False}
+            status = (
+                status_ret.data
+                if (status_ret and status_ret.success)
+                else {"running": False}
+            )
         except Exception:
             status = {"running": False}
-            
-        badge_class = "badge badge-success" if status["running"] else "badge badge-danger"
-        badge_text = "RUNNING" if status["running"] else "IDLE"
-        
+
+        badge_class = (
+            "badge badge-success" if status["running"] else "badge badge-secondary"
+        )
+        badge_text = "RUNNING" if status["running"] else "STOPPED"
+
         div_status = html.Div(
             children=[
                 html.Span("Status: ", style={"font-weight": "500"}),
@@ -250,77 +296,95 @@ def create_content_div(port, name):
                         "index": f"{cname}",
                     },
                     className=badge_class,
-                )
+                ),
             ],
             className="block",
-            style={"margin-bottom": "12px"}
+            style={"margin-bottom": "12px"},
         )
         running_store[cname] = status["running"]
-
         try:
             attrs_ret = passata.attrs(**kwargs, port=port, name=cname)
-            attrs = attrs_ret.data if (attrs_ret and attrs_ret.success) else {}
-            if "choice" in attrs:
-                del attrs["choice"]
+            attrs = attrs_ret.data if attrs_ret.success else {}
         except Exception:
             attrs = {}
-            
+
         try:
-            avals_ret = passata.get_attrs(**kwargs, port=port, name=cname, attrs=list(attrs.keys()))
-            avals = avals_ret.data if (avals_ret and avals_ret.success) else {}
+            avals_ret = passata.get_attrs(
+                **kwargs, port=port, name=cname, attrs=list(attrs.keys())
+            )
+            avals = avals_ret.data if avals_ret.success else {}
         except Exception:
             avals = {}
-            
-        attrs_vals_store[cname] = {
-            k: clean_value(v) for k, v in avals.items()
-        }
-        attrs_units_store[cname] = {k: get_field(attrs[k], "units") for k in attrs.keys()}
-        attrs_rw_store[cname] = {k: get_field(attrs[k], "rw", False) for k in attrs.keys()}
 
-        div_attrs_ch = [html.Div("Parameters:", style={"font-weight": "600", "margin-bottom": "8px", "font-size": "13px"})]
+        attrs_vals_store[cname] = {k: clean_value(v) for k, v in avals.items()}
+        attrs_units_store[cname] = {
+            k: get_field(attrs[k], "units") for k in attrs.keys()
+        }
+        attrs_rw_store[cname] = {
+            k: get_field(attrs[k], "rw", False) for k in attrs.keys()
+        }
+
+        div_attrs_ch = [
+            html.Div(
+                "Parameters:",
+                style={
+                    "font-weight": "600",
+                    "margin-bottom": "8px",
+                    "font-size": "13px",
+                },
+            )
+        ]
         for attr, params in attrs.items():
             is_rw = get_field(params, "rw", False)
             value = clean_value(avals.get(attr))
             units = get_unit_str(get_field(params, "units"))
-            
+
             min_val = get_field(params, "minimum")
             max_val = get_field(params, "maximum")
             constraints = []
             if min_val is not None:
-                constraints.append(f"min:{clean_value(min_val)}")
+                constraints.append(
+                    f"min: {format_constraint(min_val, get_field(params, 'units'))}"
+                )
             if max_val is not None:
-                constraints.append(f"max:{clean_value(max_val)}")
+                constraints.append(
+                    f"max: {format_constraint(max_val, get_field(params, 'units'))}"
+                )
             constraints_str = f" ({', '.join(constraints)})" if constraints else ""
 
             if is_rw:
                 apply_btn = html.Button(
                     "Apply",
                     id={"type": "component-attr-apply-btn", "index": f"{cname}/{attr}"},
-                    className="parameter-apply-btn"
+                    className="attr-apply-btn",
                 )
                 div_attrs_ch.append(
                     html.Div(
                         children=[
-                            html.Div(f"{attr}:", className="parameter-label"),
+                            html.Div(f"{attr}:", className="attr-label"),
                             object_from_attrs(cname, attr, params, value),
                             apply_btn,
-                            html.Span(f" {units}{constraints_str}", className="parameter-unit")
+                            html.Span(
+                                f" {units}{constraints_str}", className="attr-unit"
+                            ),
                         ],
                         id=f"component-{cname}-attr-{attr}",
-                        className="parameter-row"
+                        className="attr-row",
                     )
                 )
             else:
                 div_attrs_ch.append(
                     html.Div(
                         children=[
-                            html.Div(f"{attr}:", className="parameter-label"),
+                            html.Div(f"{attr}:", className="attr-label"),
                             object_from_attrs(cname, attr, params, value),
                             html.Div(style={"width": "66px", "flex-shrink": "0"}),
-                            html.Span(f" {units}{constraints_str}", className="parameter-unit")
+                            html.Span(
+                                f" {units}{constraints_str}", className="attr-unit"
+                            ),
                         ],
                         id=f"component-{cname}-attr-{attr}",
-                        className="parameter-row"
+                        className="attr-row",
                     )
                 )
         div_attrs = html.Div(
@@ -333,8 +397,17 @@ def create_content_div(port, name):
             data = data_ret.data if (data_ret and data_ret.success) else None
         except Exception:
             data = None
-            
-        div_data_ch = [html.Div("Live Data:", style={"font-weight": "600", "margin-bottom": "8px", "font-size": "13px"})]
+
+        div_data_ch = [
+            html.Div(
+                "Live Data:",
+                style={
+                    "font-weight": "600",
+                    "margin-bottom": "8px",
+                    "font-size": "13px",
+                },
+            )
+        ]
         for key in get_data_fields(name, cmp.driver):
             if data is None or key not in data:
                 value = None
@@ -342,11 +415,11 @@ def create_content_div(port, name):
             else:
                 value = clean_value(data[key].values[-1])
                 units = data[key].attrs.get("units", "")
-                
+
             if isinstance(value, float):
                 value = round(value, 3)
             units_str = get_unit_str(units)
-            
+
             div_data_ch.append(
                 html.Div(
                     children=[
@@ -359,29 +432,29 @@ def create_content_div(port, name):
                             disabled=True,
                             value=value,
                             className="parameter-control",
-                            style={"width": "200px"}
+                            style={"width": "200px"},
                         ),
                         html.Div(style={"width": "66px", "flex-shrink": "0"}),
-                        html.Span(f" {units_str}", className="parameter-unit")
+                        html.Span(f" {units_str}", className="parameter-unit"),
                     ],
                     id={"type": "component-data-key", "index": f"{cname}/{key}"},
-                    className="parameter-row"
+                    className="parameter-row",
                 )
             )
         div_data = html.Div(
             children=div_data_ch,
             className="component-data block",
         )
-        
+
         components.append(
             html.Div(
                 id=f"component-{cname}",
                 children=[div_info, div_status, div_attrs, div_data],
                 className="card",
-                style={"margin-bottom": "0px"} # Managed by grid gap
+                style={"margin-bottom": "0px"},  # Managed by grid gap
             )
         )
-        
+
     set_props("store-pipeline-component-names", {"data": pip.components})
     set_props("store-pipeline-component-running", {"data": running_store})
     set_props("store-pipeline-component-attrs-vals", {"data": attrs_vals_store})
@@ -390,8 +463,8 @@ def create_content_div(port, name):
 
     children = [
         html.Div(
-            children=[ready, jobid, sampleid], 
-            className="card", 
+            children=[ready, jobid, sampleid],
+            className="card",
             style={
                 "display": "flex",
                 "flex-direction": "row",
@@ -403,8 +476,8 @@ def create_content_div(port, name):
                 "padding": "15px 25px",
                 "margin-bottom": "25px",
                 "border-radius": "var(--radius)",
-                "overflow": "hidden"
-            }
+                "overflow": "hidden",
+            },
         ),
         html.Div(children=components, className="pipeline-component-grid"),
     ]
@@ -431,15 +504,20 @@ def component_attr_interaction(n_clicks, value, id, disabled, arw, port, name):
     cname, attr = id["index"].split("/")
     if arw[cname][attr] and not disabled:
         try:
-            ret = passata.set_attr(**kwargs, port=port, name=cname, attr=attr, val=value)
+            ret = passata.set_attr(
+                **kwargs, port=port, name=cname, attr=attr, val=value
+            )
             if ret.success:
-                return value
-            else:
-                current = passata.get_attrs(**kwargs, port=port, name=cname, attrs=[attr]).data.get(attr)
-                return clean_value(current)
+                return clean_value(ret.data)
+            current = passata.get_attrs(
+                **kwargs, port=port, name=cname, attrs=[attr]
+            ).data.get(attr)
+            return clean_value(current)
         except Exception:
             try:
-                current = passata.get_attrs(**kwargs, port=port, name=cname, attrs=[attr]).data.get(attr)
+                current = passata.get_attrs(
+                    **kwargs, port=port, name=cname, attrs=[attr]
+                ).data.get(attr)
                 return clean_value(current)
             except Exception:
                 return dash.no_update
@@ -508,7 +586,7 @@ def components_periodic_update_attrs_vals_store(_, cmps, avals, aunits, port, na
             nvals = nvals_ret.data if (nvals_ret and nvals_ret.success) else {}
         except Exception:
             nvals = {}
-            
+
         for key in avals[cmp].keys():
             val = nvals.get(key)
             if hasattr(val, "to") and aunits[cmp].get(key) is not None:
@@ -517,7 +595,7 @@ def components_periodic_update_attrs_vals_store(_, cmps, avals, aunits, port, na
                 except Exception:
                     pass
             newdata[cmp][key] = clean_value(val)
-            
+
     if newdata == avals:
         return dash.no_update
     else:
@@ -544,7 +622,7 @@ def components_periodic_update_data_store(_, cmps, data, port, name):
             ds = ds_ret.data if (ds_ret and ds_ret.success) else None
         except Exception:
             ds = None
-            
+
         if ds is None:
             continue
         dd = ds.to_dict()
@@ -552,7 +630,7 @@ def components_periodic_update_data_store(_, cmps, data, port, name):
             newdata[cmp][k] = clean_value(v["data"][-1])
         for k, v in dd["data_vars"].items():
             newdata[cmp][k] = clean_value(v["data"][-1])
-            
+
     if newdata == {}:
         return dash.no_update
     elif newdata == data:
@@ -579,7 +657,7 @@ def components_periodic_update_params_store(_, cmps, params, port):
             newparams[cname] = ret["running"]
         except Exception:
             newparams[cname] = False
-            
+
     if newparams == params:
         return dash.no_update
     else:
@@ -604,7 +682,7 @@ def pipeline_periodic_update_params_store(_, data, port, name):
         }
     except Exception:
         newdata = data
-        
+
     if newdata == data:
         return dash.no_update
     else:
@@ -705,8 +783,8 @@ def components_update_param_display(data, value, id):
     if not data or not id or "index" not in id:
         return dash.no_update, dash.no_update
     running_state = data.get(id["index"], False)
-    new_text = "RUNNING" if running_state else "IDLE"
-    new_class = "badge badge-success" if running_state else "badge badge-danger"
+    new_text = "RUNNING" if running_state else "STOPPED"
+    new_class = "badge badge-success" if running_state else "badge badge-secondary"
     if value == new_text:
         return dash.no_update, dash.no_update
     else:

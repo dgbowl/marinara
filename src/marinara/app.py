@@ -1,8 +1,10 @@
 import dash
-from dash import html, dcc, Output, Input, State, ALL
+from dash import html, dcc, Output, Input, State
 from marinara.icons import get_icon
 
-app = dash.Dash(__name__, use_pages=True, suppress_callback_exceptions=True, title="Marinara")
+app = dash.Dash(
+    __name__, use_pages=True, suppress_callback_exceptions=True, title="Marinara"
+)
 
 sidebar = html.Div(
     id="app-sidebar",
@@ -14,9 +16,14 @@ sidebar = html.Div(
                 html.Div(
                     children=[
                         get_icon("tomato", size=26),
-                        html.H3("marinara", id="sidebar-logo-text")
+                        html.H3("marinara", id="sidebar-logo-text"),
                     ],
-                    style={"display": "flex", "align-items": "center", "gap": "12px", "flex-grow": "1"}
+                    style={
+                        "display": "flex",
+                        "align-items": "center",
+                        "gap": "12px",
+                        "flex-grow": "1",
+                    },
                 ),
                 html.Button(
                     id="sidebar-toggle-btn",
@@ -30,22 +37,75 @@ sidebar = html.Div(
                         "padding": "5px",
                         "display": "flex",
                         "align-items": "center",
-                        "justify-content": "center"
-                    }
-                )
+                        "justify-content": "center",
+                    },
+                ),
             ],
-            style={"display": "flex", "align-items": "center", "justify-content": "space-between", "width": "100%"}
+            style={
+                "display": "flex",
+                "align-items": "center",
+                "justify-content": "space-between",
+                "width": "100%",
+            },
         ),
         html.Div(
             className="sidebar-menu",
             children=[
-                dcc.Link([get_icon("dashboard", size=16), html.Span("Dashboard", className="sidebar-link-text")], href="/", className="sidebar-link", id="link-dashboard"),
-                dcc.Link([get_icon("pipelines", size=16), html.Span("Pipelines", className="sidebar-link-text")], href="/pipelines", className="sidebar-link", id="link-pipelines"),
-                dcc.Link([get_icon("drivers", size=16), html.Span("Drivers", className="sidebar-link-text")], href="/drivers", className="sidebar-link", id="link-drivers"),
-                dcc.Link([get_icon("devices", size=16), html.Span("Devices", className="sidebar-link-text")], href="/devices", className="sidebar-link", id="link-devices"),
-                dcc.Link([get_icon("components", size=16), html.Span("Components", className="sidebar-link-text")], href="/components", className="sidebar-link", id="link-components"),
-                dcc.Link([get_icon("jobs", size=16), html.Span("Jobs", className="sidebar-link-text")], href="/jobs", className="sidebar-link", id="link-jobs"),
-            ]
+                dcc.Link(
+                    [
+                        get_icon("dashboard", size=16),
+                        html.Span("Dashboard", className="sidebar-link-text"),
+                    ],
+                    href="/",
+                    className="sidebar-link",
+                    id="link-dashboard",
+                ),
+                dcc.Link(
+                    [
+                        get_icon("pipelines", size=16),
+                        html.Span("Pipelines", className="sidebar-link-text"),
+                    ],
+                    href="/pipelines",
+                    className="sidebar-link",
+                    id="link-pipelines",
+                ),
+                dcc.Link(
+                    [
+                        get_icon("drivers", size=16),
+                        html.Span("Drivers", className="sidebar-link-text"),
+                    ],
+                    href="/drivers",
+                    className="sidebar-link",
+                    id="link-drivers",
+                ),
+                dcc.Link(
+                    [
+                        get_icon("devices", size=16),
+                        html.Span("Devices", className="sidebar-link-text"),
+                    ],
+                    href="/devices",
+                    className="sidebar-link",
+                    id="link-devices",
+                ),
+                dcc.Link(
+                    [
+                        get_icon("components", size=16),
+                        html.Span("Components", className="sidebar-link-text"),
+                    ],
+                    href="/components",
+                    className="sidebar-link",
+                    id="link-components",
+                ),
+                dcc.Link(
+                    [
+                        get_icon("jobs", size=16),
+                        html.Span("Jobs", className="sidebar-link-text"),
+                    ],
+                    href="/jobs",
+                    className="sidebar-link",
+                    id="link-jobs",
+                ),
+            ],
         ),
         html.Div(
             className="sidebar-footer",
@@ -58,8 +118,16 @@ sidebar = html.Div(
                             className="system-status-container",
                             children=[
                                 html.Span(className="status-dot"),
-                                html.Span("System: Connected", className="system-status-text", style={"color": "#10b981", "font-weight": "600", "font-size": "13px"})
-                            ]
+                                html.Span(
+                                    "System: Connected",
+                                    className="system-status-text",
+                                    style={
+                                        "color": "#10b981",
+                                        "font-weight": "600",
+                                        "font-size": "13px",
+                                    },
+                                ),
+                            ],
                         ),
                         html.Button(
                             id="theme-toggle-btn",
@@ -73,32 +141,61 @@ sidebar = html.Div(
                                 "padding": "5px",
                                 "display": "flex",
                                 "align-items": "center",
-                                "justify-content": "center"
-                            }
-                        )
+                                "justify-content": "center",
+                            },
+                        ),
                     ],
-                    style={"display": "flex", "align-items": "center", "justify-content": "space-between", "width": "100%", "margin-bottom": "8px"}
+                    style={
+                        "display": "flex",
+                        "align-items": "center",
+                        "justify-content": "space-between",
+                        "width": "100%",
+                        "margin-bottom": "8px",
+                    },
                 ),
                 # Row 2: Port setter input only
                 html.Div(
                     className="sidebar-footer-row2",
                     children=[
-                        html.Span("Port:", style={"font-weight": "600", "font-size": "13px", "color": "var(--text-color)"}),
+                        html.Span(
+                            "Port:",
+                            style={
+                                "font-weight": "600",
+                                "font-size": "13px",
+                                "color": "var(--text-color)",
+                            },
+                        ),
                         dcc.Input(
                             value=str(1234),
                             type="text",
                             id="tomato-port-setter",
                             className="port-input",
-                            debounce=True
+                            debounce=True,
                         ),
                     ],
-                    style={"display": "flex", "align-items": "center", "gap": "8px", "width": "100%"}
+                    style={
+                        "display": "flex",
+                        "align-items": "center",
+                        "gap": "8px",
+                        "width": "100%",
+                    },
                 ),
-                html.Div("Tomato Port: 1234", className="text-secondary", id="sidebar-port-display", style={"font-size": "11px", "margin-top": "4px"})
+                html.Div(
+                    "Tomato Port: 1234",
+                    className="text-secondary",
+                    id="sidebar-port-display",
+                    style={"font-size": "11px", "margin-top": "4px"},
+                ),
             ],
-            style={"padding": "12px 0", "border-top": "1px solid var(--border-color)", "display": "flex", "flex-direction": "column", "align-items": "flex-start"}
-        )
-    ]
+            style={
+                "padding": "12px 0",
+                "border-top": "1px solid var(--border-color)",
+                "display": "flex",
+                "flex-direction": "column",
+                "align-items": "flex-start",
+            },
+        ),
+    ],
 )
 
 app.layout = html.Div(
@@ -114,17 +211,13 @@ app.layout = html.Div(
                 sidebar,
                 html.Div(
                     className="main-content-wrapper",
-                    children=[
-                        html.Div(
-                            dash.page_container,
-                            className="page-content"
-                        )
-                    ]
-                )
-            ]
-        )
-    ]
+                    children=[html.Div(dash.page_container, className="page-content")],
+                ),
+            ],
+        ),
+    ],
 )
+
 
 @app.callback(
     Output("app-container", "className"),
@@ -134,6 +227,7 @@ def update_theme_class(theme):
     if theme == "dark":
         return "dark-theme"
     return "light-theme"
+
 
 @app.callback(
     Output("app-theme-store", "data"),
@@ -145,19 +239,21 @@ def update_theme_class(theme):
 def toggle_theme(n_clicks, current_theme):
     if n_clicks is None:
         theme = current_theme or "light"
-        icon = get_icon("moon", size=18) if theme == "light" else get_icon("sun", size=18)
+        icon = (
+            get_icon("moon", size=18) if theme == "light" else get_icon("sun", size=18)
+        )
         tooltip = "Dark Mode" if theme == "light" else "Light Mode"
         return theme, icon, tooltip
-        
+
     new_theme = "dark" if current_theme == "light" else "light"
-    icon = get_icon("moon", size=18) if new_theme == "light" else get_icon("sun", size=18)
+    icon = (
+        get_icon("moon", size=18) if new_theme == "light" else get_icon("sun", size=18)
+    )
     tooltip = "Dark Mode" if new_theme == "light" else "Light Mode"
     return new_theme, icon, tooltip
 
-@app.callback(
-    Output("tomato-port", "data"),
-    Input("tomato-port-setter", "value")
-)
+
+@app.callback(Output("tomato-port", "data"), Input("tomato-port-setter", "value"))
 def store_tomato_port(value):
     if value is None:
         return 1234
@@ -166,15 +262,17 @@ def store_tomato_port(value):
     except ValueError:
         return 1234
 
+
 @app.callback(
     Output("sidebar-port-display", "children"),
     Input("tomato-port", "data"),
-    prevent_initial_call=True
+    prevent_initial_call=True,
 )
 def update_sidebar_port(port):
     if port is None:
         return "Tomato Port: 1234"
     return f"Tomato Port: {port}"
+
 
 @app.callback(
     Output("link-dashboard", "className"),
@@ -201,6 +299,7 @@ def update_sidebar_active_classes(pathname):
         classes[5] = "sidebar-link active"
     return tuple(classes)
 
+
 @app.callback(
     Output("sidebar-state-store", "data"),
     Input("sidebar-toggle-btn", "n_clicks"),
@@ -211,6 +310,7 @@ def toggle_sidebar_state(n_clicks, current_state):
         return current_state or "expanded"
     return "collapsed" if current_state == "expanded" else "expanded"
 
+
 @app.callback(
     Output("app-sidebar", "className"),
     Output("sidebar-toggle-btn", "children"),
@@ -219,8 +319,13 @@ def toggle_sidebar_state(n_clicks, current_state):
 )
 def apply_sidebar_state(state):
     if state == "collapsed":
-        return "sidebar collapsed", get_icon("chevron-right", size=18), "Open the sidebar"
+        return (
+            "sidebar collapsed",
+            get_icon("chevron-right", size=18),
+            "Open the sidebar",
+        )
     return "sidebar", get_icon("chevron-left", size=18), "Close the sidebar"
+
 
 if __name__ == "__main__":
     app.run(debug=True, host="127.0.0.1")
