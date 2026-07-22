@@ -255,14 +255,17 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
         ]
 
         for pip_name, pip in pips.items():
-            status_badge = (
-                html.Span("Ready / Idle", className="badge badge-success")
-                if pip.ready
-                else html.Span("Offline / Busy", className="badge badge-warning")
-            )
             if pip.jobid:
                 status_badge = html.Span(
                     "Executing Job", className="badge badge-primary"
+                )
+            elif pip.ready:
+                status_badge = html.Span(
+                    "Ready / Idle", className="badge badge-success"
+                )
+            else:
+                status_badge = html.Span(
+                    "Not Ready", className="badge badge-warning"
                 )
 
             job_link = (

@@ -177,10 +177,14 @@ def update_pipelines(n_clicks, port):
                                     },
                                 ),
                                 html.Span(
-                                    "Ready" if pip.ready else "Busy",
-                                    className="badge badge-success"
-                                    if pip.ready
-                                    else "badge badge-warning",
+                                    "Executing" if pip.jobid else ("Ready" if pip.ready else "Not Ready"),
+                                    className="badge badge-primary"
+                                    if pip.jobid
+                                    else (
+                                        "badge badge-success"
+                                        if pip.ready
+                                        else "badge badge-warning"
+                                    ),
                                     style={"margin-left": "15px"},
                                 ),
                             ],
