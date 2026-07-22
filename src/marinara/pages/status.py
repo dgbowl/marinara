@@ -399,7 +399,7 @@ def update_dashboard_live_view(n_intervals, selected_cmp, port, historical_data,
 
         # 2. Fetch live data for plotting
         data_ret = passata.get_last_data(**kwargs, port=port, name=selected_cmp)
-        if data_ret and data_ret.success and data_ret.data:
+        if data_ret.success and data_ret.data:
             ds = data_ret.data.to_dict()
             uts_list = ds["coords"]["uts"]["data"]
             for t in uts_list:

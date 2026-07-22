@@ -140,7 +140,7 @@ def object_from_attrs(cname, attr, params, value):
 def create_content_div(port, name):
     try:
         pip_ret = tomato.status(**kwargs, port=port, stgrp="pipelines")
-        pip = pip_ret.data[name] if (pip_ret and pip_ret.success) else None
+        pip = pip_ret.data[name] if pip_ret.success else None
     except Exception:
         pip = None
 
@@ -273,11 +273,7 @@ def create_content_div(port, name):
 
         try:
             status_ret = passata.status(**kwargs, port=port, name=cname)
-            status = (
-                status_ret.data
-                if (status_ret and status_ret.success)
-                else {"running": False}
-            )
+            status = status_ret.data if status_ret.success else {"running": False}
         except Exception:
             status = {"running": False}
 
@@ -394,7 +390,7 @@ def create_content_div(port, name):
 
         try:
             data_ret = passata.get_last_data(**kwargs, port=port, name=cname)
-            data = data_ret.data if (data_ret and data_ret.success) else None
+            data = data_ret.data if data_ret.success else None
         except Exception:
             data = None
 
@@ -423,7 +419,7 @@ def create_content_div(port, name):
             div_data_ch.append(
                 html.Div(
                     children=[
-                        html.Div(f"{key}:", className="parameter-label"),
+                        html.Div(f"{key}:", className="attr-label"),
                         dcc.Input(
                             id={
                                 "type": "component-data-val",
@@ -431,14 +427,14 @@ def create_content_div(port, name):
                             },
                             disabled=True,
                             value=value,
-                            className="parameter-control",
+                            className="attr-control",
                             style={"width": "200px"},
                         ),
                         html.Div(style={"width": "66px", "flex-shrink": "0"}),
-                        html.Span(f" {units_str}", className="parameter-unit"),
+                        html.Span(f" {units_str}", className="attr-unit"),
                     ],
                     id={"type": "component-data-key", "index": f"{cname}/{key}"},
-                    className="parameter-row",
+                    className="attr-row",
                 )
             )
         div_data = html.Div(
@@ -583,7 +579,7 @@ def components_periodic_update_attrs_vals_store(_, cmps, avals, aunits, port, na
             nvals_ret = passata.get_attrs(
                 **kwargs, port=port, name=cmp, attrs=list(avals[cmp].keys())
             )
-            nvals = nvals_ret.data if (nvals_ret and nvals_ret.success) else {}
+            nvals = nvals_ret.data if nvals_ret.success else {}
         except Exception:
             nvals = {}
 
@@ -619,7 +615,7 @@ def components_periodic_update_data_store(_, cmps, data, port, name):
         newdata[cmp] = {}
         try:
             ds_ret = passata.get_last_data(**kwargs, port=port, name=cmp)
-            ds = ds_ret.data if (ds_ret and ds_ret.success) else None
+            ds = ds_ret.data if ds_ret.success else None
         except Exception:
             ds = None
 
