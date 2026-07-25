@@ -17,6 +17,10 @@
     --radius: 8px;
     --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     
+    /* Component Detail Card Accent Colors (Light Theme) */
+    --detail-border: #0891b2;
+    --detail-bg: rgba(8, 145, 178, 0.03);
+
     /* Sidebar Variables for Light Theme */
     --sidebar-bg: #ffffff;
     --sidebar-text: #475569;
@@ -42,6 +46,10 @@
     --border-immutable: #ef4444;
     --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
     
+    /* Component Detail Card Accent Colors (Dark Theme) */
+    --detail-border: #22d3ee;
+    --detail-bg: rgba(34, 211, 238, 0.05);
+
     /* Sidebar Variables for Dark Theme */
     --sidebar-bg: #0b0f19;
     --sidebar-text: #94a3b8;
@@ -176,7 +184,23 @@ input[disabled], select[disabled], .Select.is-disabled .Select-control {
 
 @media (min-width: 992px) {
     .component-grid {
+        grid-template-columns: 35fr 65fr;
+    }
+}
+
+.pipeline-params-data-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+}
+
+@media (min-width: 992px) {
+    .pipeline-params-data-grid {
         grid-template-columns: 1fr 1fr;
+    }
+    .pipeline-params-data-grid .component-attrs,
+    .pipeline-params-data-grid .component-data {
+        margin-bottom: 0;
     }
 }
 
@@ -230,29 +254,15 @@ table.stgrp tr:hover {
     background-color: rgba(255, 255, 255, 0.015);
 }
 
-/* Attributes & Parameters */
-.component-attrs {
-    border-left: 4px solid var(--success-color);
-    padding: 10px 15px;
-    background-color: rgba(40, 167, 69, 0.03);
-    border-radius: 0 var(--radius) var(--radius) 0;
-    margin-bottom: 15px;
-}
-
-.dark-theme .component-attrs {
-    background-color: rgba(46, 125, 50, 0.05);
-}
-
+/* Attributes & Parameters & Live Data */
+.component-attrs,
 .component-data {
-    border-left: 4px solid var(--danger-color);
+    border-left: 4px solid var(--detail-border);
     padding: 10px 15px;
-    background-color: rgba(220, 53, 69, 0.03);
+    background-color: var(--detail-bg);
     border-radius: 0 var(--radius) var(--radius) 0;
     margin-bottom: 15px;
-}
-
-.dark-theme .component-data {
-    background-color: rgba(198, 40, 40, 0.05);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 /* Form Elements */
@@ -780,7 +790,7 @@ input[type=number] {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    max-height: 330px;
+    max-height: 460px;
     overflow-y: auto;
 }
 

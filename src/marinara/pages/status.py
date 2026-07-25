@@ -2,9 +2,12 @@ import dash
 from dash import html, dcc, callback, Output, Input, State
 from tomato import passata, tomato
 import zmq
+import logging
 from datetime import datetime, timezone
 from marinara.icons import get_icon
 from marinara.utils import get_field, clean_value, clean_dict_values
+
+logger = logging.getLogger(__name__)
 
 CTXT = zmq.Context()
 TOUT = 1000
@@ -143,7 +146,7 @@ dashboard_layout = html.Div(
                                 dcc.Dropdown(
                                     id="dash-plot-device-selector",
                                     options=[],
-                                    placeholder="Select Component to Plot",
+                                    placeholder="Select Pipeline to Plot",
                                     clearable=False,
                                     style={"width": "220px", "margin-left": "auto"},
                                 ),
@@ -158,7 +161,7 @@ dashboard_layout = html.Div(
                         ),
                         dcc.Graph(
                             id="dash-live-graph",
-                            style={"height": "320px"},
+                            style={"height": "450px"},
                             responsive=True,
                         ),
                         dcc.Interval(id="dash-graph-interval", interval=2000),
@@ -221,11 +224,11 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
         cmps = ret.data.cmps
         cmps_count = len(cmps)
 
-        selector_options = [{"label": k, "value": k} for k in cmps.keys()]
+        selector_options = [{"label": k, "value": k} for k in pips.keys()]
 
         default_val = current_selector_value
-        if not default_val and cmps.keys():
-            default_val = list(cmps.keys())[0]
+        if not default_val and pips.keys():
+            default_val = list(pips.keys())[0]
 
         # Resolve active job users
         jobs_ret = ketchup.status(port=port, context=CTXT, verbosity=20, jobids=[])
@@ -341,8 +344,8 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
     State("dash-plot-data-store", "data"),
     State("app-theme-store", "data"),
 )
-def update_dashboard_live_view(n_intervals, selected_cmp, port, historical_data, theme):
-    if not selected_cmp:
+def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data, theme):
+    if not selected_pip:
         empty_fig = {
             "layout": {
                 "autosize": True,
@@ -350,7 +353,7 @@ def update_dashboard_live_view(n_intervals, selected_cmp, port, historical_data,
                 "yaxis": {"visible": False},
                 "annotations": [
                     {
-                        "text": "Select a component above to view live plot",
+                        "text": "Select a pipeline above to view live plot",
                         "xref": "paper",
                         "yref": "paper",
                         "showarrow": False,
@@ -364,125 +367,19 @@ def update_dashboard_live_view(n_intervals, selected_cmp, port, historical_data,
         }
         return (
             html.Div(
-                "Select a component to view parameters.", className="text-secondary"
+                "Select a pipeline to view parameters.", className="text-secondary"
             ),
             empty_fig,
             {},
         )
 
-    if not historical_data or historical_data.get("cmp") != selected_cmp:
-        historical_data = {"cmp": selected_cmp, "x": [], "y_data": {}}
     try:
-        # 1. Fetch attributes/parameters
-        attrs_ret = passata.attrs(**kwargs, port=port, name=selected_cmp)
-        attrs_meta = attrs_ret.data if attrs_ret.success else {}
-
-        vals_ret = passata.get_attrs(
-            **kwargs, port=port, name=selected_cmp, attrs=list(attrs_meta.keys())
-        )
-        vals = vals_ret.data if vals_ret.success else {}
-
-        param_items = []
-        for k, v in vals.items():
-            meta = attrs_meta.get(k, {})
-            unit = get_field(meta, "units", "")
-            unit_str = f" {unit}" if unit else ""
-            param_items.append(
-                html.Div(
-                    className="param-item",
-                    children=[
-                        html.Span(f"{k}:", className="param-item-name"),
-                        html.Span(
-                            f"{clean_value(v)}{unit_str}", className="param-item-val"
-                        ),
-                    ],
-                )
-            )
-        params_list = html.Div(param_items, className="params-list-container")
-
-        # 2. Fetch live data for plotting
-        data_ret = passata.get_last_data(**kwargs, port=port, name=selected_cmp)
-        if data_ret.success and data_ret.data:
-            ds = data_ret.data.to_dict()
-            uts_list = ds["coords"]["uts"]["data"]
-            for t in uts_list:
-                cleaned_t = clean_value(t)
-                if cleaned_t not in historical_data["x"]:
-                    historical_data["x"].append(cleaned_t)
-                    if len(historical_data["x"]) > 50:
-                        historical_data["x"].pop(0)
-
-                    for var_name, var_info in ds["data_vars"].items():
-                        raw_val = var_info["data"][-1]
-                        # Check if raw_val is list-like
-                        if isinstance(raw_val, (list, tuple)):
-                            for i, sub_val in enumerate(raw_val):
-                                sub_name = f"{var_name}[{i}]"
-                                if sub_name not in historical_data["y_data"]:
-                                    historical_data["y_data"][sub_name] = []
-                                historical_data["y_data"][sub_name].append(
-                                    clean_value(sub_val)
-                                )
-                                if len(historical_data["y_data"][sub_name]) > 50:
-                                    historical_data["y_data"][sub_name].pop(0)
-                        else:
-                            if var_name not in historical_data["y_data"]:
-                                historical_data["y_data"][var_name] = []
-                            historical_data["y_data"][var_name].append(
-                                clean_value(raw_val)
-                            )
-                            if len(historical_data["y_data"][var_name]) > 50:
-                                historical_data["y_data"][var_name].pop(0)
-
-        formatted_x = []
-        for t in historical_data["x"]:
-            try:
-                formatted_x.append(
-                    datetime.fromtimestamp(t, timezone.utc)
-                    .astimezone()
-                    .strftime("%H:%M:%S")
-                )
-            except Exception:
-                formatted_x.append(str(t))
-
-        traces = []
-        for var_name, y_vals in historical_data["y_data"].items():
-            traces.append(
-                {
-                    "x": formatted_x,
-                    "y": y_vals,
-                    "name": var_name,
-                    "type": "scatter",
-                    "mode": "lines+markers",
-                }
-            )
-
-        figure = {
-            "data": traces,
-            "layout": {
-                "autosize": True,
-                "template": "plotly_dark" if theme == "dark" else "plotly",
-                "paper_bgcolor": "rgba(0,0,0,0)",
-                "plot_bgcolor": "rgba(0,0,0,0)",
-                "font": {"color": "#ffffff" if theme == "dark" else "#212529"},
-                "margin": {"t": 10, "b": 30, "l": 40, "r": 10},
-                "xaxis": {
-                    "gridcolor": "rgba(255,255,255,0.08)"
-                    if theme == "dark"
-                    else "rgba(0,0,0,0.08)",
-                },
-                "yaxis": {
-                    "gridcolor": "rgba(255,255,255,0.08)"
-                    if theme == "dark"
-                    else "rgba(0,0,0,0.08)",
-                },
-                "uirevision": True,
-            },
-        }
-
-        return params_list, figure, clean_dict_values(historical_data)
-
-    except Exception:
+        ret = tomato.status(stgrp="tomato", port=port, **kwargs)
+        if not ret.success or not ret.data:
+            raise Exception("Daemon offline")
+        pips = ret.data.pips
+        pip = pips.get(selected_pip)
+    except Exception as e:
         empty_fig = {
             "layout": {
                 "autosize": True,
@@ -507,6 +404,183 @@ def update_dashboard_live_view(n_intervals, selected_cmp, port, historical_data,
             empty_fig,
             {},
         )
+
+    if not pip:
+        empty_fig = {
+            "layout": {
+                "autosize": True,
+                "xaxis": {"visible": False},
+                "yaxis": {"visible": False},
+                "annotations": [
+                    {
+                        "text": "Pipeline not found",
+                        "xref": "paper",
+                        "yref": "paper",
+                        "showarrow": False,
+                        "font": {"size": 14, "color": "gray"},
+                    }
+                ],
+                "paper_bgcolor": "rgba(0,0,0,0)",
+                "plot_bgcolor": "rgba(0,0,0,0)",
+                "template": "plotly_dark" if theme == "dark" else "plotly",
+            }
+        }
+        return (
+            html.Div("Pipeline parameters not found.", className="text-secondary"),
+            empty_fig,
+            {},
+        )
+
+    if not historical_data or historical_data.get("pip") != selected_pip:
+        historical_data = {"pip": selected_pip, "traces": {}}
+
+    # 1. Fetch attributes/parameters for each component in the pipeline
+    param_items = []
+    for cname in pip.components:
+        try:
+            attrs_ret = passata.attrs(**kwargs, port=port, name=cname)
+            attrs_meta = attrs_ret.data if attrs_ret.success else {}
+
+            vals_ret = passata.get_attrs(
+                **kwargs, port=port, name=cname, attrs=list(attrs_meta.keys())
+            )
+            vals = vals_ret.data if vals_ret.success else {}
+
+            if vals:
+                param_items.append(
+                    html.Div(
+                        cname,
+                        style={
+                            "font-weight": "700",
+                            "font-size": "14px",
+                            "margin-top": "12px",
+                            "margin-bottom": "6px",
+                            "border-bottom": "1px solid var(--border-color)",
+                            "padding-bottom": "2px",
+                            "color": "var(--accent-color)"
+                        }
+                    )
+                )
+                for k, v in vals.items():
+                    meta = attrs_meta.get(k, {})
+                    unit = get_field(meta, "units", "")
+                    unit_str = f" {unit}" if unit else ""
+                    param_items.append(
+                        html.Div(
+                            className="param-item",
+                            children=[
+                                html.Span(f"{k}:", className="param-item-name"),
+                                html.Span(
+                                    f"{clean_value(v)}{unit_str}", className="param-item-val"
+                                ),
+                            ],
+                        )
+                    )
+        except Exception as e:
+            logger.warning(f"Failed to fetch parameters for component {cname} of pipeline {selected_pip}: {e}")
+
+    params_list = html.Div(param_items, className="params-list-container")
+
+    # 2. Fetch live data for plotting for each component in the pipeline
+    if "traces" not in historical_data:
+        historical_data["traces"] = {}
+
+    for cname in pip.components:
+        try:
+            data_ret = passata.get_last_data(**kwargs, port=port, name=cname)
+            if data_ret.success and data_ret.data:
+                ds = data_ret.data.to_dict()
+                uts_list = ds["coords"]["uts"]["data"]
+                
+                for idx, t in enumerate(uts_list):
+                    cleaned_t = clean_value(t)
+                    
+                    for var_name, var_info in ds["data_vars"].items():
+                        raw_val = var_info["data"][idx]
+                        
+                        # Handle multi-dimensional variables
+                        if isinstance(raw_val, (list, tuple)):
+                            for i, sub_val in enumerate(raw_val):
+                                trace_key = f"{cname}/{var_name}[{i}]"
+                                if trace_key not in historical_data["traces"]:
+                                    historical_data["traces"][trace_key] = {"x": [], "y": []}
+                                
+                                trace = historical_data["traces"][trace_key]
+                                if cleaned_t not in trace["x"]:
+                                    trace["x"].append(cleaned_t)
+                                    trace["y"].append(clean_value(sub_val))
+                                    if len(trace["x"]) > 50:
+                                        trace["x"].pop(0)
+                                        trace["y"].pop(0)
+                        else:
+                            trace_key = f"{cname}/{var_name}"
+                            if trace_key not in historical_data["traces"]:
+                                historical_data["traces"][trace_key] = {"x": [], "y": []}
+                            
+                            trace = historical_data["traces"][trace_key]
+                            if cleaned_t not in trace["x"]:
+                                trace["x"].append(cleaned_t)
+                                trace["y"].append(clean_value(raw_val))
+                                if len(trace["x"]) > 50:
+                                    trace["x"].pop(0)
+                                    trace["y"].pop(0)
+        except Exception as e:
+            logger.warning(f"Failed to fetch live data for component {cname} of pipeline {selected_pip}: {e}")
+
+    traces = []
+    for trace_key, trace_data in historical_data["traces"].items():
+        formatted_x = []
+        for t in trace_data["x"]:
+            try:
+                formatted_x.append(
+                    datetime.fromtimestamp(t, timezone.utc)
+                    .astimezone()
+                    .strftime("%H:%M:%S")
+                )
+            except Exception:
+                formatted_x.append(str(t))
+        
+        traces.append(
+            {
+                "x": formatted_x,
+                "y": trace_data["y"],
+                "name": trace_key,
+                "type": "scatter",
+                "mode": "lines+markers",
+            }
+        )
+
+    figure = {
+        "data": traces,
+        "layout": {
+            "autosize": True,
+            "template": "plotly_dark" if theme == "dark" else "plotly",
+            "paper_bgcolor": "rgba(0,0,0,0)",
+            "plot_bgcolor": "rgba(0,0,0,0)",
+            "font": {"color": "#ffffff" if theme == "dark" else "#212529"},
+            "margin": {"t": 15, "b": 90, "l": 50, "r": 15},
+            "xaxis": {
+                "gridcolor": "rgba(255,255,255,0.08)"
+                if theme == "dark"
+                else "rgba(0,0,0,0.08)",
+            },
+            "yaxis": {
+                "gridcolor": "rgba(255,255,255,0.08)"
+                if theme == "dark"
+                else "rgba(0,0,0,0.08)",
+            },
+            "legend": {
+                "orientation": "h",
+                "x": 0.5,
+                "y": -0.18,
+                "xanchor": "center",
+                "yanchor": "top",
+            },
+            "uirevision": True,
+        },
+    }
+
+    return params_list, figure, clean_dict_values(historical_data)
 
 
 def format_obj(obj, headers, attrs, otype, port):

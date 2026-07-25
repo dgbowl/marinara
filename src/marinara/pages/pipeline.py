@@ -445,7 +445,14 @@ def create_content_div(port, name):
         components.append(
             html.Div(
                 id=f"component-{cname}",
-                children=[div_info, div_status, div_attrs, div_data],
+                children=[
+                    div_info,
+                    div_status,
+                    html.Div(
+                        children=[div_attrs, div_data],
+                        className="pipeline-params-data-grid",
+                    ),
+                ],
                 className="card",
                 style={"margin-bottom": "0px"},  # Managed by grid gap
             )

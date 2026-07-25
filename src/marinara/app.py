@@ -1,6 +1,12 @@
+import importlib.metadata
 import dash
 from dash import html, dcc, Output, Input, State
 from marinara.icons import get_icon
+
+try:
+    __version__ = importlib.metadata.version("marinara")
+except Exception:
+    __version__ = "0.0.1"
 
 app = dash.Dash(
     __name__, use_pages=True, suppress_callback_exceptions=True, title="Marinara"
@@ -13,16 +19,19 @@ sidebar = html.Div(
         html.Div(
             className="sidebar-logo",
             children=[
-                html.Div(
+                dcc.Link(
                     children=[
                         get_icon("tomato", size=26),
                         html.H3("marinara", id="sidebar-logo-text"),
                     ],
+                    href="/",
                     style={
                         "display": "flex",
                         "align-items": "center",
                         "gap": "12px",
                         "flex-grow": "1",
+                        "text-decoration": "none",
+                        "color": "inherit",
                     },
                 ),
                 html.Button(
@@ -181,10 +190,19 @@ sidebar = html.Div(
                     },
                 ),
                 html.Div(
-                    "Tomato Port: 1234",
+                    children=[
+                        html.Span("Tomato Port: 1234", id="sidebar-port-display"),
+                        html.Span(f"v{__version__}", style={"margin-left": "auto", "opacity": "0.7"}),
+                    ],
                     className="text-secondary",
-                    id="sidebar-port-display",
-                    style={"font-size": "11px", "margin-top": "4px"},
+                    style={
+                        "font-size": "11px", 
+                        "margin-top": "4px", 
+                        "display": "flex", 
+                        "justify-content": "space-between", 
+                        "width": "100%",
+                        "padding-right": "8px"
+                    },
                 ),
             ],
             style={

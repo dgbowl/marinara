@@ -1,5 +1,5 @@
 import dash
-from dash import html, dcc, callback, Input, State, Output, MATCH
+from dash import html, dcc, callback, Input, State, Output, MATCH, ALL
 from tomato import passata
 import zmq
 import xarray as xr
@@ -256,6 +256,35 @@ def layout(port: int, name: str, **_):
         className="card component-data",
     )
 
+    custom_graphs_header = html.Div(
+        children=[
+            html.H3("Custom Graphs", style={"margin": 0}),
+            html.Button(
+                "+ Add Graph",
+                id="add-graph-btn",
+                className="btn",
+                style={
+                    "margin-left": "auto",
+                    "background-color": "#10b981",
+                    "color": "white",
+                    "border": "none",
+                    "padding": "8px 16px",
+                    "border-radius": "4px",
+                    "cursor": "pointer",
+                    "font-weight": "600",
+                }
+            )
+        ],
+        style={
+            "display": "flex",
+            "align-items": "center",
+            "margin-bottom": "20px",
+            "border-bottom": "1px solid var(--border-color)",
+            "padding-bottom": "10px",
+            "margin-top": "20px"
+        }
+    )
+
     layout_children = [
         # Dashboard Stores
         dcc.Store(id="tomato-port-store", data=port),
@@ -264,9 +293,23 @@ def layout(port: int, name: str, **_):
         dcc.Store(id="component-attrs-vals-store", data=init_attrs_vals),
         dcc.Store(id="component-attrs-units-store", data=init_attrs_units),
         dcc.Store(id="component-attrs-rw-store", data=init_attrs_rw),
+        dcc.Store(id="custom-graphs-list-store", data=[1]),
+        dcc.Store(id="custom-graphs-counter-store", data=2),
+        dcc.Store(id="custom-graphs-titles-store", data={}),
         dcc.Interval(id="component-interval", interval=2000),
         header,
-        html.Div(children=[attrs_card, graph_card], className="component-grid"),
+        # Row 1: Attributes & Controls (Left) and Data Graph (Right)
+        html.Div(
+            children=[
+                attrs_card,
+                graph_card
+            ],
+            className="component-grid",
+            style={"margin-bottom": "20px"}
+        ),
+        # Row 2: Custom Graphs Section
+        custom_graphs_header,
+        html.Div(id="custom-graphs-container"),
     ]
 
     return layout_children
@@ -498,6 +541,454 @@ def component_data_graph(ds, theme, align_time):
             if theme == "dark"
             else "rgba(0,0,0,0.08)"
         },
-        "margin": {"t": 30, "b": 80, "l": 50, "r": 20},
+        "legend": {
+            "orientation": "h",
+            "x": 0.5,
+            "y": -0.22,
+            "xanchor": "center",
+            "yanchor": "top",
+        },
+        "margin": {"t": 30, "b": 100, "l": 50, "r": 20},
     }
     return {"data": data, "layout": layout}
+
+
+# Manages adding and removing custom graphs
+@callback(
+    Output("custom-graphs-list-store", "data"),
+    Output("custom-graphs-counter-store", "data"),
+    Input("add-graph-btn", "n_clicks"),
+    Input({"type": "custom-graph-remove-btn", "index": ALL}, "n_clicks"),
+    State("custom-graphs-list-store", "data"),
+    State("custom-graphs-counter-store", "data"),
+    prevent_initial_call=True
+)
+def manage_graphs(add_clicks, remove_clicks, active_ids, next_id):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return active_ids, next_id
+        
+    trigger_id = ctx.triggered[0]["prop_id"]
+    
+    if "add-graph-btn" in trigger_id:
+        new_ids = active_ids + [next_id]
+        return new_ids, next_id + 1
+    else:
+        import json
+        try:
+            trigger_info = json.loads(trigger_id.split(".")[0])
+            remove_idx = trigger_info["index"]
+            new_ids = [i for i in active_ids if i != remove_idx]
+            return new_ids, next_id
+        except Exception as e:
+            logger.error(f"Failed to parse remove trigger: {e}")
+            return active_ids, next_id
+
+
+# Renders the dynamic custom graphs container children
+@callback(
+    Output("custom-graphs-container", "children"),
+    Input("custom-graphs-list-store", "data"),
+    State("custom-graphs-titles-store", "data"),
+    State("component-data-store", "data")
+)
+def render_graphs_list(active_ids, titles_dict, ds):
+    if not active_ids:
+        return html.Div(
+            "No custom graphs added. Click '+ Add Graph' above to create one.",
+            style={
+                "text-align": "center",
+                "padding": "30px",
+                "color": "gray",
+                "font-style": "italic",
+                "border": "1px dashed var(--border-color)",
+                "border-radius": "var(--radius)",
+                "margin-top": "15px",
+            }
+        )
+        
+    titles_dict = titles_dict or {}
+    vars_list = sorted(list(ds.get("data_vars", {}).keys())) if ds else []
+    options = [{"label": "Time (uts)", "value": "uts"}] + [{"label": v, "value": v} for v in vars_list]
+    
+    graphs_layouts = []
+    for idx, i in enumerate(active_ids):
+        display_number = idx + 1
+        graph_id_str = str(i)
+        
+        # Stored title or dynamic fallback based on display position
+        title_val = titles_dict.get(graph_id_str, f"Custom Graph #{display_number}")
+        
+        card = html.Div(
+            id={"type": "custom-graph-card", "index": i},
+            children=[
+                html.Div(
+                    children=[
+                        dcc.Input(
+                            id={"type": "custom-graph-title-input", "index": i},
+                            value=title_val,
+                            type="text",
+                            placeholder=f"Custom Graph #{display_number}",
+                            className="custom-graph-title-input",
+                            style={
+                                "font-size": "16px",
+                                "font-weight": "700",
+                                "border": "none",
+                                "border-bottom": "1px dashed var(--border-color)",
+                                "background": "transparent",
+                                "color": "var(--text-color)",
+                                "padding": "2px 5px",
+                                "width": "50%",
+                                "outline": "none"
+                            }
+                        ),
+                        html.Button(
+                            "Remove",
+                            id={"type": "custom-graph-remove-btn", "index": i},
+                            className="btn",
+                            style={
+                                "margin-left": "auto",
+                                "background-color": "#ef4444",
+                                "color": "white",
+                                "border": "none",
+                                "padding": "4px 12px",
+                                "border-radius": "4px",
+                                "cursor": "pointer",
+                                "font-size": "12px",
+                                "font-weight": "600",
+                            }
+                        )
+                    ],
+                    style={
+                        "display": "flex",
+                        "align-items": "center",
+                        "border-bottom": "1px solid var(--border-color)",
+                        "padding-bottom": "10px",
+                        "margin-bottom": "15px",
+                    },
+                ),
+                # Dropdowns for X and Y selection
+                html.Div(
+                    children=[
+                        html.Div(
+                            children=[
+                                html.Label("X Axis Variable:", style={"font-weight": "600", "font-size": "13px", "margin-bottom": "5px", "display": "block", "color": "var(--text-color)"}),
+                                dcc.Dropdown(
+                                    id={"type": "custom-graph-x-selector", "index": i},
+                                    options=[{"label": "Time (uts)", "value": "uts"}],
+                                    value="uts",
+                                    disabled=True,
+                                    clearable=False,
+                                    style={"width": "100%"}
+                                )
+                            ],
+                            style={"flex": "1", "min-width": "150px"}
+                        ),
+                        html.Div(
+                            children=[
+                                html.Label("Y Axis Variables:", style={"font-weight": "600", "font-size": "13px", "margin-bottom": "5px", "display": "block", "color": "var(--text-color)"}),
+                                dcc.Dropdown(
+                                    id={"type": "custom-graph-y-selector", "index": i},
+                                    options=[{"label": v, "value": v} for v in vars_list],
+                                    multi=True,
+                                    placeholder="Select variables",
+                                    style={"width": "100%"}
+                                )
+                            ],
+                            style={"flex": "2", "min-width": "250px"}
+                        ),
+                        html.Div(
+                            children=[
+                                html.Label("Graph Options:", style={"font-weight": "600", "font-size": "13px", "margin-bottom": "5px", "display": "block", "color": "var(--text-color)"}),
+                                dcc.Checklist(
+                                    id={"type": "custom-graph-options", "index": i},
+                                    options=[
+                                        {"label": " Connect points (Lines)", "value": "lines"},
+                                        {"label": " Sort by X-Axis", "value": "sort"}
+                                    ],
+                                    value=["lines"],
+                                    labelStyle={"display": "inline-block", "margin-right": "15px", "font-size": "13px", "color": "var(--text-color)"},
+                                    style={"padding": "6px 0"}
+                                )
+                            ],
+                            style={"flex": "1.5", "min-width": "250px"}
+                        ),
+                    ],
+                    style={"display": "flex", "gap": "15px", "flex-wrap": "wrap", "margin-bottom": "20px"}
+                ),
+                dcc.Graph(
+                    id={"type": "custom-graph", "index": i}, style={"height": "400px"}, responsive=True
+                ),
+            ],
+            className="card component-data",
+            style={"margin-bottom": "20px"}
+        )
+        graphs_layouts.append(card)
+        
+    return graphs_layouts
+
+
+# Persists custom titles to the custom-graphs-titles-store when changed
+@callback(
+    Output("custom-graphs-titles-store", "data"),
+    Input({"type": "custom-graph-title-input", "index": ALL}, "value"),
+    State("custom-graphs-titles-store", "data"),
+    prevent_initial_call=True
+)
+def update_graph_titles(title_values, current_titles):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return current_titles
+        
+    new_titles = current_titles if current_titles else {}
+    inputs_list = ctx.inputs_list[0]
+    
+    for inp, val in zip(inputs_list, title_values):
+        graph_id = str(inp["id"]["index"])
+        if val is not None:
+            new_titles[graph_id] = val
+            
+    return new_titles
+
+
+# Updates options of dynamic selectors as data streams in
+@callback(
+    Output({"type": "custom-graph-x-selector", "index": MATCH}, "options"),
+    Output({"type": "custom-graph-y-selector", "index": MATCH}, "options"),
+    Input("component-data-store", "data"),
+)
+def populate_dynamic_selectors(ds):
+    if ds is None:
+        return [], []
+    vars_list = sorted(list(ds.get("data_vars", {}).keys()))
+    x_options = [{"label": "Time (uts)", "value": "uts"}]
+    y_options = [{"label": v, "value": v} for v in vars_list]
+    return x_options, y_options
+
+
+# Renders custom graphs dynamically based on selected variables and options
+@callback(
+    Output({"type": "custom-graph", "index": MATCH}, "figure"),
+    Input({"type": "custom-graph-x-selector", "index": MATCH}, "value"),
+    Input({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
+    Input({"type": "custom-graph-options", "index": MATCH}, "value"),
+    Input("component-data-store", "data"),
+    Input("app-theme-store", "data"),
+)
+def render_custom_graph(x_var, y_var, options_val, ds, theme):
+    if ds is None or not x_var or not y_var:
+        return {
+            "layout": {
+                "xaxis": {"visible": False},
+                "yaxis": {"visible": False},
+                "annotations": [{
+                    "text": "Select variables above to view custom plot",
+                    "xref": "paper",
+                    "yref": "paper",
+                    "showarrow": False,
+                    "font": {"size": 16, "color": "gray"}
+                }],
+                "paper_bgcolor": "rgba(0,0,0,0)",
+                "plot_bgcolor": "rgba(0,0,0,0)",
+                "template": "plotly_dark" if theme == "dark" else "plotly"
+            }
+        }
+        
+    # Fetch X data
+    if x_var == "uts":
+        raw_x = ds["coords"]["uts"]["data"]
+        x_data = []
+        for t in raw_x:
+            try:
+                x_data.append(
+                    datetime.fromtimestamp(t, timezone.utc)
+                    .astimezone()
+                    .strftime("%Y-%m-%d %H:%M:%S")
+                )
+            except Exception:
+                x_data.append(t)
+        x_title = "Time (Local)"
+    else:
+        if x_var in ds.get("data_vars", {}):
+            x_data = ds["data_vars"][x_var]["data"]
+            x_title = x_var
+        else:
+            return {}
+            
+    # Process selected Y variables
+    if isinstance(y_var, str):
+        y_vars = [y_var]
+    else:
+        y_vars = y_var
+        
+    if not y_vars:
+        return {
+            "layout": {
+                "xaxis": {"visible": False},
+                "yaxis": {"visible": False},
+                "annotations": [{
+                    "text": "Select variables above to view custom plot",
+                    "xref": "paper",
+                    "yref": "paper",
+                    "showarrow": False,
+                    "font": {"size": 16, "color": "gray"}
+                }],
+                "paper_bgcolor": "rgba(0,0,0,0)",
+                "plot_bgcolor": "rgba(0,0,0,0)",
+                "template": "plotly_dark" if theme == "dark" else "plotly"
+            }
+        }
+            
+    # Format timestamps for hover text
+    raw_uts = ds.get("coords", {}).get("uts", {}).get("data", [])
+    formatted_times = []
+    for t in raw_uts:
+        try:
+            formatted_times.append(
+                datetime.fromtimestamp(t, timezone.utc)
+                .astimezone()
+                .strftime("%Y-%m-%d %H:%M:%S")
+            )
+        except Exception:
+            formatted_times.append(str(t))
+
+    # Handle sorting and lines connection options
+    options_val = options_val or []
+    connect_lines = "lines" in options_val
+    sort_x = "sort" in options_val
+    mode = "lines+markers" if connect_lines else "markers"
+
+    fig_data = []
+    y_titles = []
+    
+    for y_name in y_vars:
+        if y_name in ds.get("data_vars", {}):
+            y_raw = ds["data_vars"][y_name]["data"]
+            y_titles.append(y_name)
+        else:
+            continue
+            
+        # Handle multidimensional variables
+        is_multidimensional = False
+        if len(y_raw) > 0 and isinstance(y_raw[0], (list, tuple)):
+            is_multidimensional = True
+            
+        if is_multidimensional:
+            max_len = max(
+                len(item) for item in y_raw if isinstance(item, (list, tuple))
+            )
+            for i in range(max_len):
+                sub_y = []
+                for item in y_raw:
+                    if isinstance(item, (list, tuple)) and i < len(item):
+                        sub_y.append(item[i])
+                    else:
+                        sub_y.append(None)
+                        
+                min_len = min(len(x_data), len(sub_y), len(formatted_times))
+                sub_x = x_data[:min_len]
+                sub_y_trimmed = sub_y[:min_len]
+                sub_hover = formatted_times[:min_len]
+                
+                if sort_x:
+                    paired = list(zip(sub_x, sub_y_trimmed, sub_hover))
+                    try:
+                        paired.sort(key=lambda item: item[0])
+                    except Exception:
+                        pass
+                    if paired:
+                        sub_x_t, sub_y_t, sub_hover_t = zip(*paired)
+                        sub_x = list(sub_x_t)
+                        sub_y_trimmed = list(sub_y_t)
+                        sub_hover = list(sub_hover_t)
+                    else:
+                        sub_x, sub_y_trimmed, sub_hover = [], [], []
+                        
+                fig_data.append({
+                    "x": sub_x,
+                    "y": sub_y_trimmed,
+                    "mode": mode,
+                    "type": "scatter",
+                    "marker": {"size": 8, "opacity": 0.8},
+                    "hovertext": sub_hover,
+                    "hovertemplate": "<b>Time: %{hovertext}</b><br>" + f"{x_title}: %{{x}}<br>{y_name}[{i}]: %{{y}}<extra></extra>",
+                    "name": f"{y_name}[{i}]"
+                })
+        else:
+            min_len = min(len(x_data), len(y_raw), len(formatted_times))
+            sub_x = x_data[:min_len]
+            sub_y_trimmed = y_raw[:min_len]
+            sub_hover = formatted_times[:min_len]
+            
+            if sort_x:
+                paired = list(zip(sub_x, sub_y_trimmed, sub_hover))
+                try:
+                    paired.sort(key=lambda item: item[0])
+                except Exception:
+                    pass
+                if paired:
+                    sub_x_t, sub_y_t, sub_hover_t = zip(*paired)
+                    sub_x = list(sub_x_t)
+                    sub_y_trimmed = list(sub_y_t)
+                    sub_hover = list(sub_hover_t)
+                else:
+                    sub_x, sub_y_trimmed, sub_hover = [], [], []
+                    
+            fig_data.append({
+                "x": sub_x,
+                "y": sub_y_trimmed,
+                "mode": mode,
+                "type": "scatter",
+                "marker": {"size": 8, "opacity": 0.8},
+                "hovertext": sub_hover,
+                "hovertemplate": "<b>Time: %{hovertext}</b><br>" + f"{x_title}: %{{x}}<br>{y_name}: %{{y}}<extra></extra>",
+                "name": y_name
+            })
+            
+    if len(y_titles) == 1:
+        y_title = y_titles[0]
+    elif len(y_titles) > 1:
+        y_title = "Selected Variables"
+    else:
+        y_title = "Value"
+
+    layout = {
+        "autosize": True,
+        "uirevision": f"{x_var}-{y_var}",
+        "template": "plotly_dark" if theme == "dark" else "plotly",
+        "paper_bgcolor": "rgba(0,0,0,0)",
+        "plot_bgcolor": "rgba(0,0,0,0)",
+        "font": {"color": "#ffffff" if theme == "dark" else "#212529"},
+        "xaxis": {
+            "gridcolor": "rgba(255,255,255,0.08)" if theme == "dark" else "rgba(0,0,0,0.08)",
+            "title": x_title,
+        },
+        "yaxis": {
+            "gridcolor": "rgba(255,255,255,0.08)" if theme == "dark" else "rgba(0,0,0,0.08)",
+            "title": y_title,
+        },
+        "legend": {
+            "orientation": "h",
+            "x": 0.5,
+            "y": -0.18,
+            "xanchor": "center",
+            "yanchor": "top",
+        },
+        "margin": {"t": 30, "b": 80, "l": 50, "r": 20},
+    }
+        
+    return {"data": fig_data, "layout": layout}
+
+
+# Auto-configures custom graph options dynamically based on selected axes
+@callback(
+    Output({"type": "custom-graph-options", "index": MATCH}, "value"),
+    Input({"type": "custom-graph-x-selector", "index": MATCH}, "value"),
+    Input({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
+    State({"type": "custom-graph-options", "index": MATCH}, "value"),
+    prevent_initial_call=True,
+)
+def auto_configure_graph_options(x_var, y_var, current_options):
+    if x_var == "uts" or (isinstance(y_var, list) and "uts" in y_var) or y_var == "uts":
+        return ["lines"]
+    return []
