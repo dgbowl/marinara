@@ -5,3 +5,4 @@
 
 ## Contributors:
 - [Peter Kraus](https://github.com/PeterKraus)
+- [Şevval Nur Savci](https://github.com/snsavci)
