@@ -1,7 +1,7 @@
 import dash
 from dash import html
 
-dash.register_page(__name__, path_template="/device/<port>/<name>")
+dash.register_page(__name__, path_template="/devices/<port>/<name>")
 
 
 def layout(port=None, name=None, **_):

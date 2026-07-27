@@ -3,7 +3,7 @@ from dash import html, dcc, callback, set_props, Input, Output, State, MATCH
 from tomato import passata, tomato
 from zmq import Context
 import logging
-import pint
+from marinara.utils import get_field, clean_value, get_unit_str, format_constraint
 
 logger = logging.getLogger(__name__)
 
@@ -61,28 +61,58 @@ def create_header_div(port: int, name: str):
         className="header-store",
     )
 
-    banner = html.Div(
-        children=[html.Div(f"The user requested pipeline {name!r} on port {port}.")],
-        className="header-banner",
+    header = html.Div(
+        children=[
+            html.Div(
+                children=[
+                    dcc.Link(
+                        "← Back to Pipelines",
+                        href="/pipelines",
+                        className="btn inline-block",
+                        style={
+                            "margin-right": "20px",
+                            "text-decoration": "none",
+                            "background-color": "var(--accent-color)",
+                            "color": "white",
+                            "padding": "8px 16px",
+                            "border-radius": "4px",
+                        },
+                    ),
+                    html.H2(
+                        f"Pipeline: {name}",
+                        className="inline",
+                        style={"margin": 0, "font-size": "22px"},
+                    ),
+                ],
+                style={"display": "flex", "align-items": "center"},
+            )
+        ],
+        className="theme-header",
     )
 
     return html.Div(
-        children=[stores, banner],
+        children=[stores, header],
         className="header-wrapper",
     )
 
 
 def object_from_attrs(cname, attr, params, value):
-    if params.options is not None:
+    options = get_field(params, "options")
+    is_rw = get_field(params, "rw", False)
+
+    if options is not None:
         obj = dcc.Dropdown(
             id={
                 "type": "component-attr-val",
                 "index": f"{cname}/{attr}",
             },
-            disabled=False if params.rw else True,
-            options=list(params.options),
+            disabled=False if is_rw else True,
+            options=sorted(list(options)),
             value=value,
             clearable=False,
+            className="attr-control mutable-input"
+            if is_rw
+            else "attr-control immutable-input",
         )
     else:
         obj = dcc.Input(
@@ -90,11 +120,13 @@ def object_from_attrs(cname, attr, params, value):
                 "type": "component-attr-val",
                 "index": f"{cname}/{attr}",
             },
-            disabled=False if params.rw else True,
+            disabled=False if is_rw else True,
             debounce=True,
             value=value,
-            type="text" if params.type is str else "number",
-            className="inline",
+            type="text",
+            className="attr-control mutable-input"
+            if is_rw
+            else "attr-control immutable-input",
         )
     return obj
 
@@ -106,7 +138,14 @@ def object_from_attrs(cname, attr, params, value):
     Input("store-pipeline-name", "data"),
 )
 def create_content_div(port, name):
-    pip = tomato.status(**kwargs, port=port, stgrp="pipelines").data[name]
+    try:
+        pip_ret = tomato.status(**kwargs, port=port, stgrp="pipelines")
+        pip = pip_ret.data[name] if pip_ret.success else None
+    except Exception:
+        pip = None
+
+    if not pip:
+        return html.Div("Failed to load pipeline.", className="card")
 
     set_props(
         "store-pipeline-params",
@@ -121,42 +160,86 @@ def create_content_div(port, name):
 
     jobid = html.Div(
         children=[
-            "jobid:",
+            html.Span(
+                "Job ID:",
+                style={
+                    "font-weight": "600",
+                    "margin-right": "12px",
+                    "font-size": "14px",
+                    "flex-shrink": "0",
+                },
+            ),
             dcc.Input(
-                id="pipeline-input-jobid", type="number", value=pip.jobid, disabled=True,
+                id="pipeline-input-jobid",
+                type="number",
+                value=pip.jobid,
+                disabled=True,
+                className="top-card-input",
+                style={"width": "100%", "height": "36px"},
             ),
         ],
-        className="block",
+        style={
+            "display": "flex",
+            "align-items": "center",
+            "flex": "1 1 auto",
+            "min-width": "100px",
+            "max-width": "180px",
+        },
     )
 
     sampleid = html.Div(
         children=[
-            "sampleid:",
+            html.Span(
+                "Sample ID:",
+                style={
+                    "font-weight": "600",
+                    "margin-right": "12px",
+                    "font-size": "14px",
+                    "flex-shrink": "0",
+                },
+            ),
             dcc.Input(
                 id="pipeline-input-sampleid",
                 type="text",
                 value=str(pip.sampleid) if pip.sampleid is not None else "",
                 debounce=True,
+                className="top-card-input",
+                style={"width": "100%", "height": "36px"},
             ),
         ],
-        className="block",
+        style={
+            "display": "flex",
+            "align-items": "center",
+            "flex": "1.5 1 auto",
+            "min-width": "150px",
+            "max-width": "260px",
+        },
     )
 
     ready = html.Div(
         children=[
-            html.Div(
-                "ready:",
-                className="inline",
+            html.Span(
+                "Pipeline Status:",
+                style={
+                    "font-weight": "600",
+                    "margin-right": "12px",
+                    "font-size": "14px",
+                    "flex-shrink": "0",
+                },
             ),
             dcc.Checklist(
-                options=["ready"],
+                options=[{"label": " Ready", "value": "ready"}],
                 value=["ready"] if pip.ready else [],
                 id="pipeline-input-ready",
-                inline=True,
-                className="inline",
+                style={
+                    "display": "inline-block",
+                    "font-size": "14px",
+                    "font-weight": "500",
+                    "flex-shrink": "0",
+                },
             ),
         ],
-        className="block",
+        style={"display": "flex", "align-items": "center", "flex-shrink": "0"},
     )
 
     running_store = {}
@@ -164,90 +247,179 @@ def create_content_div(port, name):
     attrs_units_store = {}
     attrs_rw_store = {}
     components = []
+
     for cname in pip.components:
-        cmp = tomato.status(**kwargs, port=port, stgrp="components").data[cname]
+        try:
+            cmp = tomato.status(**kwargs, port=port, stgrp="components").data[cname]
+        except Exception:
+            continue
+
         div_info = html.Div(
             children=[
-                html.Div(f"name: {cmp.name}"),
-                html.Div(f"role: {cmp.role}"),
-                html.Div(f"address: {cmp.address!r}, channel: {cmp.channel!r}"),
+                html.H4(f"Component: {cmp.name}", style={"margin": "0 0 5px 0"}),
+                html.Div(
+                    f"Role: {cmp.role} | Address: {cmp.address!r} | Channel: {cmp.channel!r}",
+                    className="text-secondary",
+                    style={"font-size": "12px"},
+                ),
             ],
             className="block",
+            style={
+                "border-bottom": "1px solid var(--border-color)",
+                "padding-bottom": "8px",
+                "margin-bottom": "10px",
+            },
         )
 
-        status = passata.status(**kwargs, port=port, name=cname).data
+        try:
+            status_ret = passata.status(**kwargs, port=port, name=cname)
+            status = status_ret.data if status_ret.success else {"running": False}
+        except Exception:
+            status = {"running": False}
+
+        badge_class = (
+            "badge badge-success" if status["running"] else "badge badge-secondary"
+        )
+        badge_text = "RUNNING" if status["running"] else "STOPPED"
+
         div_status = html.Div(
             children=[
-                html.Div(
-                    "running: ",
-                    className="inline",
-                ),
-                html.Div(
-                    f"{status['running']}",
+                html.Span("Status: ", style={"font-weight": "500"}),
+                html.Span(
+                    badge_text,
                     id={
                         "type": "component-params",
                         "index": f"{cname}",
                     },
-                    className="inline",
-                )
+                    className=badge_class,
+                ),
             ],
             className="block",
+            style={"margin-bottom": "12px"},
         )
         running_store[cname] = status["running"]
+        try:
+            attrs_ret = passata.attrs(**kwargs, port=port, name=cname)
+            attrs = attrs_ret.data if attrs_ret.success else {}
+        except Exception:
+            attrs = {}
 
-        attrs = passata.attrs(**kwargs, port=port, name=cname).data
-        avals = passata.get_attrs(
-            **kwargs, port=port, name=cname, attrs=attrs.keys()
-        ).data
-        attrs_vals_store[cname] = {
-            k: v.m if attrs[k].units is not None else v for k, v in avals.items()
+        try:
+            avals_ret = passata.get_attrs(
+                **kwargs, port=port, name=cname, attrs=list(attrs.keys())
+            )
+            avals = avals_ret.data if avals_ret.success else {}
+        except Exception:
+            avals = {}
+
+        attrs_vals_store[cname] = {k: clean_value(v) for k, v in avals.items()}
+        attrs_units_store[cname] = {
+            k: get_field(attrs[k], "units") for k in attrs.keys()
         }
-        attrs_units_store[cname] = {k: attrs[k].units for k in attrs.keys()}
-        attrs_rw_store[cname] = {k: attrs[k].rw for k in attrs.keys()}
+        attrs_rw_store[cname] = {
+            k: get_field(attrs[k], "rw", False) for k in attrs.keys()
+        }
 
-        div_attrs_ch = []
+        div_attrs_ch = [
+            html.Div(
+                "Parameters:",
+                style={
+                    "font-weight": "600",
+                    "margin-bottom": "8px",
+                    "font-size": "13px",
+                },
+            )
+        ]
         for attr, params in attrs.items():
-            value = avals[attr].m if params.units is not None else avals[attr]
-            units = (
-                f"{pint.Quantity(params.units).units:~H}"
-                if params.units is not None
-                else ""
-            )
-            div_attrs_ch.append(
-                html.Div(
-                    children=[
-                        html.Div(
-                            f"{attr}:",
-                            className="inline",
-                        ),
-                        object_from_attrs(cname, attr, params, value),
-                        html.Div(
-                            f"{units}",
-                            className="inline",
-                        )
-                    ],
-                    id=f"component-{cname}-attr",
-                    className="block",
+            is_rw = get_field(params, "rw", False)
+            value = clean_value(avals.get(attr))
+            units = get_unit_str(get_field(params, "units"))
+
+            min_val = get_field(params, "minimum")
+            max_val = get_field(params, "maximum")
+            constraints = []
+            if min_val is not None:
+                constraints.append(
+                    f"min: {format_constraint(min_val, get_field(params, 'units'))}"
                 )
-            )
+            if max_val is not None:
+                constraints.append(
+                    f"max: {format_constraint(max_val, get_field(params, 'units'))}"
+                )
+            constraints_str = f" ({', '.join(constraints)})" if constraints else ""
+
+            if is_rw:
+                apply_btn = html.Button(
+                    "Apply",
+                    id={"type": "component-attr-apply-btn", "index": f"{cname}/{attr}"},
+                    className="attr-apply-btn",
+                )
+                div_attrs_ch.append(
+                    html.Div(
+                        children=[
+                            html.Div(f"{attr}:", className="attr-label"),
+                            object_from_attrs(cname, attr, params, value),
+                            apply_btn,
+                            html.Span(
+                                f" {units}{constraints_str}", className="attr-unit"
+                            ),
+                        ],
+                        id=f"component-{cname}-attr-{attr}",
+                        className="attr-row",
+                    )
+                )
+            else:
+                div_attrs_ch.append(
+                    html.Div(
+                        children=[
+                            html.Div(f"{attr}:", className="attr-label"),
+                            object_from_attrs(cname, attr, params, value),
+                            html.Div(style={"width": "66px", "flex-shrink": "0"}),
+                            html.Span(
+                                f" {units}{constraints_str}", className="attr-unit"
+                            ),
+                        ],
+                        id=f"component-{cname}-attr-{attr}",
+                        className="attr-row",
+                    )
+                )
         div_attrs = html.Div(
             children=div_attrs_ch,
             className="component-attrs block",
         )
 
-        data = passata.get_last_data(**kwargs, port=port, name=cname).data
-        div_data_ch = []
+        try:
+            data_ret = passata.get_last_data(**kwargs, port=port, name=cname)
+            data = data_ret.data if data_ret.success else None
+        except Exception:
+            data = None
+
+        div_data_ch = [
+            html.Div(
+                "Live Data:",
+                style={
+                    "font-weight": "600",
+                    "margin-bottom": "8px",
+                    "font-size": "13px",
+                },
+            )
+        ]
         for key in get_data_fields(name, cmp.driver):
             if data is None or key not in data:
                 value = None
                 units = ""
             else:
-                value = data[key].values[-1]
+                value = clean_value(data[key].values[-1])
                 units = data[key].attrs.get("units", "")
+
+            if isinstance(value, float):
+                value = round(value, 3)
+            units_str = get_unit_str(units)
+
             div_data_ch.append(
                 html.Div(
                     children=[
-                        f"{key}:",
+                        html.Div(f"{key}:", className="attr-label"),
                         dcc.Input(
                             id={
                                 "type": "component-data-val",
@@ -255,23 +427,37 @@ def create_content_div(port, name):
                             },
                             disabled=True,
                             value=value,
+                            className="attr-control",
+                            style={"width": "200px"},
                         ),
-                        f"{units}",
+                        html.Div(style={"width": "66px", "flex-shrink": "0"}),
+                        html.Span(f" {units_str}", className="attr-unit"),
                     ],
                     id={"type": "component-data-key", "index": f"{cname}/{key}"},
+                    className="attr-row",
                 )
             )
         div_data = html.Div(
             children=div_data_ch,
             className="component-data block",
         )
+
         components.append(
             html.Div(
                 id=f"component-{cname}",
-                children=[div_info, div_status, div_attrs, div_data],
-                className="component",
+                children=[
+                    div_info,
+                    div_status,
+                    html.Div(
+                        children=[div_attrs, div_data],
+                        className="pipeline-params-data-grid",
+                    ),
+                ],
+                className="card",
+                style={"margin-bottom": "0px"},  # Managed by grid gap
             )
         )
+
     set_props("store-pipeline-component-names", {"data": pip.components})
     set_props("store-pipeline-component-running", {"data": running_store})
     set_props("store-pipeline-component-attrs-vals", {"data": attrs_vals_store})
@@ -280,16 +466,34 @@ def create_content_div(port, name):
 
     children = [
         html.Div(
-            children=[ready, jobid, sampleid], className="pipeline-params-wrapper"
+            children=[ready, jobid, sampleid],
+            className="card",
+            style={
+                "display": "flex",
+                "flex-direction": "row",
+                "flex-wrap": "nowrap",
+                "align-items": "center",
+                "gap": "30px",
+                "background-color": "var(--card-bg)",
+                "border": "1px solid var(--border-color)",
+                "padding": "15px 25px",
+                "margin-bottom": "25px",
+                "border-radius": "var(--radius)",
+                "overflow": "hidden",
+            },
         ),
-        html.Div(children=components, className="pipeline-components-wrapper"),
+        html.Div(children=components, className="pipeline-component-grid"),
     ]
     return children
 
 
+# Sync theme selection callbacks removed to app.py to avoid duplicates
+
+
 @callback(
     Output({"type": "component-attr-val", "index": MATCH}, "value"),
-    Input({"type": "component-attr-val", "index": MATCH}, "value"),
+    Input({"type": "component-attr-apply-btn", "index": MATCH}, "n_clicks"),
+    State({"type": "component-attr-val", "index": MATCH}, "value"),
     State({"type": "component-attr-val", "index": MATCH}, "id"),
     State({"type": "component-attr-val", "index": MATCH}, "disabled"),
     State("store-pipeline-component-attrs-rw", "data"),
@@ -297,16 +501,30 @@ def create_content_div(port, name):
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
-def component_attr_interaction(value, id, disabled, arw, port, name):
+def component_attr_interaction(n_clicks, value, id, disabled, arw, port, name):
+    if n_clicks is None:
+        return dash.no_update
     cname, attr = id["index"].split("/")
     if arw[cname][attr] and not disabled:
-        ret = passata.set_attr(**kwargs, port=port, name=cname, attr=attr, val=value)
-        if ret.success:
-            return dash.no_update
-        else:
-            return None
-    else:
-        return dash.no_update
+        try:
+            ret = passata.set_attr(
+                **kwargs, port=port, name=cname, attr=attr, val=value
+            )
+            if ret.success:
+                return clean_value(ret.data)
+            current = passata.get_attrs(
+                **kwargs, port=port, name=cname, attrs=[attr]
+            ).data.get(attr)
+            return clean_value(current)
+        except Exception:
+            try:
+                current = passata.get_attrs(
+                    **kwargs, port=port, name=cname, attrs=[attr]
+                ).data.get(attr)
+                return clean_value(current)
+            except Exception:
+                return dash.no_update
+    return dash.no_update
 
 
 @callback(
@@ -321,8 +539,11 @@ def pipeline_param_interaction_ready(values, data, port, name):
     if values == data["ready"]:
         return dash.no_update
 
-    if len(values) > 0 and all(values):
-        tomato.pipeline_ready(**kwargs, port=port, pipeline=name)
+    try:
+        if len(values) > 0 and all(values):
+            tomato.pipeline_ready(**kwargs, port=port, pipeline=name)
+    except Exception:
+        pass
     return ["ready"]
 
 
@@ -333,13 +554,16 @@ def pipeline_param_interaction_ready(values, data, port, name):
     prevent_initial_call=True,
 )
 def pipeline_param_interaction_sampleid(sampleid, port, name):
-    if sampleid == "":
-        tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
-    else:
-        tomato.pipeline_load(**kwargs, port=port, pipeline=name, sampleid=sampleid)
+    try:
+        if sampleid == "":
+            tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
+        else:
+            tomato.pipeline_load(**kwargs, port=port, pipeline=name, sampleid=sampleid)
+    except Exception:
+        pass
 
 
-# Background store update using passata / tomato
+# Periodic updates for attributes store values
 @callback(
     Output("store-pipeline-component-attrs-vals", "data"),
     Input("interval-pipeline-content", "n_intervals"),
@@ -351,18 +575,30 @@ def pipeline_param_interaction_sampleid(sampleid, port, name):
     prevent_initial_call=True,
 )
 def components_periodic_update_attrs_vals_store(_, cmps, avals, aunits, port, name):
+    if not cmps or not avals or not aunits:
+        return dash.no_update
     newdata = {}
     for cmp in cmps:
+        if cmp not in avals or cmp not in aunits:
+            continue
         newdata[cmp] = {}
-        nvals = passata.get_attrs(
-            **kwargs, port=port, name=cmp, attrs=avals[cmp].keys()
-        ).data
+        try:
+            nvals_ret = passata.get_attrs(
+                **kwargs, port=port, name=cmp, attrs=list(avals[cmp].keys())
+            )
+            nvals = nvals_ret.data if nvals_ret.success else {}
+        except Exception:
+            nvals = {}
+
         for key in avals[cmp].keys():
-            if aunits[cmp][key] is not None:
-                val = nvals[key].to(aunits[cmp][key]).m
-            else:
-                val = nvals[key]
-            newdata[cmp][key] = val
+            val = nvals.get(key)
+            if hasattr(val, "to") and aunits[cmp].get(key) is not None:
+                try:
+                    val = val.to(aunits[cmp][key])
+                except Exception:
+                    pass
+            newdata[cmp][key] = clean_value(val)
+
     if newdata == avals:
         return dash.no_update
     else:
@@ -379,17 +615,25 @@ def components_periodic_update_attrs_vals_store(_, cmps, avals, aunits, port, na
     prevent_initial_call=True,
 )
 def components_periodic_update_data_store(_, cmps, data, port, name):
+    if not cmps:
+        return dash.no_update
     newdata = {}
     for cmp in cmps:
         newdata[cmp] = {}
-        ds = passata.get_last_data(**kwargs, port=port, name=cmp).data
+        try:
+            ds_ret = passata.get_last_data(**kwargs, port=port, name=cmp)
+            ds = ds_ret.data if ds_ret.success else None
+        except Exception:
+            ds = None
+
         if ds is None:
             continue
         dd = ds.to_dict()
         for k, v in dd["coords"].items():
-            newdata[cmp][k] = v["data"][-1]
+            newdata[cmp][k] = clean_value(v["data"][-1])
         for k, v in dd["data_vars"].items():
-            newdata[cmp][k] = v["data"][-1]
+            newdata[cmp][k] = clean_value(v["data"][-1])
+
     if newdata == {}:
         return dash.no_update
     elif newdata == data:
@@ -407,10 +651,16 @@ def components_periodic_update_data_store(_, cmps, data, port, name):
     prevent_initial_call=True,
 )
 def components_periodic_update_params_store(_, cmps, params, port):
+    if not cmps:
+        return dash.no_update
     newparams = {}
     for cname in cmps:
-        ret = passata.status(**kwargs, port=port, name=cname).data
-        newparams[cname] = ret["running"]
+        try:
+            ret = passata.status(**kwargs, port=port, name=cname).data
+            newparams[cname] = ret["running"]
+        except Exception:
+            newparams[cname] = False
+
     if newparams == params:
         return dash.no_update
     else:
@@ -426,19 +676,23 @@ def components_periodic_update_params_store(_, cmps, params, port):
     prevent_initial_call=True,
 )
 def pipeline_periodic_update_params_store(_, data, port, name):
-    pip = tomato.status(**kwargs, port=port, stgrp="pipelines").data[name]
-    newdata = {
-        "jobid": pip.jobid,
-        "sampleid": str(pip.sampleid) if pip.sampleid is not None else "",
-        "ready": ["ready"] if pip.ready else [],
-    }
+    try:
+        pip = tomato.status(**kwargs, port=port, stgrp="pipelines").data[name]
+        newdata = {
+            "jobid": pip.jobid,
+            "sampleid": str(pip.sampleid) if pip.sampleid is not None else "",
+            "ready": ["ready"] if pip.ready else [],
+        }
+    except Exception:
+        newdata = data
+
     if newdata == data:
         return dash.no_update
     else:
         return newdata
 
 
-# UI update if background stores have been changed
+# UI updates triggered by Stores
 @callback(
     Output(
         {"type": "component-attr-val", "index": MATCH},
@@ -448,17 +702,30 @@ def pipeline_periodic_update_params_store(_, data, port, name):
     Input("store-pipeline-component-attrs-vals", "data"),
     State({"type": "component-attr-val", "index": MATCH}, "value"),
     State({"type": "component-attr-val", "index": MATCH}, "id"),
+    State("store-pipeline-component-attrs-rw", "data"),
     prevent_initial_call=True,
 )
-def components_update_attr_display(avals, value, id):
-    cname, key = id["index"].split("/")
-    newval = avals[cname][key]
+def components_update_attr_display(avals, value, id, rw):
+    if not avals or not id or "index" not in id or not rw:
+        return dash.no_update
+    try:
+        cname, key = id["index"].split("/")
+        if cname not in avals or key not in avals[cname]:
+            return dash.no_update
+        if rw.get(cname, {}).get(key, False):
+            return dash.no_update
+        newval = avals[cname][key]
+    except Exception:
+        return dash.no_update
     if isinstance(newval, float):
         newval = round(newval, 3)
+    if isinstance(value, float):
+        value = round(value, 3)
     if newval == value:
         return dash.no_update
     else:
         return newval
+
 
 @callback(
     Output({"type": "component-attr-val", "index": MATCH}, "disabled"),
@@ -468,13 +735,18 @@ def components_update_attr_display(avals, value, id):
     prevent_initial_call=True,
 )
 def components_disable_attr_running(running, id, rw):
-    print(f"{id=}")
-    cname, key = id["index"].split("/")
-    print(f"{running=} {key=} {rw[cname][key]=}")
-    if running[cname]:
-        return True
-    else:
-        return not rw[cname][key]
+    if not running or not id or "index" not in id or not rw:
+        return dash.no_update
+    try:
+        cname, key = id["index"].split("/")
+        if cname not in running or cname not in rw or key not in rw[cname]:
+            return dash.no_update
+        if running.get(cname, False):
+            return True
+        else:
+            return not rw[cname].get(key, False)
+    except Exception:
+        return dash.no_update
 
 
 @callback(
@@ -488,14 +760,10 @@ def components_disable_attr_running(running, id, rw):
     prevent_initial_call=True,
 )
 def pipeline_update_param_display(data, ready, sampleid, jobid):
-    if data["ready"] == ready:
-        data["ready"] = dash.no_update
-    if data["sampleid"] == sampleid:
-        data["sampleid"] = dash.no_update
-    if data["jobid"] == jobid:
-        data["jobid"] = dash.no_update
-
-    return data["ready"], data["sampleid"], data["jobid"]
+    r_val = data["ready"] if data["ready"] != ready else dash.no_update
+    s_val = data["sampleid"] if data["sampleid"] != sampleid else dash.no_update
+    j_val = data["jobid"] if data["jobid"] != jobid else dash.no_update
+    return r_val, s_val, j_val
 
 
 @callback(
@@ -504,16 +772,27 @@ def pipeline_update_param_display(data, ready, sampleid, jobid):
         "children",
         allow_duplicate=True,
     ),
+    Output(
+        {"type": "component-params", "index": MATCH},
+        "className",
+        allow_duplicate=True,
+    ),
     Input("store-pipeline-component-running", "data"),
     State({"type": "component-params", "index": MATCH}, "children"),
     State({"type": "component-params", "index": MATCH}, "id"),
     prevent_initial_call=True,
 )
 def components_update_param_display(data, value, id):
-    if value == str(data[id["index"]]):
-        return dash.no_update
+    if not data or not id or "index" not in id:
+        return dash.no_update, dash.no_update
+    running_state = data.get(id["index"], False)
+    new_text = "RUNNING" if running_state else "STOPPED"
+    new_class = "badge badge-success" if running_state else "badge badge-secondary"
+    if value == new_text:
+        return dash.no_update, dash.no_update
     else:
-        return str(data[id["index"]])
+        return new_text, new_class
+
 
 @callback(
     Output(
@@ -528,7 +807,7 @@ def components_update_param_display(data, value, id):
 )
 def components_update_data_display(data, value, id):
     cname, key = id["index"].split("/")
-    if data is None or key not in data[cname]:
+    if data is None or key not in data.get(cname, {}):
         return dash.no_update
     elif value == data[cname][key]:
         return dash.no_update
@@ -537,7 +816,6 @@ def components_update_data_display(data, value, id):
         if isinstance(val, float):
             val = round(val, 3)
         return val
-
 
 
 dash.register_page(__name__, path_template="/pipelines/<port>/<name>")
