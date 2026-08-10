@@ -1,10 +1,13 @@
 import logging
-from datetime import datetime, timezone
 import dash
 from dash import Input, Output, State, callback, dcc, html
+from marinara.graphing import (
+    DEFAULT_MAX_POINTS,
+    extract_telemetry_points,
+    update_live_patch,
+)
 from marinara.icons import get_icon
 from marinara.utils import (
-    clean_data,
     clean_value,
     ensure_drivers_registered,
     get_field,
@@ -18,7 +21,6 @@ CTXT = zmq.Context()
 TOUT = 1000
 PORT = 1234
 kwargs = dict(timeout=TOUT, context=CTXT)
-DEFAULT_MAX_POINTS = 50
 
 dash.register_page(__name__, path_template="/", title="Marinara")
 
@@ -193,43 +195,6 @@ dashboard_layout = html.Div(
         ),
     ],
 )
-
-
-def extract_live_traces(
-    ds: dict, cname: str, historical_traces: dict, max_points: int = DEFAULT_MAX_POINTS
-) -> None:
-    """Extracts and appends live data points from a component xarray Dataset dict to historical_traces."""
-    uts_list = ds.get("coords", {}).get("uts", {}).get("data", [])
-    for idx, t in enumerate(uts_list):
-        cleaned_t = clean_value(t)
-        for var_name, var_info in ds.get("data_vars", {}).items():
-            raw_val = var_info["data"][idx]
-
-            if isinstance(raw_val, (list, tuple)):
-                for i, sub_val in enumerate(raw_val):
-                    trace_key = f"{cname}/{var_name}[{i}]"
-                    if trace_key not in historical_traces:
-                        historical_traces[trace_key] = {"x": [], "y": []}
-
-                    trace = historical_traces[trace_key]
-                    if cleaned_t not in trace["x"]:
-                        trace["x"].append(cleaned_t)
-                        trace["y"].append(clean_value(sub_val))
-                        if len(trace["x"]) > max_points:
-                            trace["x"].pop(0)
-                            trace["y"].pop(0)
-            else:
-                trace_key = f"{cname}/{var_name}"
-                if trace_key not in historical_traces:
-                    historical_traces[trace_key] = {"x": [], "y": []}
-
-                trace = historical_traces[trace_key]
-                if cleaned_t not in trace["x"]:
-                    trace["x"].append(cleaned_t)
-                    trace["y"].append(clean_value(raw_val))
-                    if len(trace["x"]) > max_points:
-                        trace["x"].pop(0)
-                        trace["y"].pop(0)
 
 
 @callback(
@@ -535,78 +500,26 @@ def update_dashboard_live_view(
     params_list = html.Div(param_items, className="params-list-container")
 
     # 2. Fetch live data for plotting for each component in the pipeline
-    if "traces" not in historical_data:
-        historical_data["traces"] = {}
-
+    new_points = {}
     for cname in pip.components:
         try:
             data_ret = passata.get_last_data(**kwargs, port=port, name=cname)
             if data_ret.success and data_ret.data:
-                extract_live_traces(
-                    data_ret.data.to_dict(),
-                    cname,
-                    historical_data["traces"],
-                    DEFAULT_MAX_POINTS,
-                )
+                comp_points = extract_telemetry_points(data_ret.data.to_dict(), cname)
+                new_points.update(comp_points)
         except Exception as e:
             logger.warning(
                 f"Failed to fetch live data for component {cname} of pipeline {selected_pip}: {e}"
             )
 
-    traces = []
-    for trace_key, trace_data in historical_data["traces"].items():
-        formatted_x = []
-        for t in trace_data["x"]:
-            try:
-                formatted_x.append(
-                    datetime.fromtimestamp(t, timezone.utc)
-                    .astimezone()
-                    .strftime("%H:%M:%S")
-                )
-            except Exception:
-                formatted_x.append(str(t))
+    fig_or_patch, historical_data = update_live_patch(
+        current_store=historical_data,
+        new_points=new_points,
+        theme=theme,
+        max_points=DEFAULT_MAX_POINTS,
+    )
 
-        traces.append(
-            {
-                "x": formatted_x,
-                "y": trace_data["y"],
-                "name": trace_key,
-                "type": "scatter",
-                "mode": "lines+markers",
-            }
-        )
-
-    figure = {
-        "data": traces,
-        "layout": {
-            "autosize": True,
-            "template": "plotly_dark" if theme == "dark" else "plotly",
-            "paper_bgcolor": "rgba(0,0,0,0)",
-            "plot_bgcolor": "rgba(0,0,0,0)",
-            "font": {"color": "#ffffff" if theme == "dark" else "#212529"},
-            "margin": {"t": 15, "b": 90, "l": 50, "r": 15},
-            "xaxis": {
-                "gridcolor": "rgba(255,255,255,0.08)"
-                if theme == "dark"
-                else "rgba(0,0,0,0.08)",
-            },
-            "yaxis": {
-                "gridcolor": "rgba(255,255,255,0.08)"
-                if theme == "dark"
-                else "rgba(0,0,0,0.08)",
-            },
-            "legend": {
-                "orientation": "h",
-                "x": 0.5,
-                "y": -0.18,
-                "xanchor": "center",
-                "yanchor": "top",
-            },
-            "uirevision": True,
-        },
-    }
-
-    return params_list, figure, clean_data(historical_data)
+    return params_list, fig_or_patch, historical_data
 
 
 def layout(**_):

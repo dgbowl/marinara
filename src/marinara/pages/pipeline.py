@@ -4,6 +4,7 @@ from tomato import passata, tomato
 from zmq import Context
 import logging
 from marinara.utils import get_field, clean_value, get_unit_str, format_constraint
+from marinara.icons import get_icon
 
 logger = logging.getLogger(__name__)
 
@@ -444,6 +445,7 @@ def create_content_div(port, name, n_intervals):
     set_props("store-pipeline-component-attrs-rw", {"data": attrs_rw_store})
 
     children = [
+        html.Div(id="pipeline-alert-container"),
         html.Div(
             children=[ready, jobid, sampleid],
             className="card",
@@ -508,44 +510,83 @@ def component_attr_interaction(n_clicks, value, id, disabled, arw, port, name):
 
 @callback(
     Output("pipeline-input-ready", "value"),
+    Output("pipeline-input-sampleid", "value"),
+    Output("pipeline-alert-container", "children"),
     Input("pipeline-input-ready", "value"),
+    State("pipeline-input-sampleid", "value"),
     State("store-pipeline-params", "data"),
     State("store-tomato-port", "data"),
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
-def pipeline_param_interaction_ready(value, data, port, name):
-    current_val = data.get("ready", "not_ready")
-    if value == current_val:
-        return dash.no_update
+def pipeline_param_interaction_ready(value, sampleid, data, port, name):
+    clean_sampleid = sampleid.strip() if sampleid else ""
 
-    try:
-        if value == "ready":
-            # Pipeline'i ready yap
+    if value == "ready":
+        if not clean_sampleid:
+            alert = html.Div(
+                [
+                    get_icon("alert-circle", size=16),
+                    html.Span(
+                        " Cannot set pipeline status to 'Ready' without a valid Sample ID. Please enter a Sample ID first.",
+                        style={"font-weight": "600", "margin-left": "6px"},
+                    ),
+                ],
+                className="badge badge-warning",
+                style={
+                    "display": "flex",
+                    "align-items": "center",
+                    "padding": "12px 18px",
+                    "font-size": "13px",
+                    "border-radius": "6px",
+                    "background-color": "rgba(245, 158, 11, 0.15)",
+                    "color": "#b45309",
+                    "border": "1px solid rgba(245, 158, 11, 0.4)",
+                    "margin-bottom": "15px",
+                },
+            )
+            return "not_ready", sampleid, alert
+
+        try:
             tomato.pipeline_ready(**kwargs, port=port, pipeline=name)
-        else:
-            # Ready durumunu geri al: tomato API'de unready yok,
-            # pipeline_eject sample'i temizler ve ready=False yapar
+        except Exception as e:
+            logger.error("Failed to set pipeline ready: %s", e)
+            return (
+                "not_ready",
+                sampleid,
+                html.Div(f"Error setting ready: {e}", className="text-secondary"),
+            )
+
+        return "ready", sampleid, None
+
+    else:
+        try:
             tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
-    except Exception:
-        pass
-    return value
+        except Exception as e:
+            logger.error("Failed to eject pipeline sample: %s", e)
+
+        return "not_ready", "", None
 
 
 @callback(
+    Output("pipeline-alert-container", "children", allow_duplicate=True),
     Input("pipeline-input-sampleid", "value"),
     State("store-tomato-port", "data"),
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
 def pipeline_param_interaction_sampleid(sampleid, port, name):
+    clean_sampleid = sampleid.strip() if sampleid else ""
     try:
-        if sampleid == "":
+        if not clean_sampleid:
             tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
         else:
-            tomato.pipeline_load(**kwargs, port=port, pipeline=name, sampleid=sampleid)
-    except Exception:
-        pass
+            tomato.pipeline_load(
+                **kwargs, port=port, pipeline=name, sampleid=clean_sampleid
+            )
+    except Exception as e:
+        logger.error("Failed to update sampleid: %s", e)
+    return None
 
 
 # Periodic updates for attributes store values
@@ -746,7 +787,7 @@ def components_disable_attr_running(running, id, rw):
     prevent_initial_call=True,
 )
 def pipeline_update_param_display(data, ready, sampleid, jobid):
-    # Job çalışırken dropdown kilitlenir
+    # Dropdown is disabled while job is executing
     is_executing = bool(data.get("jobid"))
     r_val = data["ready"] if data["ready"] != ready else dash.no_update
     s_val = data["sampleid"] if data["sampleid"] != sampleid else dash.no_update
