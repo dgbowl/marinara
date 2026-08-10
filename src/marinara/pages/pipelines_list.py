@@ -8,6 +8,7 @@ dash.register_page(__name__, path="/pipelines", title="Pipelines")
 layout = html.Div(
     className="dashboard-container",
     children=[
+        dcc.Interval(id="pipelines-refresh-interval", interval=5000, n_intervals=0),
         html.Div(
             className="theme-header",
             children=[
@@ -20,7 +21,7 @@ layout = html.Div(
                         ),
                         html.Button(
                             get_icon("refresh", size=14, stroke_width=2.5),
-                            id="tomato-status",
+                            id="pipelines-reload-btn",
                             className="btn-reload",
                             title="Reload status data",
                         ),
@@ -40,10 +41,11 @@ layout = html.Div(
 
 @callback(
     Output("tomato-list-pipelines", "children"),
-    Input("tomato-status", "n_clicks"),
+    Input("pipelines-reload-btn", "n_clicks"),
+    Input("pipelines-refresh-interval", "n_intervals"),
     State("tomato-port", "data"),
 )
-def update_pipelines(n_clicks, port):
+def update_pipelines(n_clicks, n_intervals, port):
     try:
         import zmq
         from tomato import tomato

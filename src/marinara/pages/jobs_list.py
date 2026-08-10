@@ -23,9 +23,9 @@ layout = html.Div(
                         ),
                         html.Button(
                             get_icon("refresh", size=14, stroke_width=2.5),
-                            id="tomato-status",
+                            id="jobs-reload-btn",
                             className="btn-reload",
-                            title="Reload status data",
+                            title="Reload jobs data",
                         ),
                     ],
                     style={"display": "flex", "align-items": "center"},
@@ -50,18 +50,15 @@ layout = html.Div(
 # Callback to render the full raw JSON of all jobs
 @callback(
     Output("tomato-list-jobs", "children"),
-    Input("tomato-status", "n_clicks"),
+    Input("jobs-reload-btn", "n_clicks"),
     State("tomato-port", "data"),
 )
 def update_jobs_list(n_clicks, port):
     try:
         import zmq
         from tomato import ketchup
-
         CTXT = zmq.Context()
-        ret = ketchup.status(
-            port=port, context=CTXT, verbosity=20, jobids=[], timeout=1000
-        )
+        ret = ketchup.status(port=port, context=CTXT, verbosity=20, jobids=[])
         if not ret.success:
             if ret.msg == "job queue is empty":
                 return html.Div(

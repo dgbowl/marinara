@@ -1,5 +1,5 @@
 import dash
-from dash import html, callback, Input, Output, State
+from dash import html, dcc, callback, Input, Output, State
 from marinara.utils import format_obj
 
 from marinara.icons import get_icon
@@ -9,6 +9,7 @@ dash.register_page(__name__, path="/drivers", title="Drivers")
 layout = html.Div(
     className="dashboard-container",
     children=[
+        dcc.Interval(id="drivers-load-interval", interval=500, max_intervals=1),
         html.Div(
             className="theme-header",
             children=[
@@ -21,7 +22,7 @@ layout = html.Div(
                         ),
                         html.Button(
                             get_icon("refresh", size=14, stroke_width=2.5),
-                            id="tomato-status",
+                            id="drivers-reload-btn",
                             className="btn-reload",
                             title="Reload status data",
                         ),
@@ -41,10 +42,11 @@ layout = html.Div(
 
 @callback(
     Output("tomato-list-drivers", "children"),
-    Input("tomato-status", "n_clicks"),
+    Input("drivers-reload-btn", "n_clicks"),
+    Input("drivers-load-interval", "n_intervals"),
     State("tomato-port", "data"),
 )
-def update_drivers(n_clicks, port):
+def update_drivers(n_clicks, n_intervals, port):
     try:
         import zmq
         from tomato import tomato

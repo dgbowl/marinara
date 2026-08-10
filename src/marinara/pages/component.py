@@ -609,7 +609,6 @@ def render_graphs_list(active_ids, titles_dict, ds):
         
     titles_dict = titles_dict or {}
     vars_list = sorted(list(ds.get("data_vars", {}).keys())) if ds else []
-    options = [{"label": "Time (uts)", "value": "uts"}] + [{"label": v, "value": v} for v in vars_list]
     
     graphs_layouts = []
     for idx, i in enumerate(active_ids):
@@ -677,9 +676,9 @@ def render_graphs_list(active_ids, titles_dict, ds):
                                     id={"type": "custom-graph-x-selector", "index": i},
                                     options=[{"label": "Time (uts)", "value": "uts"}],
                                     value="uts",
-                                    disabled=True,
+                                    disabled=False,
                                     clearable=False,
-                                    style={"width": "100%"}
+                                    style={"width": "100%"},
                                 )
                             ],
                             style={"flex": "1", "min-width": "150px"}
@@ -759,9 +758,17 @@ def update_graph_titles(title_values, current_titles):
 )
 def populate_dynamic_selectors(ds):
     if ds is None:
-        return [], []
+        return [{"label": "Time (uts)", "value": "uts"}], []
+    coords_list = sorted(list(ds.get("coords", {}).keys()))
     vars_list = sorted(list(ds.get("data_vars", {}).keys()))
-    x_options = [{"label": "Time (uts)", "value": "uts"}]
+    x_options = [
+        {"label": "Time (uts)", "value": "uts"}
+        if c == "uts"
+        else {"label": f"{c} (coord)", "value": c}
+        for c in coords_list
+    ]
+    if not x_options:
+        x_options = [{"label": "Time (uts)", "value": "uts"}]
     y_options = [{"label": v, "value": v} for v in vars_list]
     return x_options, y_options
 

@@ -12,36 +12,13 @@ TOUT = 1000
 kwargs = dict(timeout=TOUT, context=CTXT)
 
 
-def get_data_fields(pname, dname):
-    if dname == "example_counter":
-        return (
-            "uts",
-            "val",
-        )
-    elif dname == "bronkhorst":
-        return (
-            "uts",
-            "setpoint",
-            "flow",
-            "pressure",
-            "control_mode",
-        )
-    elif dname == "jumo":
-        return (
-            "uts",
-            "setpoint",
-            "temperature",
-            "duty_cycle",
-            "ramp_rate",
-            "ramp_target",
-        )
-    elif dname == "drycal":
-        return (
-            "uts",
-            "flow",
-        )
-    else:
-        return ("uts",)
+def get_data_fields(data):
+    """Dynamically extracts all coordinate and data variable keys from a device dataset."""
+    if data is not None and hasattr(data, "data_vars"):
+        return ["uts"] + list(data.data_vars.keys())
+    elif isinstance(data, dict):
+        return list(data.keys())
+    return ["uts"]
 
 
 def create_header_div(port: int, name: str):
@@ -57,6 +34,7 @@ def create_header_div(port: int, name: str):
             dcc.Store(id="store-pipeline-component-attrs-rw", data=None),
             dcc.Store(id="store-pipeline-component-data", data=None),
             dcc.Interval(id="interval-pipeline-content", interval=2000),
+            dcc.Interval(id="interval-pipeline-init", interval=300, max_intervals=1),
         ],
         className="header-store",
     )
@@ -136,8 +114,9 @@ def object_from_attrs(cname, attr, params, value):
     Output("content-wrapper", "children"),
     Input("store-tomato-port", "data"),
     Input("store-pipeline-name", "data"),
+    Input("interval-pipeline-init", "n_intervals"),
 )
-def create_content_div(port, name):
+def create_content_div(port, name, n_intervals):
     try:
         pip_ret = tomato.status(**kwargs, port=port, stgrp="pipelines")
         pip = pip_ret.data[name] if pip_ret.success else None
@@ -153,7 +132,7 @@ def create_content_div(port, name):
             "data": {
                 "jobid": pip.jobid,
                 "sampleid": str(pip.sampleid) if pip.sampleid is not None else "",
-                "ready": ["ready"] if pip.ready else [],
+                "ready": "ready" if pip.ready else "not_ready",
             }
         },
     )
@@ -227,16 +206,16 @@ def create_content_div(port, name):
                     "flex-shrink": "0",
                 },
             ),
-            dcc.Checklist(
-                options=[{"label": " Ready", "value": "ready"}],
-                value=["ready"] if pip.ready else [],
+            dcc.Dropdown(
+                options=[
+                    {"label": "Idle (Not Ready)", "value": "not_ready"},
+                    {"label": "Ready", "value": "ready"},
+                ],
+                value="ready" if pip.ready else "not_ready",
                 id="pipeline-input-ready",
-                style={
-                    "display": "inline-block",
-                    "font-size": "14px",
-                    "font-weight": "500",
-                    "flex-shrink": "0",
-                },
+                clearable=False,
+                disabled=bool(pip.jobid),
+                style={"min-width": "160px", "font-size": "14px"},
             ),
         ],
         style={"display": "flex", "align-items": "center", "flex-shrink": "0"},
@@ -404,7 +383,7 @@ def create_content_div(port, name):
                 },
             )
         ]
-        for key in get_data_fields(name, cmp.driver):
+        for key in get_data_fields(data):
             if data is None or key not in data:
                 value = None
                 units = ""
@@ -535,16 +514,22 @@ def component_attr_interaction(n_clicks, value, id, disabled, arw, port, name):
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
-def pipeline_param_interaction_ready(values, data, port, name):
-    if values == data["ready"]:
+def pipeline_param_interaction_ready(value, data, port, name):
+    current_val = data.get("ready", "not_ready")
+    if value == current_val:
         return dash.no_update
 
     try:
-        if len(values) > 0 and all(values):
+        if value == "ready":
+            # Pipeline'i ready yap
             tomato.pipeline_ready(**kwargs, port=port, pipeline=name)
+        else:
+            # Ready durumunu geri al: tomato API'de unready yok,
+            # pipeline_eject sample'i temizler ve ready=False yapar
+            tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
     except Exception:
         pass
-    return ["ready"]
+    return value
 
 
 @callback(
@@ -681,7 +666,7 @@ def pipeline_periodic_update_params_store(_, data, port, name):
         newdata = {
             "jobid": pip.jobid,
             "sampleid": str(pip.sampleid) if pip.sampleid is not None else "",
-            "ready": ["ready"] if pip.ready else [],
+            "ready": "ready" if pip.ready else "not_ready",
         }
     except Exception:
         newdata = data
@@ -751,6 +736,7 @@ def components_disable_attr_running(running, id, rw):
 
 @callback(
     Output("pipeline-input-ready", "value", allow_duplicate=True),
+    Output("pipeline-input-ready", "disabled"),
     Output("pipeline-input-sampleid", "value", allow_duplicate=True),
     Output("pipeline-input-jobid", "value", allow_duplicate=True),
     Input("store-pipeline-params", "data"),
@@ -760,10 +746,12 @@ def components_disable_attr_running(running, id, rw):
     prevent_initial_call=True,
 )
 def pipeline_update_param_display(data, ready, sampleid, jobid):
+    # Job çalışırken dropdown kilitlenir
+    is_executing = bool(data.get("jobid"))
     r_val = data["ready"] if data["ready"] != ready else dash.no_update
     s_val = data["sampleid"] if data["sampleid"] != sampleid else dash.no_update
     j_val = data["jobid"] if data["jobid"] != jobid else dash.no_update
-    return r_val, s_val, j_val
+    return r_val, is_executing, s_val, j_val
 
 
 @callback(

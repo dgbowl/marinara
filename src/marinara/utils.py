@@ -1,8 +1,11 @@
-import zmq
-from dash import html, dcc
-import tomato
-from typing import Any, Union, Optional
+import logging
+from typing import Any, Optional, Union
 import pint
+from dash import dcc, html
+import tomato
+import zmq
+
+logger = logging.getLogger(__name__)
 
 PORT = 1234
 TOUT = 1000
@@ -22,25 +25,15 @@ def get_field(obj: Any, key: str, default: Any = None) -> Any:
 
 
 def clean_value(val: Any) -> Any:
-    """
-    Coerces Pint Quantity objects and numpy types to standard serializable types.
-
-    Sequential if/elif is avoided here because the conversions can be chained:
-    1. If the value is a Pint Quantity, we extract its magnitude using .magnitude or .m.
-    2. After this extraction, the resulting value might be a numpy type (like a numpy scalar).
-       We then check if it has the .item() method to convert it to a standard Python scalar
-       for proper JSON serialization in Dash's dcc.Store.
-    """
-    if hasattr(val, "magnitude"):
-        val = val.magnitude
-    elif hasattr(val, "m"):
+    """Coerces Pint Quantity objects and numpy types to standard serializable types."""
+    if hasattr(val, "m"):
         val = val.m
 
     if hasattr(val, "item") and callable(val.item):
         try:
             val = val.item()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("Failed to convert scalar value: %s", e)
     return val
 
 
@@ -48,46 +41,41 @@ def clean_data(d: Any) -> Any:
     """Recursively cleans values in dictionaries, lists, and tuples."""
     if isinstance(d, dict):
         return {k: clean_data(v) for k, v in d.items()}
-    elif isinstance(d, list):
-        return [clean_data(v) for v in d]
-    elif isinstance(d, tuple):
-        return tuple(clean_data(v) for v in d)
+    elif isinstance(d, (list, tuple)):
+        return type(d)(clean_data(v) for v in d)
     else:
         return clean_value(d)
 
 
-# Keep clean_dict_values as alias for backward compatibility
-clean_dict_values = clean_data
-
-
 def get_unit_str(units: Optional[Union[str, Any]]) -> str:
     """Formats unit names for human-friendly display using Pint."""
-    if units is None or units == "":
+    if not units:
         return ""
     try:
         q = pint.Quantity(1, units)
         return f"{q.units:~H}"
-    except Exception:
+    except pint.UndefinedUnitError:
+        return str(units)
+    except Exception as e:
+        logger.error("Error parsing unit '%s': %s", units, e)
         return str(units)
 
 
 def format_constraint(val: Any, base_unit: str) -> str:
-    """
-    Formats constraint values (min/max) with their respective units.
-
-    If the constraint value is a Pint Quantity, it is formatted with its own units,
-    trying to convert to the attribute's base unit first if compatible.
-    Otherwise, it is formatted using the base unit.
-    """
+    """Formats constraint values (min/max) with their respective units."""
     if val is None:
         return ""
-    if hasattr(val, "magnitude") and hasattr(val, "units"):
+    if hasattr(val, "m") and hasattr(val, "units"):
         if base_unit:
             try:
-                # Convert to base_unit to keep it consistent if compatible
                 val = val.to(base_unit)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(
+                    "Failed to convert constraint %s to base_unit %s: %s",
+                    val,
+                    base_unit,
+                    e,
+                )
         mag = clean_value(val)
         u_str = get_unit_str(val.units)
         return f"{mag} {u_str}" if u_str else str(mag)
@@ -97,7 +85,14 @@ def format_constraint(val: Any, base_unit: str) -> str:
         return f"{mag} {u_str}" if u_str else str(mag)
 
 
-def format_obj(obj, headers, attrs, otype, port):
+def format_obj(
+    obj: dict[str, Any],
+    headers: list[str],
+    attrs: list[str],
+    otype: str,
+    port: int,
+) -> html.Div:
+    """Renders a grid of UI cards displaying metadata for devices, drivers, components, or pipelines."""
     if not obj:
         return html.Div(
             "No registered elements found.",
@@ -109,14 +104,12 @@ def format_obj(obj, headers, attrs, otype, port):
     for k, v in obj.items():
         name_str = str(k)
 
-        # Determine plurality/path type for links
         path_type = otype
         if otype == "device":
             path_type = "devices"
         elif otype == "driver":
             path_type = "drivers"
 
-        # Title as a link to detail page (only for components and pipelines)
         if otype in ["pipelines", "components"]:
             title_el = dcc.Link(
                 name_str,
@@ -138,21 +131,15 @@ def format_obj(obj, headers, attrs, otype, port):
                 },
             )
 
-        # Build metadata elements
         metadata_items = []
-
-        # We skip the first attribute (name) because it is the title
-        for idx, attr in enumerate(attrs[1:]):
-            header_label = headers[idx + 1]
+        for header_label, attr in zip(headers, attrs):
+            if attr in ("name", "capabilities"):
+                continue
             val = get_field(v, attr, "")
-            if isinstance(val, list) or isinstance(val, tuple) or isinstance(val, set):
+            if isinstance(val, (list, tuple, set)):
                 val_str = ", ".join(str(x) for x in val)
             else:
                 val_str = str(val)
-
-            # Skip capabilities in metadata block (will render separately)
-            if attr == "capabilities":
-                continue
 
             metadata_items.append(
                 html.Div(
@@ -184,7 +171,6 @@ def format_obj(obj, headers, attrs, otype, port):
             details_row,
         ]
 
-        # If there are capabilities, render them beautifully
         if "capabilities" in attrs:
             cap_val = get_field(v, "capabilities", [])
             if cap_val:
@@ -231,11 +217,36 @@ def format_obj(obj, headers, attrs, otype, port):
     return html.Div(cards, className=container_class)
 
 
-def get_tomato_status(port):
+def get_tomato_status(port: int) -> Optional[Any]:
+    """Fetches full status data object from tomato daemon on specified port."""
     try:
         ret = tomato.status(stgrp="tomato", port=port, **kwargs)
         if not ret.success:
             return None
         return ret.data
-    except Exception:
+    except Exception as e:
+        logger.error("Failed to query tomato status on port %s: %s", port, e)
         return None
+
+
+def ensure_drivers_registered(daemon: Any) -> None:
+    """Automatically registers components on all connected drivers if needed."""
+    if not daemon or not hasattr(daemon, "drvs"):
+        return
+    for drv_name, drv in daemon.drvs.items():
+        drv_port = get_field(drv, "port")
+        if drv_port:
+            try:
+                s = CTXT.socket(zmq.REQ)
+                s.setsockopt(zmq.RCVTIMEO, 500)
+                s.connect(f"tcp://127.0.0.1:{drv_port}")
+                s.send_pyobj({"cmd": "register"})
+                s.recv_pyobj()
+                s.close()
+            except Exception as e:
+                logger.debug(
+                    "Driver auto-register ping to %s on port %s failed: %s",
+                    drv_name,
+                    drv_port,
+                    e,
+                )

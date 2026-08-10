@@ -1,11 +1,16 @@
-import dash
-from dash import html, dcc, callback, Output, Input, State
-from tomato import passata, tomato
-import zmq
 import logging
 from datetime import datetime, timezone
+import dash
+from dash import Input, Output, State, callback, dcc, html
 from marinara.icons import get_icon
-from marinara.utils import get_field, clean_value, clean_dict_values
+from marinara.utils import (
+    clean_data,
+    clean_value,
+    ensure_drivers_registered,
+    get_field,
+)
+from tomato import passata, tomato
+import zmq
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +18,7 @@ CTXT = zmq.Context()
 TOUT = 1000
 PORT = 1234
 kwargs = dict(timeout=TOUT, context=CTXT)
+DEFAULT_MAX_POINTS = 50
 
 dash.register_page(__name__, path_template="/", title="Marinara")
 
@@ -121,7 +127,7 @@ dashboard_layout = html.Div(
                             id="dash-parameters-list",
                             children=[
                                 html.Div(
-                                    "Select a component to view parameters.",
+                                    "Select a pipeline to view parameters.",
                                     className="text-secondary",
                                 )
                             ],
@@ -135,7 +141,7 @@ dashboard_layout = html.Div(
                         html.Div(
                             children=[
                                 html.Span(
-                                    "Live Device Plot",
+                                    "Live Pipeline Plot",
                                     className="card-header",
                                     style={
                                         "margin-bottom": 0,
@@ -144,7 +150,7 @@ dashboard_layout = html.Div(
                                     },
                                 ),
                                 dcc.Dropdown(
-                                    id="dash-plot-device-selector",
+                                    id="dash-plot-pipeline-selector",
                                     options=[],
                                     placeholder="Select Pipeline to Plot",
                                     clearable=False,
@@ -189,17 +195,54 @@ dashboard_layout = html.Div(
 )
 
 
+def extract_live_traces(
+    ds: dict, cname: str, historical_traces: dict, max_points: int = DEFAULT_MAX_POINTS
+) -> None:
+    """Extracts and appends live data points from a component xarray Dataset dict to historical_traces."""
+    uts_list = ds.get("coords", {}).get("uts", {}).get("data", [])
+    for idx, t in enumerate(uts_list):
+        cleaned_t = clean_value(t)
+        for var_name, var_info in ds.get("data_vars", {}).items():
+            raw_val = var_info["data"][idx]
+
+            if isinstance(raw_val, (list, tuple)):
+                for i, sub_val in enumerate(raw_val):
+                    trace_key = f"{cname}/{var_name}[{i}]"
+                    if trace_key not in historical_traces:
+                        historical_traces[trace_key] = {"x": [], "y": []}
+
+                    trace = historical_traces[trace_key]
+                    if cleaned_t not in trace["x"]:
+                        trace["x"].append(cleaned_t)
+                        trace["y"].append(clean_value(sub_val))
+                        if len(trace["x"]) > max_points:
+                            trace["x"].pop(0)
+                            trace["y"].pop(0)
+            else:
+                trace_key = f"{cname}/{var_name}"
+                if trace_key not in historical_traces:
+                    historical_traces[trace_key] = {"x": [], "y": []}
+
+                trace = historical_traces[trace_key]
+                if cleaned_t not in trace["x"]:
+                    trace["x"].append(cleaned_t)
+                    trace["y"].append(clean_value(raw_val))
+                    if len(trace["x"]) > max_points:
+                        trace["x"].pop(0)
+                        trace["y"].pop(0)
+
+
 @callback(
     Output("kpi-pipelines", "children"),
     Output("kpi-devices", "children"),
     Output("kpi-drivers", "children"),
     Output("kpi-components", "children"),
-    Output("dash-plot-device-selector", "options"),
-    Output("dash-plot-device-selector", "value"),
+    Output("dash-plot-pipeline-selector", "options"),
+    Output("dash-plot-pipeline-selector", "value"),
     Output("dash-pipelines-assignments-table", "children"),
     Input("tomato-status", "n_clicks"),
     State("tomato-port", "data"),
-    State("dash-plot-device-selector", "value"),
+    State("dash-plot-pipeline-selector", "value"),
 )
 def update_dashboard_stats(n_clicks, port, current_selector_value):
     try:
@@ -321,6 +364,7 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
             table,
         )
     except Exception as e:
+        logger.error("Failed to update dashboard stats: %s", e)
         return (
             "0",
             "0",
@@ -339,12 +383,14 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
     Output("dash-live-graph", "figure"),
     Output("dash-plot-data-store", "data"),
     Input("dash-graph-interval", "n_intervals"),
-    Input("dash-plot-device-selector", "value"),
+    Input("dash-plot-pipeline-selector", "value"),
     State("tomato-port", "data"),
     State("dash-plot-data-store", "data"),
     State("app-theme-store", "data"),
 )
-def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data, theme):
+def update_dashboard_live_view(
+    n_intervals, selected_pip, port, historical_data, theme
+):
     if not selected_pip:
         empty_fig = {
             "layout": {
@@ -377,9 +423,11 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
         ret = tomato.status(stgrp="tomato", port=port, **kwargs)
         if not ret.success or not ret.data:
             raise Exception("Daemon offline")
+        ensure_drivers_registered(ret.data)
         pips = ret.data.pips
         pip = pips.get(selected_pip)
     except Exception as e:
+        logger.warning("Daemon offline or status query failed: %s", e)
         empty_fig = {
             "layout": {
                 "autosize": True,
@@ -400,7 +448,9 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
             }
         }
         return (
-            html.Div("Parameters temporarily unavailable.", className="text-secondary"),
+            html.Div(
+                "Parameters temporarily unavailable.", className="text-secondary"
+            ),
             empty_fig,
             {},
         )
@@ -457,8 +507,8 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
                             "margin-bottom": "6px",
                             "border-bottom": "1px solid var(--border-color)",
                             "padding-bottom": "2px",
-                            "color": "var(--accent-color)"
-                        }
+                            "color": "var(--accent-color)",
+                        },
                     )
                 )
                 for k, v in vals.items():
@@ -471,13 +521,16 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
                             children=[
                                 html.Span(f"{k}:", className="param-item-name"),
                                 html.Span(
-                                    f"{clean_value(v)}{unit_str}", className="param-item-val"
+                                    f"{clean_value(v)}{unit_str}",
+                                    className="param-item-val",
                                 ),
                             ],
                         )
                     )
         except Exception as e:
-            logger.warning(f"Failed to fetch parameters for component {cname} of pipeline {selected_pip}: {e}")
+            logger.warning(
+                f"Failed to fetch parameters for component {cname} of pipeline {selected_pip}: {e}"
+            )
 
     params_list = html.Div(param_items, className="params-list-container")
 
@@ -489,43 +542,16 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
         try:
             data_ret = passata.get_last_data(**kwargs, port=port, name=cname)
             if data_ret.success and data_ret.data:
-                ds = data_ret.data.to_dict()
-                uts_list = ds["coords"]["uts"]["data"]
-                
-                for idx, t in enumerate(uts_list):
-                    cleaned_t = clean_value(t)
-                    
-                    for var_name, var_info in ds["data_vars"].items():
-                        raw_val = var_info["data"][idx]
-                        
-                        # Handle multi-dimensional variables
-                        if isinstance(raw_val, (list, tuple)):
-                            for i, sub_val in enumerate(raw_val):
-                                trace_key = f"{cname}/{var_name}[{i}]"
-                                if trace_key not in historical_data["traces"]:
-                                    historical_data["traces"][trace_key] = {"x": [], "y": []}
-                                
-                                trace = historical_data["traces"][trace_key]
-                                if cleaned_t not in trace["x"]:
-                                    trace["x"].append(cleaned_t)
-                                    trace["y"].append(clean_value(sub_val))
-                                    if len(trace["x"]) > 50:
-                                        trace["x"].pop(0)
-                                        trace["y"].pop(0)
-                        else:
-                            trace_key = f"{cname}/{var_name}"
-                            if trace_key not in historical_data["traces"]:
-                                historical_data["traces"][trace_key] = {"x": [], "y": []}
-                            
-                            trace = historical_data["traces"][trace_key]
-                            if cleaned_t not in trace["x"]:
-                                trace["x"].append(cleaned_t)
-                                trace["y"].append(clean_value(raw_val))
-                                if len(trace["x"]) > 50:
-                                    trace["x"].pop(0)
-                                    trace["y"].pop(0)
+                extract_live_traces(
+                    data_ret.data.to_dict(),
+                    cname,
+                    historical_data["traces"],
+                    DEFAULT_MAX_POINTS,
+                )
         except Exception as e:
-            logger.warning(f"Failed to fetch live data for component {cname} of pipeline {selected_pip}: {e}")
+            logger.warning(
+                f"Failed to fetch live data for component {cname} of pipeline {selected_pip}: {e}"
+            )
 
     traces = []
     for trace_key, trace_data in historical_data["traces"].items():
@@ -539,7 +565,7 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
                 )
             except Exception:
                 formatted_x.append(str(t))
-        
+
         traces.append(
             {
                 "x": formatted_x,
@@ -580,33 +606,7 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
         },
     }
 
-    return params_list, figure, clean_dict_values(historical_data)
-
-
-def format_obj(obj, headers, attrs, otype, port):
-    if not obj:
-        return html.Div(
-            "No registered elements found.",
-            className="text-secondary",
-            style={"text-align": "center", "padding": "20px"},
-        )
-
-    rows = [html.Tr(children=[html.Th(h) for h in headers])]
-    for k, v in obj.items():
-        row = [html.Td(str(v.get(i, ""))) for i in attrs]
-
-        if otype in ["pipelines", "components"]:
-            row[0].children = dcc.Link(
-                row[0].children,
-                href=f"/{otype}/{port}/{row[0].children}",
-                style={
-                    "font-weight": "600",
-                    "text-decoration": "none",
-                    "color": "var(--accent-color)",
-                },
-            )
-        rows.append(html.Tr(children=row))
-    return html.Table(children=rows, className="stgrp")
+    return params_list, figure, clean_data(historical_data)
 
 
 def layout(**_):
