@@ -445,7 +445,6 @@ def create_content_div(port, name, n_intervals):
     set_props("store-pipeline-component-attrs-rw", {"data": attrs_rw_store})
 
     children = [
-        html.Div(id="pipeline-alert-container"),
         html.Div(
             children=[ready, jobid, sampleid],
             className="card",
@@ -526,23 +525,38 @@ def pipeline_param_interaction_ready(value, sampleid, data, port, name):
         if not clean_sampleid:
             alert = html.Div(
                 [
-                    get_icon("alert-circle", size=16),
+                    get_icon("alert-circle", size=18),
                     html.Span(
                         " Cannot set pipeline status to 'Ready' without a valid Sample ID. Please enter a Sample ID first.",
-                        style={"font-weight": "600", "margin-left": "6px"},
+                        style={"font-weight": "600", "margin-left": "8px", "flex-grow": "1"},
+                    ),
+                    html.Button(
+                        "×",
+                        id="btn-close-pipeline-alert",
+                        className="close-alert-btn",
+                        style={
+                            "background": "none",
+                            "border": "none",
+                            "font-size": "20px",
+                            "font-weight": "700",
+                            "color": "#b45309",
+                            "cursor": "pointer",
+                            "margin-left": "15px",
+                            "line-height": "1",
+                        },
                     ),
                 ],
                 className="badge badge-warning",
                 style={
                     "display": "flex",
                     "align-items": "center",
-                    "padding": "12px 18px",
-                    "font-size": "13px",
-                    "border-radius": "6px",
+                    "padding": "12px 20px",
+                    "font-size": "14px",
+                    "border-radius": "8px",
                     "background-color": "rgba(245, 158, 11, 0.15)",
                     "color": "#b45309",
                     "border": "1px solid rgba(245, 158, 11, 0.4)",
-                    "margin-bottom": "15px",
+                    "margin-bottom": "20px",
                 },
             )
             return "not_ready", sampleid, alert
@@ -565,7 +579,18 @@ def pipeline_param_interaction_ready(value, sampleid, data, port, name):
         except Exception as e:
             logger.error("Failed to eject pipeline sample: %s", e)
 
-        return "not_ready", "", None
+        return "not_ready", "", dash.no_update
+
+
+@callback(
+    Output("pipeline-alert-container", "children", allow_duplicate=True),
+    Input("btn-close-pipeline-alert", "n_clicks"),
+    prevent_initial_call=True,
+)
+def close_pipeline_alert(n_clicks):
+    if n_clicks:
+        return None
+    return dash.no_update
 
 
 @callback(
@@ -580,13 +605,15 @@ def pipeline_param_interaction_sampleid(sampleid, port, name):
     try:
         if not clean_sampleid:
             tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
+            return dash.no_update
         else:
             tomato.pipeline_load(
                 **kwargs, port=port, pipeline=name, sampleid=clean_sampleid
             )
+            return None
     except Exception as e:
         logger.error("Failed to update sampleid: %s", e)
-    return None
+    return dash.no_update
 
 
 # Periodic updates for attributes store values
@@ -855,5 +882,6 @@ def layout(port=None, name=None, **_):
 
     return [
         create_header_div(port, name),
+        html.Div(id="pipeline-alert-container"),
         html.Div(children=[], id="content-wrapper", className="content-wrapper"),
     ]
