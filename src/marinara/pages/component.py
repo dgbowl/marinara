@@ -433,13 +433,16 @@ def component_data_update(port, name, data, n_intervals):
         ret = passata.get_last_data(**kwargs, port=port, name=name)
         if not ret.success:
             return data
+        ret_ds = ret.data
+        if hasattr(ret_ds, "isel") and hasattr(ret_ds, "sizes") and "uts" in ret_ds.sizes:
+            ret_ds = ret_ds.isel(uts=slice(-500, None))
         if data is None:
-            ndata = ret.data
+            ndata = ret_ds
         else:
             odata = xr.Dataset.from_dict(data)
-            ndata = xr.merge([odata, ret.data])
+            ndata = xr.merge([odata, ret_ds])
         # Cap dataset size to prevent JSON serialization and memory bottlenecks
-        if ndata.sizes["uts"] > 500:
+        if hasattr(ndata, "sizes") and "uts" in ndata.sizes and ndata.sizes["uts"] > 500:
             ndata = ndata.isel(uts=slice(-500, None))
         return clean_data(ndata.to_dict())
     except Exception as e:

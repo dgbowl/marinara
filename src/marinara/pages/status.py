@@ -505,7 +505,10 @@ def update_dashboard_live_view(
         try:
             data_ret = passata.get_last_data(**kwargs, port=port, name=cname)
             if data_ret.success and data_ret.data:
-                comp_points = extract_telemetry_points(data_ret.data.to_dict(), cname)
+                ds = data_ret.data
+                if hasattr(ds, "isel") and hasattr(ds, "sizes") and "uts" in ds.sizes:
+                    ds = ds.isel(uts=slice(-50, None))
+                comp_points = extract_telemetry_points(ds.to_dict(), cname)
                 new_points.update(comp_points)
         except Exception as e:
             logger.warning(

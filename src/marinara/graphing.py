@@ -162,6 +162,10 @@ def update_live_patch(
             idx = trace_keys_list.index(trace_key)
             trace_data = store_traces[trace_key]
 
+            # Only append if a new telemetry timestamp arrives
+            if trace_data.get("x") and trace_data["x"][-1] == time_str:
+                continue
+
             # Append new point in store and patch
             trace_data["x"].append(time_str)
             trace_data["y"].append(val)
@@ -173,7 +177,10 @@ def update_live_patch(
             if len(trace_data["x"]) > max_points:
                 trace_data["x"].pop(0)
                 trace_data["y"].pop(0)
-                patch["data"][idx]["x"].delete(0)
-                patch["data"][idx]["y"].delete(0)
+                try:
+                    patch["data"][idx]["x"].delete(0)
+                    patch["data"][idx]["y"].delete(0)
+                except Exception as e:
+                    logger.warning("Failed to evict point from patch: %s", e)
 
     return patch, clean_data(current_store)

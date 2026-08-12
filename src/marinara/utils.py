@@ -24,17 +24,54 @@ def get_field(obj: Any, key: str, default: Any = None) -> Any:
     return default
 
 
+import math
+import numpy as np
+
+
 def clean_value(val: Any) -> Any:
-    """Coerces Pint Quantity objects and numpy types to standard serializable types."""
+    """Coerces Pint Quantity objects, numpy types, NaNs, and collections to standard JSON-serializable primitives."""
+    if val is None:
+        return ""
+
     if hasattr(val, "m"):
         val = val.m
+
+    if isinstance(val, np.ndarray):
+        if val.size == 1:
+            val = val.item()
+        elif val.size == 0:
+            return ""
+        else:
+            val = val.tolist()
 
     if hasattr(val, "item") and callable(val.item):
         try:
             val = val.item()
         except Exception as e:
             logger.error("Failed to convert scalar value: %s", e)
-    return val
+
+    if isinstance(val, (float, np.floating)):
+        if math.isnan(val) or math.isinf(val):
+            return ""
+        return float(val)
+
+    if isinstance(val, (int, np.integer)):
+        return int(val)
+
+    if isinstance(val, (str, bool)):
+        return val
+
+    if isinstance(val, (list, tuple)):
+        return [clean_value(x) for x in val]
+
+    if isinstance(val, dict):
+        return {str(k): clean_value(v) for k, v in val.items()}
+
+    try:
+        return str(val)
+    except Exception as e:
+        logger.warning("Failed to stringify value %s: %s", val, e)
+        return ""
 
 
 def clean_data(d: Any) -> Any:
@@ -42,7 +79,7 @@ def clean_data(d: Any) -> Any:
     if isinstance(d, dict):
         return {k: clean_data(v) for k, v in d.items()}
     elif isinstance(d, (list, tuple)):
-        return type(d)(clean_data(v) for v in d)
+        return [clean_data(v) for v in d]
     else:
         return clean_value(d)
 
