@@ -1,7 +1,12 @@
+import dataclasses
+import json
 import logging
+import math
 from typing import Any, Optional, Union
-import pint
+
 from dash import dcc, html
+import numpy as np
+import pint
 import tomato
 import zmq
 
@@ -24,15 +29,36 @@ def get_field(obj: Any, key: str, default: Any = None) -> Any:
     return default
 
 
-import math
-import numpy as np
-
-
 def clean_value(val: Any) -> Any:
-    """Coerces Pint Quantity objects, numpy types, NaNs, and collections to standard JSON-serializable primitives."""
+    """Coerces Pint Quantity objects, numpy types, Pydantic models, dataclasses, NaNs, and collections to standard JSON-serializable primitives."""
     if val is None:
         return ""
 
+    # Pydantic v2 check
+    if hasattr(val, "model_dump") and callable(val.model_dump):
+        try:
+            return clean_value(val.model_dump())
+        except Exception as e:
+            logger.warning("Failed to model_dump value of type %s: %s", type(val).__name__, e)
+            return str(val)
+
+    # Pydantic v1 check
+    if hasattr(val, "dict") and callable(val.dict) and not isinstance(val, dict):
+        try:
+            return clean_value(val.dict())
+        except Exception as e:
+            logger.warning("Failed to dict() value of type %s: %s", type(val).__name__, e)
+            return str(val)
+
+    # Dataclass check
+    if dataclasses.is_dataclass(val) and not isinstance(val, type):
+        try:
+            return clean_value(dataclasses.asdict(val))
+        except Exception as e:
+            logger.warning("Failed to asdict dataclass of type %s: %s", type(val).__name__, e)
+            return str(val)
+
+    # Pint Quantity check
     if hasattr(val, "m"):
         val = val.m
 
@@ -42,7 +68,7 @@ def clean_value(val: Any) -> Any:
         elif val.size == 0:
             return ""
         else:
-            val = val.tolist()
+            return [clean_value(x) for x in val.tolist()]
 
     if hasattr(val, "item") and callable(val.item):
         try:
@@ -67,11 +93,33 @@ def clean_value(val: Any) -> Any:
     if isinstance(val, dict):
         return {str(k): clean_value(v) for k, v in val.items()}
 
+    # General custom object with __dict__ check
+    if hasattr(val, "__dict__") and not isinstance(val, (type, dict, list, tuple)):
+        try:
+            return clean_value(val.__dict__)
+        except Exception as e:
+            logger.warning("Failed to extract __dict__ from %s: %s", type(val).__name__, e)
+            return str(val)
+
     try:
         return str(val)
     except Exception as e:
-        logger.warning("Failed to stringify value %s: %s", val, e)
+        logger.warning("Failed to stringify value of type %s: %s", type(val).__name__, e)
         return ""
+
+
+def format_attr_value(val: Any) -> str:
+    """Formats attribute values (primitives, dicts, lists) into safe strings for UI inputs and labels."""
+    cleaned = clean_value(val)
+    if isinstance(cleaned, (dict, list)):
+        try:
+            return json.dumps(cleaned)
+        except Exception as e:
+            logger.debug("json.dumps failed for cleaned value of type %s: %s", type(cleaned).__name__, e)
+            return str(cleaned)
+    return str(cleaned) if cleaned is not None else ""
+
+
 
 
 def clean_data(d: Any) -> Any:

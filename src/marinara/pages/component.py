@@ -11,9 +11,12 @@ from marinara.utils import (
     clean_data,
     get_unit_str,
     format_constraint,
+    format_attr_value,
 )
+from marinara.graphing import DEFAULT_MAX_ARRAY_TRACES
 
 logger = logging.getLogger(__name__)
+
 
 # ZeroMQ Context Setup
 CTXT = zmq.Context()
@@ -21,6 +24,7 @@ TOUT = 1000
 kwargs = dict(timeout=TOUT, context=CTXT)
 
 dash.register_page(__name__, path_template="/components/<port>/<name>")
+
 
 
 def layout(port: int, name: str, **_):
@@ -140,14 +144,14 @@ def layout(port: int, name: str, **_):
                 control = dcc.Input(
                     id={"type": "component-attr-input", "index": k},
                     type="text",
-                    value=val,
+                    value=format_attr_value(val),
                     debounce=True,
                     className="attr-control mutable-input",
                 )
         else:
             control = dcc.Input(
                 id={"type": "component-attr-readonly", "index": k},
-                value=str(val) if val is not None else "N/A",
+                value=format_attr_value(val) if val is not None else "N/A",
                 disabled=True,
                 className="attr-control immutable-input",
             )
@@ -375,7 +379,7 @@ def periodic_attrs_update(_, port, name, current_vals, units_dict):
 
 # UI displays updates from Stores
 @callback(
-    Output({"type": "component-attr-readonly", "index": MATCH}, "children"),
+    Output({"type": "component-attr-readonly", "index": MATCH}, "value"),
     Input("component-attrs-vals-store", "data"),
     State({"type": "component-attr-readonly", "index": MATCH}, "id"),
     prevent_initial_call=True,
@@ -383,7 +387,7 @@ def periodic_attrs_update(_, port, name, current_vals, units_dict):
 def update_readonly_attr(vals, id):
     k = id["index"]
     val = vals.get(k)
-    return str(val) if val is not None else "N/A"
+    return format_attr_value(val) if val is not None else "N/A"
 
 
 # Input handler for read-write attribute updates via Apply button
@@ -403,19 +407,19 @@ def set_component_attribute(n_clicks, value, id, port, name):
     try:
         ret = passata.set_attr(**kwargs, port=port, name=name, attr=k, val=value)
         if ret.success:
-            return clean_value(ret.data)
+            return format_attr_value(ret.data)
         # If set_attr returned success=False, fetch current value to revert
         current = passata.get_attrs(**kwargs, port=port, name=name, attrs=[k]).data.get(
             k
         )
-        return clean_value(current)
+        return format_attr_value(current)
     except Exception as e:
         logger.warning(f"Failed to set attribute {k} on component {name}: {e}")
         try:
             current = passata.get_attrs(
                 **kwargs, port=port, name=name, attrs=[k]
             ).data.get(k)
-            return clean_value(current)
+            return format_attr_value(current)
         except Exception:
             return dash.no_update
 
@@ -487,18 +491,46 @@ def component_data_graph(ds, theme, align_time):
                 formatted_x.append(t)
         x_title = "Time (Local)"
 
+    # Check if a secondary spectral coordinate exists (any coordinate other than 'uts')
+    spectral_coord_name = None
+    spectral_data = []
+    spectral_unit_str = ""
+    coords = ds.get("coords", {})
+    for c_name, c_info in coords.items():
+        if c_name != "uts" and isinstance(c_info, dict) and "data" in c_info:
+            spectral_coord_name = c_name
+            spectral_data = c_info.get("data", [])
+            spectral_unit = c_info.get("attrs", {}).get("units", "")
+            spectral_unit_str = get_unit_str(spectral_unit)
+            break
+
     data = []
+    is_spectrum_plot = False
+
     for key in keys:
         y_raw = ds["data_vars"][key]["data"]
         is_multidimensional = False
         if len(y_raw) > 0 and isinstance(y_raw[0], (list, tuple)):
             is_multidimensional = True
 
-        if is_multidimensional:
+        if is_multidimensional and spectral_coord_name and len(spectral_data) > 0:
+            is_spectrum_plot = True
+            latest_y = y_raw[-1] if isinstance(y_raw[-1], (list, tuple)) else []
+            data.append(
+                {
+                    "x": spectral_data,
+                    "y": latest_y,
+                    "name": f"{key} (latest spectrum)",
+                    "type": "scatter",
+                    "mode": "lines",
+                }
+            )
+        elif is_multidimensional:
             max_len = max(
                 len(item) for item in y_raw if isinstance(item, (list, tuple))
             )
-            for i in range(max_len):
+            safe_max_len = min(max_len, DEFAULT_MAX_ARRAY_TRACES)
+            for i in range(safe_max_len):
                 sub_y = []
                 for item in y_raw:
                     if isinstance(item, (list, tuple)) and i < len(item):
@@ -524,6 +556,14 @@ def component_data_graph(ds, theme, align_time):
                     "mode": "lines+markers",
                 }
             )
+
+    if is_spectrum_plot and spectral_coord_name:
+        coord_label = (
+            "Frequency"
+            if spectral_coord_name.lower() in ("freq", "frequency")
+            else spectral_coord_name.capitalize()
+        )
+        x_title = f"{coord_label} ({spectral_unit_str})" if spectral_unit_str else coord_label
 
     layout = {
         "autosize": True,

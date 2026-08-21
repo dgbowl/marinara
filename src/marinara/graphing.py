@@ -7,6 +7,7 @@ from marinara.utils import clean_data, clean_value
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_POINTS = 50
+DEFAULT_MAX_ARRAY_TRACES = 20
 
 
 def build_base_figure(
@@ -97,7 +98,7 @@ def extract_telemetry_points(ds_dict: dict[str, Any], cname: str) -> dict[str, t
         if last_idx < len(data_list):
             raw_val = data_list[last_idx]
             if isinstance(raw_val, (list, tuple)):
-                for i, sub_val in enumerate(raw_val):
+                for i, sub_val in enumerate(raw_val[:DEFAULT_MAX_ARRAY_TRACES]):
                     trace_key = f"{cname}/{var_name}[{i}]"
                     points[trace_key] = (time_str, clean_value(sub_val))
             else:

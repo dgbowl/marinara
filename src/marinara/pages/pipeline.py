@@ -3,7 +3,7 @@ from dash import html, dcc, callback, set_props, Input, Output, State, MATCH
 from tomato import passata, tomato
 from zmq import Context
 import logging
-from marinara.utils import get_field, clean_value, get_unit_str, format_constraint
+from marinara.utils import get_field, clean_value, get_unit_str, format_constraint, format_attr_value
 from marinara.icons import get_icon
 
 logger = logging.getLogger(__name__)
@@ -101,7 +101,7 @@ def object_from_attrs(cname, attr, params, value):
             },
             disabled=False if is_rw else True,
             debounce=True,
-            value=value,
+            value=format_attr_value(value),
             type="text",
             className="attr-control mutable-input"
             if is_rw

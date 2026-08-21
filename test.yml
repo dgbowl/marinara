@@ -1,0 +1,18 @@
+version: "2.1"
+sample:
+    name: test
+method:
+  - component_role: vna
+    max_duration: 1 minutes
+    sampling_interval: 10 seconds
+    technique_name: linear_sweep
+    task_params:
+        bandwidth: 10000
+        power_level: 3
+        sweep_nports: 1
+        sweep_params:
+          - start: 5500000000
+            stop: 7500000000
+            points: 10001
+settings:
+    unlock_when_done: true
