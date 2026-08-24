@@ -1,16 +1,19 @@
-import dash
-from dash import html, dcc, callback, set_props, Input, Output, State, MATCH
-from tomato import passata, tomato
-from zmq import Context
 import logging
-from marinara.utils import get_field, clean_value, get_unit_str, format_constraint, format_attr_value
+import dash
+from dash import MATCH, Input, Output, State, callback, dcc, html, set_props
 from marinara.icons import get_icon
+from marinara.utils import (
+    clean_value,
+    format_attr_value,
+    format_constraint,
+    get_field,
+    get_unit_str,
+    kwargs,
+    parse_input_value,
+)
+from tomato import passata, tomato
 
 logger = logging.getLogger(__name__)
-
-CTXT = Context()
-TOUT = 1000
-kwargs = dict(timeout=TOUT, context=CTXT)
 
 
 def get_data_fields(data):
@@ -86,7 +89,7 @@ def object_from_attrs(cname, attr, params, value):
                 "index": f"{cname}/{attr}",
             },
             disabled=False if is_rw else True,
-            options=sorted(list(options)),
+            options=sorted(options),
             value=value,
             clearable=False,
             className="attr-control mutable-input"
@@ -485,23 +488,35 @@ def component_attr_interaction(n_clicks, value, id, disabled, arw, port, name):
     if n_clicks is None:
         return dash.no_update
     cname, attr = id["index"].split("/")
-    if arw[cname][attr] and not disabled:
+    if arw and arw.get(cname, {}).get(attr) and not disabled:
+        parsed_val = parse_input_value(value)
         try:
             ret = passata.set_attr(
-                **kwargs, port=port, name=cname, attr=attr, val=value
+                **kwargs, port=port, name=cname, attr=attr, val=parsed_val
             )
             if ret.success:
-                return clean_value(ret.data)
-            current = passata.get_attrs(
+                return format_attr_value(ret.data)
+            get_ret = passata.get_attrs(
                 **kwargs, port=port, name=cname, attrs=[attr]
-            ).data.get(attr)
-            return clean_value(current)
-        except Exception:
+            )
+            current = (
+                get_ret.data.get(attr)
+                if (get_ret.success and isinstance(get_ret.data, dict))
+                else None
+            )
+            return format_attr_value(current)
+        except Exception as e:
+            logger.warning(f"Failed to set attribute {attr} on component {cname}: {e}")
             try:
-                current = passata.get_attrs(
+                get_ret = passata.get_attrs(
                     **kwargs, port=port, name=cname, attrs=[attr]
-                ).data.get(attr)
-                return clean_value(current)
+                )
+                current = (
+                    get_ret.data.get(attr)
+                    if (get_ret.success and isinstance(get_ret.data, dict))
+                    else None
+                )
+                return format_attr_value(current)
             except Exception:
                 return dash.no_update
     return dash.no_update

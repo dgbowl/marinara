@@ -12,7 +12,14 @@ sys.path.insert(0, os.path.abspath("src"))
 import dash
 dash.register_page = lambda *args, **kwargs: None
 
-from marinara.utils import clean_value, format_attr_value, clean_data
+from marinara.utils import (
+    clean_value,
+    format_attr_value,
+    clean_data,
+    parse_input_value,
+    parse_running_status,
+    fetch_component_state,
+)
 from marinara.graphing import extract_telemetry_points, DEFAULT_MAX_ARRAY_TRACES
 from marinara.pages.component import component_data_graph
 
@@ -111,6 +118,27 @@ class TestPicoVNASupport(unittest.TestCase):
         self.assertIn("5500000000", fmt)
         self.assertIn('"points": 10001', fmt)
 
+    def test_parse_input_value(self):
+        self.assertEqual(parse_input_value(""), "")
+        self.assertEqual(parse_input_value(140), 140)
+        self.assertEqual(parse_input_value("140"), "140")
+        self.assertEqual(parse_input_value("true"), True)
+        self.assertEqual(parse_input_value("FALSE"), False)
+        
+        # JSON list of dicts
+        raw_json = '[{"start": 5.5e9, "stop": 7.5e9, "points": 10001}]'
+        parsed = parse_input_value(raw_json)
+        self.assertIsInstance(parsed, list)
+        self.assertEqual(len(parsed), 1)
+        self.assertEqual(parsed[0]["start"], 5500000000.0)
+        self.assertEqual(parsed[0]["points"], 10001)
+
+        # Python literal syntax (single quotes)
+        raw_py = "[{'start': 1000.0, 'stop': 2000.0, 'step': 10.0}]"
+        parsed_py = parse_input_value(raw_py)
+        self.assertIsInstance(parsed_py, list)
+        self.assertEqual(parsed_py[0]["start"], 1000.0)
+
     def test_component_data_graph_spectral(self):
         mock_ds = {
             "coords": {
@@ -192,6 +220,41 @@ class TestPicoVNASupport(unittest.TestCase):
         self.assertIn("comp1/huge_array[0]", points)
         self.assertIn(f"comp1/huge_array[{DEFAULT_MAX_ARRAY_TRACES - 1}]", points)
         self.assertNotIn(f"comp1/huge_array[{DEFAULT_MAX_ARRAY_TRACES}]", points)
+
+
+    def test_parse_running_status(self):
+        # Bool false
+        running_bool, tech_name, text, badge = parse_running_status(False)
+        self.assertFalse(running_bool)
+        self.assertIsNone(tech_name)
+        self.assertEqual(text, "STOPPED")
+        self.assertEqual(badge, "badge badge-secondary")
+
+        # Bool true
+        running_bool, tech_name, text, badge = parse_running_status(True)
+        self.assertTrue(running_bool)
+        self.assertIsNone(tech_name)
+        self.assertEqual(text, "RUNNING")
+        self.assertEqual(badge, "badge badge-success")
+
+        # Dict with technique_name
+        running_bool, tech_name, text, badge = parse_running_status(
+            {"technique_name": "frequency_sweep"}
+        )
+        self.assertTrue(running_bool)
+        self.assertEqual(tech_name, "frequency_sweep")
+        self.assertEqual(text, "RUNNING (frequency_sweep)")
+        self.assertEqual(badge, "badge badge-success")
+
+        # Object with technique_name
+        class MockStatusObj:
+            technique_name = "vna_calibration"
+
+        running_bool, tech_name, text, badge = parse_running_status(MockStatusObj())
+        self.assertTrue(running_bool)
+        self.assertEqual(tech_name, "vna_calibration")
+        self.assertEqual(text, "RUNNING (vna_calibration)")
+        self.assertEqual(badge, "badge badge-success")
 
 
 if __name__ == "__main__":

@@ -1,9 +1,9 @@
-import dash
-from dash import html, callback, Input, Output, State
 import json
-from marinara.utils import clean_data
-
+import dash
+from dash import Input, Output, State, callback, html
 from marinara.icons import get_icon
+from marinara.utils import CTXT, clean_data
+from tomato import ketchup
 
 dash.register_page(__name__, path="/jobs", title="Jobs")
 
@@ -55,9 +55,6 @@ layout = html.Div(
 )
 def update_jobs_list(n_clicks, port):
     try:
-        import zmq
-        from tomato import ketchup
-        CTXT = zmq.Context()
         ret = ketchup.status(port=port, context=CTXT, verbosity=20, jobids=[])
         if not ret.success:
             if ret.msg == "job queue is empty":

@@ -8,19 +8,17 @@ from marinara.graphing import (
 )
 from marinara.icons import get_icon
 from marinara.utils import (
+    CTXT,
+    PORT,
+    TOUT,
     clean_value,
     ensure_drivers_registered,
     get_field,
+    kwargs,
 )
 from tomato import passata, tomato
-import zmq
 
 logger = logging.getLogger(__name__)
-
-CTXT = zmq.Context()
-TOUT = 1000
-PORT = 1234
-kwargs = dict(timeout=TOUT, context=CTXT)
 
 dash.register_page(__name__, path_template="/", title="Marinara")
 

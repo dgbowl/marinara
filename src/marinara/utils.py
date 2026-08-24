@@ -7,7 +7,7 @@ from typing import Any, Optional, Union
 from dash import dcc, html
 import numpy as np
 import pint
-import tomato
+from tomato import passata, tomato
 import zmq
 
 logger = logging.getLogger(__name__)
@@ -118,6 +118,29 @@ def format_attr_value(val: Any) -> str:
             logger.debug("json.dumps failed for cleaned value of type %s: %s", type(cleaned).__name__, e)
             return str(cleaned)
     return str(cleaned) if cleaned is not None else ""
+
+
+def parse_input_value(val: Any) -> Any:
+    """Parses user string inputs from the UI into appropriate Python types (lists, dicts, numbers, booleans) if applicable."""
+    if not isinstance(val, str):
+        return val
+    s = val.strip()
+    if not s:
+        return ""
+    if s.lower() == "true":
+        return True
+    if s.lower() == "false":
+        return False
+    if s.startswith(("[", "{")):
+        try:
+            return json.loads(s)
+        except Exception:
+            try:
+                import ast
+                return ast.literal_eval(s)
+            except Exception:
+                pass
+    return val
 
 
 
@@ -335,3 +358,109 @@ def ensure_drivers_registered(daemon: Any) -> None:
                     drv_port,
                     e,
                 )
+
+
+def fetch_component_state(port: int, name: str) -> dict[str, Any]:
+    """
+    Fetches the running status, attribute metadata, attribute values, and units for a component.
+    Coerces all attribute values to Python literals via clean_value.
+
+    Returns:
+        Dict containing:
+            'running': bool or status object/dict
+            'attrs_dict': dict mapping attr_name -> metadata dict/object
+            'attrs_vals': dict mapping attr_name -> cleaned Python literal value
+            'attrs_units': dict mapping attr_name -> unit string or None
+            'attrs_rw': dict mapping attr_name -> bool
+    """
+    try:
+        status_ret = passata.status(**kwargs, port=port, name=name)
+        if status_ret.success:
+            if isinstance(status_ret.data, dict):
+                running = status_ret.data.get("running", False)
+            else:
+                running = getattr(status_ret.data, "running", False)
+        else:
+            running = False
+    except Exception as e:
+        logger.warning(
+            "Failed to fetch status for component %s on port %s: %s",
+            name,
+            port,
+            e,
+        )
+        running = False
+
+    try:
+        attrs_ret = passata.attrs(**kwargs, port=port, name=name)
+        attrs_dict = attrs_ret.data if (attrs_ret.success and attrs_ret.data) else {}
+    except Exception as e:
+        logger.warning(
+            "Failed to fetch attributes for component %s on port %s: %s",
+            name,
+            port,
+            e,
+        )
+        attrs_dict = {}
+
+    try:
+        avals_ret = passata.get_attrs(
+            **kwargs, port=port, name=name, attrs=list(attrs_dict.keys())
+        )
+        avals_dict = avals_ret.data if (avals_ret.success and avals_ret.data) else {}
+    except Exception as e:
+        logger.warning(
+            "Failed to fetch attribute values for component %s on port %s: %s",
+            name,
+            port,
+            e,
+        )
+        avals_dict = {}
+
+    init_attrs_vals = {}
+    init_attrs_units = {}
+    init_attrs_rw = {}
+
+    for k, v in attrs_dict.items():
+        val = avals_dict.get(k)
+        unit = get_field(v, "units")
+        init_attrs_vals[k] = clean_value(val)
+        init_attrs_units[k] = unit
+        init_attrs_rw[k] = bool(get_field(v, "rw", False))
+
+    return {
+        "running": running,
+        "attrs_dict": attrs_dict,
+        "attrs_vals": init_attrs_vals,
+        "attrs_units": init_attrs_units,
+        "attrs_rw": init_attrs_rw,
+    }
+
+
+def parse_running_status(running: Any) -> tuple[bool, Optional[str], str, str]:
+    """
+    Parses component running status.
+
+    Returns:
+        tuple of (running_bool, technique_name, status_text, status_badge_class)
+    """
+    if isinstance(running, bool):
+        running_bool = running
+        technique_name = None
+    else:
+        running_bool = bool(running)
+        if isinstance(running, dict):
+            technique_name = running.get("technique_name")
+        else:
+            technique_name = getattr(running, "technique_name", None)
+
+    status_badge_class = (
+        "badge badge-success" if running_bool else "badge badge-secondary"
+    )
+    status_text = (
+        f"RUNNING ({technique_name})"
+        if technique_name
+        else ("RUNNING" if running_bool else "STOPPED")
+    )
+    return running_bool, technique_name, status_text, status_badge_class
+

@@ -1,7 +1,8 @@
 import dash
-from dash import html, dcc, callback, Input, Output, State
-
+from dash import Input, Output, State, callback, dcc, html
 from marinara.icons import get_icon
+from marinara.utils import kwargs
+from tomato import tomato
 
 dash.register_page(__name__, path="/pipelines", title="Pipelines")
 
@@ -47,11 +48,7 @@ layout = html.Div(
 )
 def update_pipelines(n_clicks, n_intervals, port):
     try:
-        import zmq
-        from tomato import tomato
-
-        CTXT = zmq.Context()
-        ret = tomato.status(stgrp="tomato", port=port, timeout=1000, context=CTXT)
+        ret = tomato.status(stgrp="tomato", port=port, **kwargs)
         if not ret.success:
             return html.Div(
                 f"No data found. Error: {ret.msg}. Please check the reload button above.",

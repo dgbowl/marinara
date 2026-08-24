@@ -1,6 +1,6 @@
 version: "2.1"
 sample:
-    name: test
+    name: "1"
 method:
   - component_role: vna
     max_duration: 1 minutes

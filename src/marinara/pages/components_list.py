@@ -1,10 +1,9 @@
 import logging
 import dash
-from dash import Input, Output, State, callback, dcc, html
+from dash import Input, Output, State, callback, html
 from marinara.icons import get_icon
-from marinara.utils import format_obj
+from marinara.utils import format_obj, kwargs
 from tomato import tomato
-import zmq
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +12,6 @@ dash.register_page(__name__, path="/components", title="Components")
 layout = html.Div(
     className="dashboard-container",
     children=[
-        dcc.Interval(id="components-load-interval", interval=500, max_intervals=1),
         html.Div(
             className="theme-header",
             children=[
@@ -47,13 +45,11 @@ layout = html.Div(
 @callback(
     Output("tomato-list-components", "children"),
     Input("components-reload-btn", "n_clicks"),
-    Input("components-load-interval", "n_intervals"),
     State("tomato-port", "data"),
 )
-def update_components(n_clicks, n_intervals, port):
+def update_components(n_clicks, port):
     try:
-        CTXT = zmq.Context()
-        ret = tomato.status(stgrp="components", port=port, timeout=1000, context=CTXT)
+        ret = tomato.status(stgrp="components", port=port, **kwargs)
         if not ret.success:
             return html.Div(
                 f"No data found. Error: {ret.msg}. Please check the reload button above.",

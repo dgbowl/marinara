@@ -1,15 +1,14 @@
 import dash
-from dash import html, dcc, callback, Input, Output, State
-from marinara.utils import format_obj
-
+from dash import Input, Output, State, callback, html
 from marinara.icons import get_icon
+from marinara.utils import format_obj, kwargs
+from tomato import tomato
 
 dash.register_page(__name__, path="/devices", title="Devices")
 
 layout = html.Div(
     className="dashboard-container",
     children=[
-        dcc.Interval(id="devices-load-interval", interval=500, max_intervals=1),
         html.Div(
             className="theme-header",
             children=[
@@ -43,16 +42,11 @@ layout = html.Div(
 @callback(
     Output("tomato-list-devices", "children"),
     Input("devices-reload-btn", "n_clicks"),
-    Input("devices-load-interval", "n_intervals"),
     State("tomato-port", "data"),
 )
-def update_devices(n_clicks, n_intervals, port):
+def update_devices(n_clicks, port):
     try:
-        import zmq
-        from tomato import tomato
-
-        CTXT = zmq.Context()
-        ret = tomato.status(stgrp="tomato", port=port, timeout=1000, context=CTXT)
+        ret = tomato.status(stgrp="tomato", port=port, **kwargs)
         if not ret.success:
             return html.Div(
                 f"No data found. Error: {ret.msg}. Please check the reload button above.",

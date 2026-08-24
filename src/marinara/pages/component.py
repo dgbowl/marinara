@@ -1,92 +1,34 @@
-import dash
-from dash import html, dcc, callback, Input, State, Output, MATCH, ALL
-from tomato import passata
-import zmq
-import xarray as xr
+import json
 import logging
 from datetime import datetime, timezone
-from marinara.utils import (
-    get_field,
-    clean_value,
-    clean_data,
-    get_unit_str,
-    format_constraint,
-    format_attr_value,
-)
+import dash
+from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
 from marinara.graphing import DEFAULT_MAX_ARRAY_TRACES
+from marinara.utils import (
+    clean_data,
+    clean_value,
+    fetch_component_state,
+    format_attr_value,
+    format_constraint,
+    get_field,
+    get_unit_str,
+    kwargs,
+    parse_input_value,
+    parse_running_status,
+)
+from tomato import passata
+import xarray as xr
 
 logger = logging.getLogger(__name__)
-
-
-# ZeroMQ Context Setup
-CTXT = zmq.Context()
-TOUT = 1000
-kwargs = dict(timeout=TOUT, context=CTXT)
 
 dash.register_page(__name__, path_template="/components/<port>/<name>")
 
 
-
-def layout(port: int, name: str, **_):
-    port = int(port)
-
-    # Safely fetch initial state of the component
-    try:
-        status_ret = passata.status(**kwargs, port=port, name=name)
-        running = status_ret.data["running"] if status_ret.success else False
-    except Exception as e:
-        logger.warning(f"Failed to fetch initial status for component {name}: {e}")
-        running = False
-
-    try:
-        attrs_ret = passata.attrs(**kwargs, port=port, name=name)
-        attrs_dict = attrs_ret.data if attrs_ret.success else {}
-    except Exception as e:
-        logger.warning(f"Failed to fetch attributes for component {name}: {e}")
-        attrs_dict = {}
-
-    try:
-        avals_ret = passata.get_attrs(
-            **kwargs, port=port, name=name, attrs=list(attrs_dict.keys())
-        )
-        avals_dict = avals_ret.data if avals_ret.success else {}
-    except Exception as e:
-        logger.warning(f"Failed to fetch attribute values for component {name}: {e}")
-        avals_dict = {}
-
-    # Initialize store datasets
-    init_attrs_vals = {}
-    init_attrs_units = {}
-    init_attrs_rw = {}
-
-    for k, v in attrs_dict.items():
-        val = avals_dict.get(k)
-        unit = get_field(v, "units")
-        init_attrs_vals[k] = clean_value(val)
-        init_attrs_units[k] = unit
-        init_attrs_rw[k] = get_field(v, "rw", False)
-
-    # Status Badge
-    if isinstance(running, bool):
-        running_bool = running
-        task_name = None
-    else:
-        running_bool = bool(running)
-        if isinstance(running, dict):
-            task_name = running.get("technique_name")
-        else:
-            task_name = getattr(running, "technique_name", None)
-
-    status_badge_class = (
-        "badge badge-success" if running_bool else "badge badge-secondary"
-    )
-    status_text = (
-        f"RUNNING ({task_name})"
-        if task_name
-        else ("RUNNING" if running_bool else "STOPPED")
-    )
-
-    header = html.Div(
+def create_component_header(
+    name: str, status_text: str, status_badge_class: str
+) -> html.Div:
+    """Creates the header component for the component detail page."""
+    return html.Div(
         children=[
             html.Div(
                 children=[
@@ -121,6 +63,23 @@ def layout(port: int, name: str, **_):
         className="theme-header",
     )
 
+
+def layout(port: int, name: str, **_):
+    port = int(port)
+
+    # Safely fetch initial state of the component via shared utility
+    state = fetch_component_state(port, name)
+    running = state["running"]
+    attrs_dict = state["attrs_dict"]
+    init_attrs_vals = state["attrs_vals"]
+    init_attrs_units = state["attrs_units"]
+    init_attrs_rw = state["attrs_rw"]
+
+    # Status Badge
+    _, _, status_text, status_badge_class = parse_running_status(running)
+
+    header = create_component_header(name, status_text, status_badge_class)
+
     # Build attribute row layout
     attr_rows = []
     for k, v in attrs_dict.items():
@@ -135,7 +94,7 @@ def layout(port: int, name: str, **_):
             if options:
                 control = dcc.Dropdown(
                     id={"type": "component-attr-input", "index": k},
-                    options=sorted(list(options)),
+                options=sorted(options),
                     value=val,
                     clearable=False,
                     className="attr-control mutable-input",
@@ -355,24 +314,7 @@ def periodic_attrs_update(_, port, name, current_vals, units_dict):
         val = avals_dict.get(k)
         new_vals[k] = clean_value(val)
 
-    if isinstance(running, bool):
-        running_bool = running
-        task_name = None
-    else:
-        running_bool = bool(running)
-        if isinstance(running, dict):
-            task_name = running.get("technique_name")
-        else:
-            task_name = getattr(running, "technique_name", None)
-
-    status_badge_class = (
-        "badge badge-success" if running_bool else "badge badge-secondary"
-    )
-    status_text = (
-        f"RUNNING ({task_name})"
-        if task_name
-        else ("RUNNING" if running_bool else "STOPPED")
-    )
+    _, _, status_text, status_badge_class = parse_running_status(running)
 
     return new_vals, status_text, status_badge_class
 
@@ -404,21 +346,28 @@ def set_component_attribute(n_clicks, value, id, port, name):
     if n_clicks is None:
         return dash.no_update
     k = id["index"]
+    parsed_val = parse_input_value(value)
     try:
-        ret = passata.set_attr(**kwargs, port=port, name=name, attr=k, val=value)
+        ret = passata.set_attr(**kwargs, port=port, name=name, attr=k, val=parsed_val)
         if ret.success:
             return format_attr_value(ret.data)
         # If set_attr returned success=False, fetch current value to revert
-        current = passata.get_attrs(**kwargs, port=port, name=name, attrs=[k]).data.get(
-            k
+        get_ret = passata.get_attrs(**kwargs, port=port, name=name, attrs=[k])
+        current = (
+            get_ret.data.get(k)
+            if (get_ret.success and isinstance(get_ret.data, dict))
+            else None
         )
         return format_attr_value(current)
     except Exception as e:
         logger.warning(f"Failed to set attribute {k} on component {name}: {e}")
         try:
-            current = passata.get_attrs(
-                **kwargs, port=port, name=name, attrs=[k]
-            ).data.get(k)
+            get_ret = passata.get_attrs(**kwargs, port=port, name=name, attrs=[k])
+            current = (
+                get_ret.data.get(k)
+                if (get_ret.success and isinstance(get_ret.data, dict))
+                else None
+            )
             return format_attr_value(current)
         except Exception:
             return dash.no_update
@@ -477,7 +426,7 @@ def component_data_graph(ds, theme, align_time):
                 formatted_x.append(f"+{round(t - start_t, 1)}s")
             except Exception:
                 formatted_x.append(t)
-        x_title = "Relative Time (Seconds)"
+        x_title = "Elapsed time (s)"
     else:
         formatted_x = []
         for t in raw_x:
@@ -489,7 +438,7 @@ def component_data_graph(ds, theme, align_time):
                 )
             except Exception:
                 formatted_x.append(t)
-        x_title = "Time (Local)"
+        x_title = "Local time"
 
     # Check if a secondary spectral coordinate exists (any coordinate other than 'uts')
     spectral_coord_name = None
@@ -651,7 +600,7 @@ def render_graphs_list(active_ids, titles_dict, ds):
         )
         
     titles_dict = titles_dict or {}
-    vars_list = sorted(list(ds.get("data_vars", {}).keys())) if ds else []
+    vars_list = sorted(ds.get("data_vars", {}).keys()) if ds else []
     
     graphs_layouts = []
     for idx, i in enumerate(active_ids):
@@ -802,8 +751,8 @@ def update_graph_titles(title_values, current_titles):
 def populate_dynamic_selectors(ds):
     if ds is None:
         return [{"label": "Time (uts)", "value": "uts"}], []
-    coords_list = sorted(list(ds.get("coords", {}).keys()))
-    vars_list = sorted(list(ds.get("data_vars", {}).keys()))
+    coords_list = sorted(ds.get("coords", {}).keys())
+    vars_list = sorted(ds.get("data_vars", {}).keys())
     x_options = [
         {"label": "Time (uts)", "value": "uts"}
         if c == "uts"
@@ -811,6 +760,7 @@ def populate_dynamic_selectors(ds):
         for c in coords_list
     ]
     if not x_options:
+        logger.warning("No coordinate options found in dataset — defaulting to 'uts'")
         x_options = [{"label": "Time (uts)", "value": "uts"}]
     y_options = [{"label": v, "value": v} for v in vars_list]
     return x_options, y_options
@@ -857,7 +807,7 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
                 )
             except Exception:
                 x_data.append(t)
-        x_title = "Time (Local)"
+        x_title = "Local time"
     else:
         if x_var in ds.get("data_vars", {}):
             x_data = ds["data_vars"][x_var]["data"]
