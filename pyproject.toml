@@ -44,6 +44,8 @@ Issues = "https://github.com/dgbowl/marinara/issues"
 Repository = "https://github.com/dgbowl/marinara/"
 
 [project.scripts]
+marinara = "marinara:run_marinara"
+
 
 [tool.setuptools-git-versioning]
 enabled = true

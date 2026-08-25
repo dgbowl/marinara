@@ -1,15 +1,23 @@
 import importlib.metadata
+import logging
+import warnings
+from asyncio import Future
+
 import dash
-from dash import html, dcc, Output, Input, State
+from dash import Input, Output, State, dcc, html
+
 from marinara.icons import get_icon
 
 try:
     __version__ = importlib.metadata.version("marinara")
-except Exception:
+except importlib.metadata.PackageNotFoundError:
     __version__ = "0.0.1"
 
 app = dash.Dash(
-    __name__, use_pages=True, suppress_callback_exceptions=True, title="Marinara"
+    __name__,
+    use_pages=True,
+    suppress_callback_exceptions=True,
+    title="Marinara",
 )
 
 sidebar = html.Div(
@@ -192,16 +200,19 @@ sidebar = html.Div(
                 html.Div(
                     children=[
                         html.Span("Tomato Port: 1234", id="sidebar-port-display"),
-                        html.Span(f"v{__version__}", style={"margin-left": "auto", "opacity": "0.7"}),
+                        html.Span(
+                            f"v{__version__}",
+                            style={"margin-left": "auto", "opacity": "0.7"},
+                        ),
                     ],
                     className="text-secondary",
                     style={
-                        "font-size": "11px", 
-                        "margin-top": "4px", 
-                        "display": "flex", 
-                        "justify-content": "space-between", 
+                        "font-size": "11px",
+                        "margin-top": "4px",
+                        "display": "flex",
+                        "justify-content": "space-between",
                         "width": "100%",
-                        "padding-right": "8px"
+                        "padding-right": "8px",
                     },
                 ),
             ],
@@ -345,5 +356,15 @@ def apply_sidebar_state(state):
     return "sidebar", get_icon("chevron-left", size=18), "Close the sidebar"
 
 
+def main(host: str = "0.0.0.0", port: int = 8050, loglevel: int = 20) -> None:
+    app.logger.setLevel(loglevel)
+    log_werkzeug = logging.getLogger("werkzeug")
+    log_werkzeug.setLevel(loglevel)
+    with warnings.catch_warnings():
+        if loglevel > logging.INFO:
+            warnings.simplefilter(action="ignore", category=FutureWarning)
+        app.run(debug=loglevel < logging.INFO, host=host, port=port)
+
+
 if __name__ == "__main__":
-    app.run(debug=True, host="127.0.0.1")
+    app.run(debug=True, host="127.0.0.1", port=8050)
