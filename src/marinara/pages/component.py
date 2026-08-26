@@ -171,7 +171,7 @@ def build_component_graph_card() -> html.Div:
                     dcc.Checklist(
                         options=[
                             {
-                                "label": " Show elapsed time",
+                                "label": " Relative Time (t=0)",
                                 "value": "relative",
                             }
                         ],

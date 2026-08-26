@@ -1,11 +1,13 @@
 import logging
 import dash
+import numpy as np
 from dash import MATCH, Input, Output, State, callback, dcc, html, set_props
 from marinara.icons import get_icon
 from marinara.utils import (
     clean_value,
     format_attr_value,
     format_constraint,
+    format_sigfig,
     get_unit_str,
     kwargs,
     parse_input_value,
@@ -22,6 +24,78 @@ def get_data_fields(data):
     elif isinstance(data, dict):
         return list(data.keys())
     return ["uts"]
+
+
+def get_pipeline_status_and_button_config(jobid=None, is_ready=False):
+    """Returns (status_text, status_class, btn_text, btn_disabled, sampleid_disabled, btn_style) based on pipeline state."""
+    is_executing = bool(jobid)
+
+    if is_executing:
+        status_text = f"Executing (Job #{jobid})"
+        status_class = "badge badge-primary"
+        btn_text = "Executing"
+        btn_disabled = True
+        sampleid_disabled = True
+        btn_style = {
+            "margin-left": "10px",
+            "background-color": "var(--accent-color)",
+            "color": "white",
+            "border": "none",
+            "padding": "8px 16px",
+            "border-radius": "4px",
+            "cursor": "not-allowed",
+            "font-weight": "600",
+            "font-size": "13px",
+            "opacity": "0.6",
+            "flex-shrink": "0",
+        }
+    elif is_ready:
+        status_text = "Ready"
+        status_class = "badge badge-success"
+        btn_text = "Eject"
+        btn_disabled = False
+        sampleid_disabled = True
+        btn_style = {
+            "margin-left": "10px",
+            "background-color": "#ef4444",
+            "color": "white",
+            "border": "none",
+            "padding": "8px 16px",
+            "border-radius": "4px",
+            "cursor": "pointer",
+            "font-weight": "600",
+            "font-size": "13px",
+            "opacity": "1.0",
+            "flex-shrink": "0",
+        }
+    else:
+        status_text = "Idle (Not Ready)"
+        status_class = "badge badge-secondary"
+        btn_text = "Set Ready"
+        btn_disabled = False
+        sampleid_disabled = False
+        btn_style = {
+            "margin-left": "10px",
+            "background-color": "var(--accent-color)",
+            "color": "white",
+            "border": "none",
+            "padding": "8px 16px",
+            "border-radius": "4px",
+            "cursor": "pointer",
+            "font-weight": "600",
+            "font-size": "13px",
+            "opacity": "1.0",
+            "flex-shrink": "0",
+        }
+
+    return (
+        status_text,
+        status_class,
+        btn_text,
+        btn_disabled,
+        sampleid_disabled,
+        btn_style,
+    )
 
 
 def create_header_div(port: int, name: str):
@@ -148,13 +222,44 @@ def create_content_div(port, name, n_intervals):
         },
     )
 
+    (
+        status_text,
+        status_badge,
+        btn_text,
+        btn_disabled,
+        sampleid_disabled,
+        btn_style,
+    ) = get_pipeline_status_and_button_config(
+        jobid=pip.jobid, is_ready=bool(pip.ready)
+    )
+
+    status_div = html.Div(
+        children=[
+            html.Span(
+                "Pipeline Status:",
+                style={
+                    "font-weight": "600",
+                    "margin-right": "10px",
+                    "font-size": "14px",
+                    "flex-shrink": "0",
+                },
+            ),
+            html.Span(
+                status_text,
+                id="pipeline-status-badge",
+                className=status_badge,
+            ),
+        ],
+        style={"display": "flex", "align-items": "center", "flex-shrink": "0"},
+    )
+
     jobid = html.Div(
         children=[
             html.Span(
                 "Job ID:",
                 style={
                     "font-weight": "600",
-                    "margin-right": "12px",
+                    "margin-right": "10px",
                     "font-size": "14px",
                     "flex-shrink": "0",
                 },
@@ -165,15 +270,13 @@ def create_content_div(port, name, n_intervals):
                 value=pip.jobid,
                 disabled=True,
                 className="top-card-input",
-                style={"width": "100%", "height": "36px"},
+                style={"width": "100px", "height": "36px"},
             ),
         ],
         style={
             "display": "flex",
             "align-items": "center",
-            "flex": "1 1 auto",
-            "min-width": "100px",
-            "max-width": "180px",
+            "flex-shrink": "0",
         },
     )
 
@@ -183,7 +286,7 @@ def create_content_div(port, name, n_intervals):
                 "Sample ID:",
                 style={
                     "font-weight": "600",
-                    "margin-right": "12px",
+                    "margin-right": "10px",
                     "font-size": "14px",
                     "flex-shrink": "0",
                 },
@@ -191,45 +294,35 @@ def create_content_div(port, name, n_intervals):
             dcc.Input(
                 id="pipeline-input-sampleid",
                 type="text",
+                placeholder="Enter Sample ID",
                 value=str(pip.sampleid) if pip.sampleid is not None else "",
-                debounce=True,
+                disabled=sampleid_disabled,
                 className="top-card-input",
-                style={"width": "100%", "height": "36px"},
+                style={"width": "160px", "height": "36px"},
+            ),
+            html.Button(
+                btn_text,
+                id="btn-pipeline-set-ready",
+                disabled=btn_disabled,
+                className="btn",
+                style=btn_style,
+            ),
+            html.Span(
+                id="pipeline-sampleid-feedback",
+                style={
+                    "color": "#ef4444",
+                    "font-size": "13px",
+                    "margin-left": "10px",
+                    "font-weight": "500",
+                    "flex-shrink": "0",
+                },
             ),
         ],
         style={
             "display": "flex",
             "align-items": "center",
-            "flex": "1.5 1 auto",
-            "min-width": "150px",
-            "max-width": "260px",
+            "flex-shrink": "0",
         },
-    )
-
-    ready = html.Div(
-        children=[
-            html.Span(
-                "Pipeline Status:",
-                style={
-                    "font-weight": "600",
-                    "margin-right": "12px",
-                    "font-size": "14px",
-                    "flex-shrink": "0",
-                },
-            ),
-            dcc.Dropdown(
-                options=[
-                    {"label": "Idle (Not Ready)", "value": "not_ready"},
-                    {"label": "Ready", "value": "ready"},
-                ],
-                value="ready" if pip.ready else "not_ready",
-                id="pipeline-input-ready",
-                clearable=False,
-                disabled=bool(pip.jobid),
-                style={"min-width": "160px", "font-size": "14px"},
-            ),
-        ],
-        style={"display": "flex", "align-items": "center", "flex-shrink": "0"},
     )
 
     running_store = {}
@@ -425,8 +518,8 @@ def create_content_div(port, name, n_intervals):
                 value = clean_value(data[key].values[-1])
                 units = data[key].attrs.get("units", "")
 
-            if isinstance(value, float):
-                value = round(value, 3)
+            if isinstance(value, (float, np.floating)):
+                value = format_sigfig(value)
             units_str = get_unit_str(units)
 
             div_data_ch.append(
@@ -479,20 +572,19 @@ def create_content_div(port, name, n_intervals):
 
     children = [
         html.Div(
-            children=[ready, jobid, sampleid],
+            children=[status_div, sampleid, jobid],
             className="card",
             style={
                 "display": "flex",
                 "flex-direction": "row",
-                "flex-wrap": "nowrap",
+                "flex-wrap": "wrap",
                 "align-items": "center",
-                "gap": "30px",
+                "gap": "15px 30px",
                 "background-color": "var(--card-bg)",
                 "border": "1px solid var(--border-color)",
                 "padding": "15px 25px",
                 "margin-bottom": "25px",
                 "border-radius": "var(--radius)",
-                "overflow": "hidden",
             },
         ),
         html.Div(children=components, className="pipeline-component-grid"),
@@ -553,112 +645,109 @@ def component_attr_interaction(n_clicks, value, id, disabled, arw, port, name):
 
 
 @callback(
-    Output("pipeline-input-ready", "value"),
-    Output("pipeline-input-sampleid", "value"),
-    Output("pipeline-alert-container", "children"),
-    Input("pipeline-input-ready", "value"),
+    Output("pipeline-sampleid-feedback", "children"),
+    Output("btn-pipeline-set-ready", "children", allow_duplicate=True),
+    Output("btn-pipeline-set-ready", "style", allow_duplicate=True),
+    Output("pipeline-status-badge", "children", allow_duplicate=True),
+    Output("pipeline-status-badge", "className", allow_duplicate=True),
+    Output("pipeline-input-sampleid", "value", allow_duplicate=True),
+    Output("pipeline-input-sampleid", "disabled", allow_duplicate=True),
+    Input("btn-pipeline-set-ready", "n_clicks"),
+    State("btn-pipeline-set-ready", "children"),
     State("pipeline-input-sampleid", "value"),
-    State("store-pipeline-params", "data"),
     State("store-tomato-port", "data"),
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
-def pipeline_param_interaction_ready(value, sampleid, data, port, name):
-    clean_sampleid = sampleid.strip() if sampleid else ""
+def set_pipeline_ready(n_clicks, btn_text, sampleid, port, name):
+    if n_clicks is None:
+        return (
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+        )
 
-    if value == "ready":
-        if not clean_sampleid:
-            alert = html.Div(
-                [
-                    get_icon("alert-circle", size=18),
-                    html.Span(
-                        " Cannot set pipeline status to 'Ready' without a valid Sample ID. Please enter a Sample ID first.",
-                        style={"font-weight": "600", "margin-left": "8px", "flex-grow": "1"},
-                    ),
-                    html.Button(
-                        "×",
-                        id="btn-close-pipeline-alert",
-                        className="close-alert-btn",
-                        style={
-                            "background": "none",
-                            "border": "none",
-                            "font-size": "20px",
-                            "font-weight": "700",
-                            "color": "#b45309",
-                            "cursor": "pointer",
-                            "margin-left": "15px",
-                            "line-height": "1",
-                        },
-                    ),
-                ],
-                className="badge badge-warning",
-                style={
-                    "display": "flex",
-                    "align-items": "center",
-                    "padding": "12px 20px",
-                    "font-size": "14px",
-                    "border-radius": "8px",
-                    "background-color": "rgba(245, 158, 11, 0.15)",
-                    "color": "#b45309",
-                    "border": "1px solid rgba(245, 158, 11, 0.4)",
-                    "margin-bottom": "20px",
-                },
-            )
-            return "not_ready", sampleid, alert
-
+    if btn_text == "Eject":
         try:
-            tomato.pipeline_ready(**kwargs, port=port, pipeline=name)
-        except Exception as e:
-            logger.error("Failed to set pipeline ready: %s", e)
+            tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
+            (
+                status_text,
+                status_class,
+                new_btn_text,
+                _,
+                new_sampleid_disabled,
+                new_btn_style,
+            ) = get_pipeline_status_and_button_config(jobid=None, is_ready=False)
             return (
-                "not_ready",
-                sampleid,
-                html.Div(f"Error setting ready: {e}", className="text-secondary"),
+                "",
+                new_btn_text,
+                new_btn_style,
+                status_text,
+                status_class,
+                "",
+                new_sampleid_disabled,
             )
-
-        return "ready", sampleid, None
-
-    else:
-        try:
-            tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
         except Exception as e:
-            logger.error("Failed to eject pipeline sample: %s", e)
-
-        return "not_ready", "", dash.no_update
-
-
-@callback(
-    Output("pipeline-alert-container", "children", allow_duplicate=True),
-    Input("btn-close-pipeline-alert", "n_clicks"),
-    prevent_initial_call=True,
-)
-def close_pipeline_alert(n_clicks):
-    if n_clicks:
-        return None
-    return dash.no_update
-
-
-@callback(
-    Output("pipeline-alert-container", "children", allow_duplicate=True),
-    Input("pipeline-input-sampleid", "value"),
-    State("store-tomato-port", "data"),
-    State("store-pipeline-name", "data"),
-    prevent_initial_call=True,
-)
-def pipeline_param_interaction_sampleid(sampleid, port, name):
-    clean_sampleid = sampleid.strip() if sampleid else ""
-    try:
-        if not clean_sampleid:
-            tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
-            return dash.no_update
-        else:
-            tomato.pipeline_load(
-                **kwargs, port=port, pipeline=name, sampleid=clean_sampleid
+            logger.error("Failed to eject pipeline: %s", e)
+            return (
+                f"Error ejecting: {e}",
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
+                dash.no_update,
             )
-            return None
+
+    clean_sampleid = str(sampleid).strip() if sampleid is not None else ""
+    if not clean_sampleid:
+        return (
+            "Sample ID is required to set pipeline ready.",
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+        )
+
+    try:
+        tomato.pipeline_load(
+            **kwargs, port=port, pipeline=name, sampleid=clean_sampleid
+        )
+        tomato.pipeline_ready(**kwargs, port=port, pipeline=name)
+        (
+            status_text,
+            status_class,
+            new_btn_text,
+            _,
+            new_sampleid_disabled,
+            new_btn_style,
+        ) = get_pipeline_status_and_button_config(jobid=None, is_ready=True)
+        return (
+            "",
+            new_btn_text,
+            new_btn_style,
+            status_text,
+            status_class,
+            clean_sampleid,
+            new_sampleid_disabled,
+        )
     except Exception as e:
-        logger.error("Failed to update sampleid: %s", e)
-    return dash.no_update
+        logger.error("Failed to set pipeline ready: %s", e)
+        return (
+            f"Error setting ready: {e}",
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+        )
 
 
 # Periodic updates for attributes store values
@@ -815,10 +904,10 @@ def components_update_attr_display(avals, value, id, rw):
         newval = avals[cname][key]
     except Exception:
         return dash.no_update
-    if isinstance(newval, float):
-        newval = round(newval, 3)
-    if isinstance(value, float):
-        value = round(value, 3)
+    if isinstance(newval, (float, np.floating)):
+        newval = format_sigfig(newval)
+    if isinstance(value, (float, np.floating)):
+        value = format_sigfig(value)
     if newval == value:
         return dash.no_update
     else:
@@ -848,23 +937,54 @@ def components_disable_attr_running(running, id, rw):
 
 
 @callback(
-    Output("pipeline-input-ready", "value", allow_duplicate=True),
-    Output("pipeline-input-ready", "disabled"),
+    Output("pipeline-input-sampleid", "disabled"),
+    Output("btn-pipeline-set-ready", "disabled"),
+    Output("btn-pipeline-set-ready", "children", allow_duplicate=True),
+    Output("btn-pipeline-set-ready", "style", allow_duplicate=True),
+    Output("pipeline-status-badge", "children", allow_duplicate=True),
+    Output("pipeline-status-badge", "className", allow_duplicate=True),
     Output("pipeline-input-sampleid", "value", allow_duplicate=True),
     Output("pipeline-input-jobid", "value", allow_duplicate=True),
     Input("store-pipeline-params", "data"),
-    State("pipeline-input-ready", "value"),
     State("pipeline-input-sampleid", "value"),
     State("pipeline-input-jobid", "value"),
     prevent_initial_call=True,
 )
-def pipeline_update_param_display(data, ready, sampleid, jobid):
-    # Dropdown is disabled while job is executing
-    is_executing = bool(data.get("jobid"))
-    r_val = data["ready"] if data["ready"] != ready else dash.no_update
-    s_val = data["sampleid"] if data["sampleid"] != sampleid else dash.no_update
-    j_val = data["jobid"] if data["jobid"] != jobid else dash.no_update
-    return r_val, is_executing, s_val, j_val
+def pipeline_update_param_display(data, sampleid, jobid):
+    if not data:
+        return (
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+            dash.no_update,
+        )
+    (
+        status_text,
+        status_class,
+        btn_text,
+        btn_disabled,
+        input_disabled,
+        btn_style,
+    ) = get_pipeline_status_and_button_config(
+        jobid=data.get("jobid"), is_ready=(data.get("ready") == "ready")
+    )
+
+    s_val = data["sampleid"] if data.get("sampleid") != sampleid else dash.no_update
+    j_val = data["jobid"] if data.get("jobid") != jobid else dash.no_update
+    return (
+        input_disabled,
+        btn_disabled,
+        btn_text,
+        btn_style,
+        status_text,
+        status_class,
+        s_val,
+        j_val,
+    )
 
 
 @callback(
@@ -914,8 +1034,8 @@ def components_update_data_display(data, value, id):
         return dash.no_update
     else:
         val = data[cname][key]
-        if isinstance(val, float):
-            val = round(val, 3)
+        if isinstance(val, (float, np.floating)):
+            val = format_sigfig(val)
         return val
 
 
@@ -927,6 +1047,5 @@ def layout(port=None, name=None, **_):
 
     return [
         create_header_div(port, name),
-        html.Div(id="pipeline-alert-container"),
         html.Div(children=[], id="content-wrapper", className="content-wrapper"),
     ]

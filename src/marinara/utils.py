@@ -97,8 +97,25 @@ def clean_value(val: Any) -> Any:
         return ""
 
 
-def format_attr_value(val: Any) -> str:
-    """Formats attribute values (primitives, dicts, lists) into safe strings for UI inputs and labels."""
+def format_sigfig(val: Any, sigfigs: int = 3) -> str:
+    """Formats floating-point numerical values to a specified number of significant figures while preserving integers, booleans, and other primitives."""
+    if val is None or val == "":
+        return ""
+    if isinstance(val, bool):
+        return str(val)
+    if isinstance(val, (int, np.integer)):
+        return str(val)
+    if isinstance(val, (float, np.floating)):
+        if math.isnan(val) or math.isinf(val):
+            return ""
+        if val == 0:
+            return "0"
+        return f"{val:.{sigfigs}g}"
+    return str(val)
+
+
+def format_attr_value(val: Any, sigfigs: int = 3) -> str:
+    """Formats attribute values (primitives, dicts, lists) into safe strings for UI inputs and labels, limiting floating-point numbers to significant figures."""
     cleaned = clean_value(val)
     if isinstance(cleaned, (dict, list)):
         try:
@@ -106,6 +123,8 @@ def format_attr_value(val: Any) -> str:
         except Exception as e:
             logger.debug("json.dumps failed for cleaned value of type %s: %s", type(cleaned).__name__, e)
             return str(cleaned)
+    if isinstance(cleaned, (float, np.floating)):
+        return format_sigfig(cleaned, sigfigs=sigfigs)
     return str(cleaned) if cleaned is not None else ""
 
 
@@ -159,7 +178,7 @@ def get_unit_str(units: Optional[Union[str, Any]]) -> str:
 
 
 def format_constraint(val: Any, base_unit: str) -> str:
-    """Formats constraint values (min/max) with their respective units."""
+    """Formats constraint values (min/max) with their respective units, using 3 significant figures for floats."""
     if val is None:
         return ""
     if hasattr(val, "m") and hasattr(val, "units"):
@@ -174,12 +193,14 @@ def format_constraint(val: Any, base_unit: str) -> str:
                     e,
                 )
         mag = clean_value(val)
+        mag_str = format_sigfig(mag)
         u_str = get_unit_str(val.units)
-        return f"{mag} {u_str}" if u_str else str(mag)
+        return f"{mag_str} {u_str}" if u_str else str(mag_str)
     else:
         mag = clean_value(val)
+        mag_str = format_sigfig(mag)
         u_str = get_unit_str(base_unit)
-        return f"{mag} {u_str}" if u_str else str(mag)
+        return f"{mag_str} {u_str}" if u_str else str(mag_str)
 
 
 def format_obj(

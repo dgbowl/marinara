@@ -13,6 +13,7 @@ from marinara.utils import (
     TOUT,
     clean_value,
     ensure_drivers_registered,
+    format_sigfig,
     kwargs,
 )
 from tomato import passata, tomato
@@ -487,7 +488,7 @@ def update_dashboard_live_view(
                             children=[
                                 html.Span(f"{k}:", className="param-item-name"),
                                 html.Span(
-                                    f"{clean_value(v)}{unit_str}",
+                                    f"{format_sigfig(clean_value(v))}{unit_str}",
                                     className="param-item-val",
                                 ),
                             ],
