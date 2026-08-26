@@ -634,29 +634,38 @@ input.Select__input,
 .attr-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     margin-bottom: 12px;
-    flex-wrap: wrap;
     width: 100%;
     box-sizing: border-box;
 }
 
 .attr-label {
-    min-width: 100px;
-    max-width: 160px;
-    flex: 0 0 120px;
+    width: 120px !important;
+    min-width: 120px !important;
+    max-width: 120px !important;
+    flex: 0 0 120px !important;
     font-weight: 600;
     color: var(--text-color);
     word-break: break-word;
 }
 
-.attr-control {
-    min-width: 110px;
-    max-width: 200px;
-    flex: 1 1 140px;
+.attr-control,
+div.attr-control,
+.dash-dropdown.attr-control {
+    width: 200px !important;
+    min-width: 200px !important;
+    max-width: 200px !important;
+    flex: 0 0 200px !important;
     height: 36px !important;
     box-sizing: border-box !important;
     margin: 0 !important;
+}
+
+.dash-dropdown.attr-control .Select,
+.dash-dropdown.attr-control .Select-control {
+    width: 100% !important;
+    height: 36px !important;
 }
 
 .attr-unit {

@@ -181,8 +181,8 @@ def update_live_patch(
                 trace_data["x"].pop(0)
                 trace_data["y"].pop(0)
                 try:
-                    patch["data"][idx]["x"].delete(0)
-                    patch["data"][idx]["y"].delete(0)
+                    del patch["data"][idx]["x"][0]
+                    del patch["data"][idx]["y"][0]
                 except Exception as e:
                     logger.warning("Failed to evict point from patch: %s", e)
 
