@@ -6,7 +6,6 @@ from marinara.utils import (
     clean_value,
     format_attr_value,
     format_constraint,
-    get_field,
     get_unit_str,
     kwargs,
     parse_input_value,
@@ -79,8 +78,16 @@ def create_header_div(port: int, name: str):
 
 
 def object_from_attrs(cname, attr, params, value):
-    options = get_field(params, "options")
-    is_rw = get_field(params, "rw", False)
+    options = (
+        params.get("options")
+        if isinstance(params, dict)
+        else getattr(params, "options", None)
+    )
+    is_rw = (
+        params.get("rw", False)
+        if isinstance(params, dict)
+        else getattr(params, "rw", False)
+    )
 
     if options is not None:
         obj = dcc.Dropdown(
@@ -297,10 +304,20 @@ def create_content_div(port, name, n_intervals):
 
         attrs_vals_store[cname] = {k: clean_value(v) for k, v in avals.items()}
         attrs_units_store[cname] = {
-            k: get_field(attrs[k], "units") for k in attrs.keys()
+            k: (
+                attrs[k].get("units")
+                if isinstance(attrs[k], dict)
+                else getattr(attrs[k], "units", None)
+            )
+            for k in attrs.keys()
         }
         attrs_rw_store[cname] = {
-            k: get_field(attrs[k], "rw", False) for k in attrs.keys()
+            k: bool(
+                attrs[k].get("rw", False)
+                if isinstance(attrs[k], dict)
+                else getattr(attrs[k], "rw", False)
+            )
+            for k in attrs.keys()
         }
 
         div_attrs_ch = [
@@ -314,21 +331,34 @@ def create_content_div(port, name, n_intervals):
             )
         ]
         for attr, params in attrs.items():
-            is_rw = get_field(params, "rw", False)
+            is_rw = bool(
+                params.get("rw", False)
+                if isinstance(params, dict)
+                else getattr(params, "rw", False)
+            )
             value = clean_value(avals.get(attr))
-            units = get_unit_str(get_field(params, "units"))
+            unit = (
+                params.get("units")
+                if isinstance(params, dict)
+                else getattr(params, "units", None)
+            )
+            units = get_unit_str(unit)
 
-            min_val = get_field(params, "minimum")
-            max_val = get_field(params, "maximum")
+            min_val = (
+                params.get("minimum")
+                if isinstance(params, dict)
+                else getattr(params, "minimum", None)
+            )
+            max_val = (
+                params.get("maximum")
+                if isinstance(params, dict)
+                else getattr(params, "maximum", None)
+            )
             constraints = []
             if min_val is not None:
-                constraints.append(
-                    f"min: {format_constraint(min_val, get_field(params, 'units'))}"
-                )
+                constraints.append(f"min: {format_constraint(min_val, unit)}")
             if max_val is not None:
-                constraints.append(
-                    f"max: {format_constraint(max_val, get_field(params, 'units'))}"
-                )
+                constraints.append(f"max: {format_constraint(max_val, unit)}")
             constraints_str = f" ({', '.join(constraints)})" if constraints else ""
 
             if is_rw:

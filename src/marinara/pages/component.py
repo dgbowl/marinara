@@ -1,16 +1,19 @@
-import json
 import logging
 from datetime import datetime, timezone
+from typing import Any
 import dash
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
-from marinara.graphing import DEFAULT_MAX_ARRAY_TRACES
+from marinara.graphing import (
+    DEFAULT_MAX_ARRAY_TRACES,
+    TIMESTEPS,
+    append_telemetry_dataset_dict,
+)
 from marinara.utils import (
     clean_data,
     clean_value,
     fetch_component_state,
     format_attr_value,
     format_constraint,
-    get_field,
     get_unit_str,
     kwargs,
     parse_input_value,
@@ -64,29 +67,17 @@ def create_component_header(
     )
 
 
-def layout(port: int, name: str, **_):
-    port = int(port)
+def build_component_attributes_card(state: dict[str, Any]) -> html.Div:
+    """Creates the attributes & controls card from component state."""
+    attrs_dict = state.get("attrs_dict", {})
+    init_attrs_vals = state.get("attrs_vals", {})
 
-    # Safely fetch initial state of the component via shared utility
-    state = fetch_component_state(port, name)
-    running = state["running"]
-    attrs_dict = state["attrs_dict"]
-    init_attrs_vals = state["attrs_vals"]
-    init_attrs_units = state["attrs_units"]
-    init_attrs_rw = state["attrs_rw"]
-
-    # Status Badge
-    _, _, status_text, status_badge_class = parse_running_status(running)
-
-    header = create_component_header(name, status_text, status_badge_class)
-
-    # Build attribute row layout
     attr_rows = []
     for k, v in attrs_dict.items():
-        is_rw = get_field(v, "rw", False)
-        unit = get_field(v, "units")
+        is_rw = bool(v.get("rw", False) if isinstance(v, dict) else getattr(v, "rw", False))
+        unit = v.get("units") if isinstance(v, dict) else getattr(v, "units", None)
         unit_str = get_unit_str(unit)
-        options = get_field(v, "options")
+        options = v.get("options") if isinstance(v, dict) else getattr(v, "options", None)
         val = init_attrs_vals.get(k)
 
         # Build widget based on read-write / options
@@ -94,7 +85,7 @@ def layout(port: int, name: str, **_):
             if options:
                 control = dcc.Dropdown(
                     id={"type": "component-attr-input", "index": k},
-                options=sorted(options),
+                    options=sorted(options),
                     value=val,
                     clearable=False,
                     className="attr-control mutable-input",
@@ -107,6 +98,12 @@ def layout(port: int, name: str, **_):
                     debounce=True,
                     className="attr-control mutable-input",
                 )
+            apply_btn = html.Button(
+                "Apply",
+                id={"type": "component-attr-apply-btn", "index": k},
+                className="attr-apply-btn",
+            )
+            controls = [control, apply_btn]
         else:
             control = dcc.Input(
                 id={"type": "component-attr-readonly", "index": k},
@@ -114,10 +111,11 @@ def layout(port: int, name: str, **_):
                 disabled=True,
                 className="attr-control immutable-input",
             )
+            controls = [control]
 
         # Display constraints helper
-        min_val = get_field(v, "minimum")
-        max_val = get_field(v, "maximum")
+        min_val = v.get("minimum") if isinstance(v, dict) else getattr(v, "minimum", None)
+        max_val = v.get("maximum") if isinstance(v, dict) else getattr(v, "maximum", None)
         constraints = []
         if min_val is not None:
             constraints.append(f"min: {format_constraint(min_val, unit)}")
@@ -125,40 +123,20 @@ def layout(port: int, name: str, **_):
             constraints.append(f"max: {format_constraint(max_val, unit)}")
         constraints_str = f" ({', '.join(constraints)})" if constraints else ""
 
-        if is_rw:
-            apply_btn = html.Button(
-                "Apply",
-                id={"type": "component-attr-apply-btn", "index": k},
-                className="attr-apply-btn",
+        attr_rows.append(
+            html.Div(
+                children=[
+                    html.Div(f"{k}:", className="attr-label"),
+                    *controls,
+                    html.Span(
+                        f" {unit_str}{constraints_str}", className="attr-unit"
+                    ),
+                ],
+                className="attr-row",
             )
-            attr_rows.append(
-                html.Div(
-                    children=[
-                        html.Div(f"{k}:", className="attr-label"),
-                        control,
-                        apply_btn,
-                        html.Span(
-                            f" {unit_str}{constraints_str}", className="attr-unit"
-                        ),
-                    ],
-                    className="attr-row",
-                )
-            )
-        else:
-            attr_rows.append(
-                html.Div(
-                    children=[
-                        html.Div(f"{k}:", className="attr-label"),
-                        control,
-                        html.Span(
-                            f" {unit_str}{constraints_str}", className="attr-unit"
-                        ),
-                    ],
-                    className="attr-row",
-                )
-            )
+        )
 
-    attrs_card = html.Div(
+    return html.Div(
         children=[
             html.H3(
                 "Attributes & Controls",
@@ -182,8 +160,10 @@ def layout(port: int, name: str, **_):
         className="card component-attrs",
     )
 
-    # Build graphing card
-    graph_card = html.Div(
+
+def build_component_graph_card() -> html.Div:
+    """Creates the primary component data graph card."""
+    return html.Div(
         children=[
             html.Div(
                 children=[
@@ -191,7 +171,7 @@ def layout(port: int, name: str, **_):
                     dcc.Checklist(
                         options=[
                             {
-                                "label": " Align start at t=0 (Relative)",
+                                "label": " Show elapsed time",
                                 "value": "relative",
                             }
                         ],
@@ -219,7 +199,10 @@ def layout(port: int, name: str, **_):
         className="card component-data",
     )
 
-    custom_graphs_header = html.Div(
+
+def build_custom_graphs_header() -> html.Div:
+    """Creates the custom graphs section header."""
+    return html.Div(
         children=[
             html.H3("Custom Graphs", style={"margin": 0}),
             html.Button(
@@ -235,8 +218,8 @@ def layout(port: int, name: str, **_):
                     "border-radius": "4px",
                     "cursor": "pointer",
                     "font-weight": "600",
-                }
-            )
+                },
+            ),
         ],
         style={
             "display": "flex",
@@ -244,31 +227,41 @@ def layout(port: int, name: str, **_):
             "margin-bottom": "20px",
             "border-bottom": "1px solid var(--border-color)",
             "padding-bottom": "10px",
-            "margin-top": "20px"
-        }
+            "margin-top": "20px",
+        },
     )
+
+
+def layout(port: int, name: str, **_):
+    port = int(port) if isinstance(port, (str, int)) and str(port).isdigit() else 1234
+
+    # Fetch initial component state
+    state = fetch_component_state(port, name)
+    _, _, status_text, status_badge_class = parse_running_status(state.get("running"))
+
+    header = create_component_header(name, status_text, status_badge_class)
+    attrs_card = build_component_attributes_card(state)
+    graph_card = build_component_graph_card()
+    custom_graphs_header = build_custom_graphs_header()
 
     layout_children = [
         # Dashboard Stores
         dcc.Store(id="tomato-port-store", data=port),
         dcc.Store(id="component-name-store", data=name),
         dcc.Store(id="component-data-store", data=None),
-        dcc.Store(id="component-attrs-vals-store", data=init_attrs_vals),
-        dcc.Store(id="component-attrs-units-store", data=init_attrs_units),
-        dcc.Store(id="component-attrs-rw-store", data=init_attrs_rw),
-        dcc.Store(id="custom-graphs-list-store", data=[1]),
-        dcc.Store(id="custom-graphs-counter-store", data=2),
+        dcc.Store(id="component-attrs-vals-store", data=state.get("attrs_vals", {})),
+        dcc.Store(id="component-attrs-units-store", data=state.get("attrs_units", {})),
+        dcc.Store(id="component-attrs-rw-store", data=state.get("attrs_rw", {})),
+        dcc.Store(id="custom-graphs-list-store", data=[]),
+        dcc.Store(id="custom-graphs-counter-store", data=1),
         dcc.Store(id="custom-graphs-titles-store", data={}),
         dcc.Interval(id="component-interval", interval=2000),
         header,
         # Row 1: Attributes & Controls (Left) and Data Graph (Right)
         html.Div(
-            children=[
-                attrs_card,
-                graph_card
-            ],
+            children=[attrs_card, graph_card],
             className="component-grid",
-            style={"margin-bottom": "20px"}
+            style={"margin-bottom": "20px"},
         ),
         # Row 2: Custom Graphs Section
         custom_graphs_header,
@@ -351,26 +344,20 @@ def set_component_attribute(n_clicks, value, id, port, name):
         ret = passata.set_attr(**kwargs, port=port, name=name, attr=k, val=parsed_val)
         if ret.success:
             return format_attr_value(ret.data)
-        # If set_attr returned success=False, fetch current value to revert
-        get_ret = passata.get_attrs(**kwargs, port=port, name=name, attrs=[k])
-        current = (
-            get_ret.data.get(k)
-            if (get_ret.success and isinstance(get_ret.data, dict))
-            else None
+        logger.warning(
+            "Failed to set attribute %s on component %s: %s", k, name, ret.msg
         )
-        return format_attr_value(current)
     except Exception as e:
-        logger.warning(f"Failed to set attribute {k} on component {name}: {e}")
-        try:
-            get_ret = passata.get_attrs(**kwargs, port=port, name=name, attrs=[k])
-            current = (
-                get_ret.data.get(k)
-                if (get_ret.success and isinstance(get_ret.data, dict))
-                else None
-            )
-            return format_attr_value(current)
-        except Exception:
-            return dash.no_update
+        logger.warning("Exception setting attribute %s on component %s: %s", k, name, e)
+
+    # Revert to current remote attribute value on failure
+    try:
+        get_ret = passata.get_attrs(**kwargs, port=port, name=name, attrs=[k])
+        if get_ret.success and isinstance(get_ret.data, dict):
+            return format_attr_value(get_ret.data.get(k))
+    except Exception as e:
+        logger.warning("Failed to fetch attribute %s for rollback: %s", k, e)
+    return dash.no_update
 
 
 # Data Store Updater
@@ -384,22 +371,11 @@ def set_component_attribute(n_clicks, value, id, port, name):
 def component_data_update(port, name, data, n_intervals):
     try:
         ret = passata.get_last_data(**kwargs, port=port, name=name)
-        if not ret.success:
+        if not ret.success or ret.data is None:
             return data
-        ret_ds = ret.data
-        if hasattr(ret_ds, "isel") and hasattr(ret_ds, "sizes") and "uts" in ret_ds.sizes:
-            ret_ds = ret_ds.isel(uts=slice(-500, None))
-        if data is None:
-            ndata = ret_ds
-        else:
-            odata = xr.Dataset.from_dict(data)
-            ndata = xr.merge([odata, ret_ds])
-        # Cap dataset size to prevent JSON serialization and memory bottlenecks
-        if hasattr(ndata, "sizes") and "uts" in ndata.sizes and ndata.sizes["uts"] > 500:
-            ndata = ndata.isel(uts=slice(-500, None))
-        return clean_data(ndata.to_dict())
+        return append_telemetry_dataset_dict(data, ret.data, max_points=TIMESTEPS)
     except Exception as e:
-        logger.warning(f"Failed to fetch last data for component {name}: {e}")
+        logger.warning("Failed to fetch last data for component %s: %s", name, e)
         return data
 
 

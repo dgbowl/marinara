@@ -13,7 +13,6 @@ from marinara.utils import (
     TOUT,
     clean_value,
     ensure_drivers_registered,
-    get_field,
     kwargs,
 )
 from tomato import passata, tomato
@@ -476,7 +475,11 @@ def update_dashboard_live_view(
                 )
                 for k, v in vals.items():
                     meta = attrs_meta.get(k, {})
-                    unit = get_field(meta, "units", "")
+                    unit = (
+                        meta.get("units", "")
+                        if isinstance(meta, dict)
+                        else getattr(meta, "units", "")
+                    )
                     unit_str = f" {unit}" if unit else ""
                     param_items.append(
                         html.Div(

@@ -18,17 +18,6 @@ CTXT = zmq.Context()
 kwargs = dict(timeout=TOUT, context=CTXT)
 
 
-def get_field(obj: Any, key: str, default: Any = None) -> Any:
-    """Safely gets a field from an object (attribute or dict) or returns default."""
-    if hasattr(obj, key):
-        val = getattr(obj, key)
-        return val if val is not None else default
-    elif isinstance(obj, dict):
-        val = obj.get(key, default)
-        return val if val is not None else default
-    return default
-
-
 def clean_value(val: Any) -> Any:
     """Coerces Pint Quantity objects, numpy types, Pydantic models, dataclasses, NaNs, and collections to standard JSON-serializable primitives."""
     if val is None:
@@ -243,7 +232,7 @@ def format_obj(
         for header_label, attr in zip(headers, attrs):
             if attr in ("name", "capabilities"):
                 continue
-            val = get_field(v, attr, "")
+            val = v.get(attr, "") if isinstance(v, dict) else getattr(v, attr, "")
             if isinstance(val, (list, tuple, set)):
                 val_str = ", ".join(str(x) for x in val)
             else:
@@ -280,7 +269,11 @@ def format_obj(
         ]
 
         if "capabilities" in attrs:
-            cap_val = get_field(v, "capabilities", [])
+            cap_val = (
+                v.get("capabilities", [])
+                if isinstance(v, dict)
+                else getattr(v, "capabilities", [])
+            )
             if cap_val:
                 cap_str = (
                     ", ".join(str(x) for x in cap_val)
@@ -342,7 +335,9 @@ def ensure_drivers_registered(daemon: Any) -> None:
     if not daemon or not hasattr(daemon, "drvs"):
         return
     for drv_name, drv in daemon.drvs.items():
-        drv_port = get_field(drv, "port")
+        drv_port = (
+            drv.get("port") if isinstance(drv, dict) else getattr(drv, "port", None)
+        )
         if drv_port:
             try:
                 s = CTXT.socket(zmq.REQ)
@@ -423,10 +418,11 @@ def fetch_component_state(port: int, name: str) -> dict[str, Any]:
 
     for k, v in attrs_dict.items():
         val = avals_dict.get(k)
-        unit = get_field(v, "units")
+        unit = v.get("units") if isinstance(v, dict) else getattr(v, "units", None)
+        is_rw = v.get("rw", False) if isinstance(v, dict) else getattr(v, "rw", False)
         init_attrs_vals[k] = clean_value(val)
         init_attrs_units[k] = unit
-        init_attrs_rw[k] = bool(get_field(v, "rw", False))
+        init_attrs_rw[k] = bool(is_rw)
 
     return {
         "running": running,

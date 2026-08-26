@@ -20,8 +20,19 @@ from marinara.utils import (
     parse_running_status,
     fetch_component_state,
 )
-from marinara.graphing import extract_telemetry_points, DEFAULT_MAX_ARRAY_TRACES
-from marinara.pages.component import component_data_graph
+from marinara.graphing import (
+    extract_telemetry_points,
+    DEFAULT_MAX_ARRAY_TRACES,
+    append_telemetry_dataset_dict,
+    TIMESTEPS,
+)
+from marinara.pages.component import (
+    component_data_graph,
+    build_component_attributes_card,
+    build_component_graph_card,
+    create_component_header,
+)
+import xarray as xr
 
 
 class MockSweep(BaseModel):
@@ -256,6 +267,74 @@ class TestPicoVNASupport(unittest.TestCase):
         self.assertEqual(text, "RUNNING (vna_calibration)")
         self.assertEqual(badge, "badge badge-success")
 
+    def test_append_telemetry_dataset_dict_initial(self):
+        ds = xr.Dataset(
+            data_vars={"temp": ("uts", [25.0]), "power": ("uts", [10.5])},
+            coords={"uts": [1000.0], "freq": ("freq", [1.0, 2.0])},
+        )
+        res = append_telemetry_dataset_dict(None, ds, max_points=10)
+        self.assertIsInstance(res, dict)
+        self.assertEqual(res["coords"]["uts"]["data"], [1000.0])
+        self.assertEqual(res["data_vars"]["temp"]["data"], [25.0])
+        self.assertEqual(res["coords"]["freq"]["data"], [1.0, 2.0])
+
+    def test_append_telemetry_dataset_dict_subsequent_and_duplicate(self):
+        ds1 = xr.Dataset(
+            data_vars={"temp": ("uts", [25.0])},
+            coords={"uts": [1000.0]},
+        )
+        store = append_telemetry_dataset_dict(None, ds1, max_points=10)
+
+        # Duplicate timestamp
+        store = append_telemetry_dataset_dict(store, ds1, max_points=10)
+        self.assertEqual(len(store["coords"]["uts"]["data"]), 1)
+
+        # New timestamp
+        ds2 = xr.Dataset(
+            data_vars={"temp": ("uts", [26.0])},
+            coords={"uts": [1001.0]},
+        )
+        store = append_telemetry_dataset_dict(store, ds2, max_points=10)
+        self.assertEqual(store["coords"]["uts"]["data"], [1000.0, 1001.0])
+        self.assertEqual(store["data_vars"]["temp"]["data"], [25.0, 26.0])
+        self.assertEqual(store["dims"]["uts"], 2)
+
+    def test_append_telemetry_dataset_dict_sliding_window(self):
+        store = None
+        for i in range(15):
+            ds = xr.Dataset(
+                data_vars={"temp": ("uts", [20.0 + i])},
+                coords={"uts": [1000.0 + i]},
+            )
+            store = append_telemetry_dataset_dict(store, ds, max_points=10)
+
+        self.assertEqual(len(store["coords"]["uts"]["data"]), 10)
+        self.assertEqual(store["coords"]["uts"]["data"][0], 1005.0)
+        self.assertEqual(store["coords"]["uts"]["data"][-1], 1014.0)
+        self.assertEqual(len(store["data_vars"]["temp"]["data"]), 10)
+        self.assertEqual(store["data_vars"]["temp"]["data"][-1], 34.0)
+
+    def test_build_component_cards(self):
+        state = {
+            "running": False,
+            "attrs_dict": {
+                "voltage": {"rw": True, "units": "V", "minimum": 0, "maximum": 10},
+                "status_code": {"rw": False, "units": None},
+            },
+            "attrs_vals": {"voltage": 5.0, "status_code": "OK"},
+            "attrs_units": {"voltage": "V", "status_code": None},
+            "attrs_rw": {"voltage": True, "status_code": False},
+        }
+        card = build_component_attributes_card(state)
+        self.assertIsNotNone(card)
+
+        graph_card = build_component_graph_card()
+        self.assertIsNotNone(graph_card)
+
+        header = create_component_header("test_cmp", "STOPPED", "badge badge-secondary")
+        self.assertIsNotNone(header)
+
 
 if __name__ == "__main__":
     unittest.main()
+

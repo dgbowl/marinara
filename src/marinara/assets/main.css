@@ -174,17 +174,21 @@ input[disabled], select[disabled], .Select.is-disabled .Select-control {
     padding: 20px;
     margin-bottom: 20px;
     min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 .component-grid {
     display: grid;
     grid-template-columns: 1fr;
     gap: 20px;
+    width: 100%;
 }
 
-@media (min-width: 992px) {
+@media (min-width: 1300px) {
     .component-grid {
-        grid-template-columns: 35fr 65fr;
+        grid-template-columns: minmax(400px, 4fr) minmax(500px, 6fr);
     }
 }
 
@@ -192,9 +196,10 @@ input[disabled], select[disabled], .Select.is-disabled .Select-control {
     display: grid;
     grid-template-columns: 1fr;
     gap: 20px;
+    width: 100%;
 }
 
-@media (min-width: 992px) {
+@media (min-width: 1200px) {
     .pipeline-params-data-grid {
         grid-template-columns: 1fr 1fr;
     }
@@ -258,11 +263,15 @@ table.stgrp tr:hover {
 .component-attrs,
 .component-data {
     border-left: 4px solid var(--detail-border);
-    padding: 10px 15px;
+    padding: 12px 18px;
     background-color: var(--detail-bg);
     border-radius: 0 var(--radius) var(--radius) 0;
     margin-bottom: 15px;
     transition: background-color 0.3s ease, border-color 0.3s ease;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 /* Form Elements */
@@ -625,29 +634,38 @@ input.Select__input,
 .attr-row {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     margin-bottom: 12px;
+    flex-wrap: wrap;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .attr-label {
-    width: 130px;
+    min-width: 100px;
+    max-width: 160px;
+    flex: 0 0 120px;
     font-weight: 600;
     color: var(--text-color);
-    flex-shrink: 0;
+    word-break: break-word;
 }
 
 .attr-control {
-    width: 200px !important;
+    min-width: 110px;
+    max-width: 200px;
+    flex: 1 1 140px;
     height: 36px !important;
     box-sizing: border-box !important;
-    flex-shrink: 0;
     margin: 0 !important;
 }
 
 .attr-unit {
     color: var(--text-secondary);
-    font-size: 13px;
-    margin-left: 4px;
+    font-size: 12px;
+    line-height: 1.4;
+    flex: 1 1 auto;
+    margin-left: 2px;
+    word-break: break-word;
 }
 
 /* Chrome, Safari, Edge, Opera - Hide Spin Buttons */
@@ -665,7 +683,7 @@ input[type=number] {
 /* Attribute Apply Button styling */
 .attr-apply-btn {
     height: 36px !important;
-    padding: 0 12px !important;
+    padding: 0 14px !important;
     font-size: 13px !important;
     font-weight: 600 !important;
     border-radius: 4px !important;
@@ -675,7 +693,7 @@ input[type=number] {
     cursor: pointer;
     transition: all 0.2s ease;
     margin: 0 !important;
-    flex-shrink: 0 !important;
+    flex: 0 0 auto !important;
     display: inline-flex !important;
     align-items: center !important;
     justify-content: center !important;
@@ -1176,4 +1194,42 @@ div.attr-control input:disabled {
 /* Override card margins when inside a grid layout to maintain clean spacing */
 .card-grid .card {
     margin-bottom: 0 !important;
+}
+
+@media (max-width: 768px) {
+    .page-content {
+        padding: 14px !important;
+    }
+
+    .theme-header {
+        padding: 10px 14px !important;
+        flex-wrap: wrap !important;
+        gap: 10px !important;
+    }
+
+    .card {
+        padding: 14px !important;
+    }
+
+    .component-attrs,
+    .component-data {
+        padding: 12px 14px !important;
+    }
+
+    .measurement-bar {
+        padding: 12px 14px !important;
+        flex-wrap: wrap !important;
+        gap: 12px !important;
+    }
+
+    .attr-label {
+        flex: 0 0 100% !important;
+        max-width: 100% !important;
+        margin-bottom: 2px !important;
+    }
+
+    .attr-control {
+        flex: 1 1 140px !important;
+        max-width: 100% !important;
+    }
 }

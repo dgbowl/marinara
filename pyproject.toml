@@ -45,6 +45,12 @@ Repository = "https://github.com/dgbowl/marinara/"
 
 [project.scripts]
 
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"marinara" = ["assets/*", "assets/**/*"]
+
 [tool.setuptools-git-versioning]
 enabled = true
 dev_template = "{tag}.post{ccount}"

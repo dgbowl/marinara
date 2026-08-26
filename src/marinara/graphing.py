@@ -2,10 +2,12 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 from dash import Patch
+import xarray as xr
 from marinara.utils import clean_data, clean_value
 
 logger = logging.getLogger(__name__)
 
+TIMESTEPS = 500
 DEFAULT_MAX_POINTS = 50
 DEFAULT_MAX_ARRAY_TRACES = 20
 
@@ -185,3 +187,99 @@ def update_live_patch(
                     logger.warning("Failed to evict point from patch: %s", e)
 
     return patch, clean_data(current_store)
+
+
+def append_telemetry_dataset_dict(
+    existing_data: Optional[dict[str, Any]],
+    new_dataset: Any,
+    max_points: int = TIMESTEPS,
+) -> dict[str, Any]:
+    """
+    Appends the latest telemetry point(s) from an xarray.Dataset into an in-memory
+    dictionary representation without costly Dataset reconstruction and merging.
+    """
+    if new_dataset is None:
+        return existing_data if existing_data is not None else {}
+
+    if not isinstance(new_dataset, xr.Dataset):
+        logger.warning(
+            "Expected xr.Dataset from telemetry query, got %s",
+            type(new_dataset).__name__,
+        )
+        if hasattr(new_dataset, "to_dict"):
+            new_dict = clean_data(new_dataset.to_dict())
+        else:
+            return existing_data if existing_data is not None else {}
+    else:
+        if "uts" not in new_dataset.coords:
+            logger.warning("Telemetry dataset missing 'uts' coordinate")
+            return existing_data if existing_data is not None else {}
+        new_dict = clean_data(new_dataset.to_dict())
+
+    # If first load, initialize with new_dict (sliced to max_points if needed)
+    if not existing_data:
+        if "coords" in new_dict and "uts" in new_dict["coords"]:
+            uts_data = new_dict["coords"]["uts"].get("data", [])
+            if len(uts_data) > max_points:
+                new_dict["coords"]["uts"]["data"] = uts_data[-max_points:]
+                for v_info in new_dict.get("data_vars", {}).values():
+                    v_data = v_info.get("data", [])
+                    if len(v_data) > max_points:
+                        v_info["data"] = v_data[-max_points:]
+                new_dict.setdefault("dims", {})["uts"] = len(
+                    new_dict["coords"]["uts"]["data"]
+                )
+        return new_dict
+
+    # Append new point(s) if not already present
+    new_uts_list = new_dict.get("coords", {}).get("uts", {}).get("data", [])
+    if not new_uts_list:
+        return existing_data
+
+    old_uts_list = (
+        existing_data.setdefault("coords", {})
+        .setdefault("uts", {})
+        .setdefault("data", [])
+    )
+    old_uts_set = set(old_uts_list)
+
+    existing_vars = existing_data.setdefault("data_vars", {})
+    new_vars = new_dict.get("data_vars", {})
+
+    # Copy over non-uts coordinates (e.g. freq, wavelength) if not present
+    for c_name, c_info in new_dict.get("coords", {}).items():
+        if c_name != "uts" and c_name not in existing_data["coords"]:
+            existing_data["coords"][c_name] = c_info
+
+    for idx, new_t in enumerate(new_uts_list):
+        if new_t in old_uts_set:
+            continue
+        old_uts_list.append(new_t)
+        old_uts_set.add(new_t)
+
+        for v_name, v_info in new_vars.items():
+            v_data = v_info.get("data", [])
+            if idx < len(v_data):
+                val = v_data[idx]
+                if v_name not in existing_vars:
+                    existing_vars[v_name] = {
+                        "dims": v_info.get("dims", ("uts",)),
+                        "attrs": v_info.get("attrs", {}),
+                        "data": [val],
+                    }
+                else:
+                    existing_vars[v_name].setdefault("data", []).append(val)
+
+    # FIFO trim to max_points
+    if len(old_uts_list) > max_points:
+        existing_data["coords"]["uts"]["data"] = old_uts_list[-max_points:]
+        for v_info in existing_vars.values():
+            v_data = v_info.get("data", [])
+            if len(v_data) > max_points:
+                v_info["data"] = v_data[-max_points:]
+
+    existing_data.setdefault("dims", {})["uts"] = len(
+        existing_data["coords"]["uts"]["data"]
+    )
+    return existing_data
+
