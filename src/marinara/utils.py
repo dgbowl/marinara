@@ -1,8 +1,12 @@
+import logging
 import zmq
 from dash import html, dcc
 import tomato
+from tomato import passata
 from typing import Any, Union, Optional
 import pint
+
+logger = logging.getLogger(__name__)
 
 PORT = 1234
 TOUT = 1000
@@ -239,3 +243,97 @@ def get_tomato_status(port):
         return ret.data
     except Exception:
         return None
+
+
+def fetch_component_state(port: int, name: str) -> dict[str, Any]:
+    """
+    Fetches running status, attribute metadata and values for a component.
+    Coerces all attribute values to Python literals via clean_value so they
+    are safe to store in dcc.Store.
+
+    Returns a dict with keys:
+        'running'      - bool or raw status object
+        'attrs_dict'   - {attr_name: metadata dict/object}
+        'attrs_vals'   - {attr_name: cleaned Python value}
+        'attrs_units'  - {attr_name: unit string or None}
+        'attrs_rw'     - {attr_name: bool}
+    """
+    try:
+        status_ret = passata.status(**kwargs, port=port, name=name)
+        running = (
+            status_ret.data.get("running", False)
+            if isinstance(status_ret.data, dict)
+            else getattr(status_ret.data, "running", False)
+        ) if status_ret.success else False
+    except Exception as e:
+        logger.warning("Failed to fetch status for %s on port %s: %s", name, port, e)
+        running = False
+
+    try:
+        attrs_ret = passata.attrs(**kwargs, port=port, name=name)
+        attrs_dict = attrs_ret.data if (attrs_ret.success and attrs_ret.data) else {}
+    except Exception as e:
+        logger.warning("Failed to fetch attrs for %s on port %s: %s", name, port, e)
+        attrs_dict = {}
+
+    try:
+        avals_ret = passata.get_attrs(
+            **kwargs, port=port, name=name, attrs=list(attrs_dict.keys())
+        )
+        avals_dict = avals_ret.data if (avals_ret.success and avals_ret.data) else {}
+    except Exception as e:
+        logger.warning("Failed to fetch attr values for %s on port %s: %s", name, port, e)
+        avals_dict = {}
+
+    attrs_vals, attrs_units, attrs_rw = {}, {}, {}
+    for k, v in attrs_dict.items():
+        val = avals_dict.get(k)
+        unit = v.get("units") if isinstance(v, dict) else getattr(v, "units", None)
+        is_rw = v.get("rw", False) if isinstance(v, dict) else getattr(v, "rw", False)
+        attrs_vals[k] = clean_value(val)
+        attrs_units[k] = unit
+        attrs_rw[k] = bool(is_rw)
+
+    return {
+        "running": running,
+        "attrs_dict": attrs_dict,
+        "attrs_vals": attrs_vals,
+        "attrs_units": attrs_units,
+        "attrs_rw": attrs_rw,
+    }
+
+
+def parse_running_status(running: Any) -> tuple[bool, Optional[str], str, str]:
+    """
+    Parses a component running value into display-ready strings.
+
+    Returns:
+        (running_bool, technique_name, status_text, badge_class)
+    """
+    if isinstance(running, bool):
+        running_bool = running
+        technique_name = None
+    else:
+        running_bool = bool(running)
+        technique_name = (
+            running.get("technique_name")
+            if isinstance(running, dict)
+            else getattr(running, "technique_name", None)
+        )
+
+    badge_class = "badge badge-success" if running_bool else "badge badge-secondary"
+    status_text = (
+        f"RUNNING ({technique_name})"
+        if technique_name
+        else ("RUNNING" if running_bool else "STOPPED")
+    )
+    return running_bool, technique_name, status_text, badge_class
+
+
+def format_attr_value(val: Any) -> str:
+    """Formats a cleaned attribute value for display in a text input."""
+    if val is None or val == "":
+        return ""
+    if isinstance(val, float):
+        return f"{val:.6g}"
+    return str(val)
