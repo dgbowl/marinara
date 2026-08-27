@@ -173,3 +173,11 @@ cython_debug/
 # VS Code workspace settings
 .vscode/
 
+# Virtual environments
+test_venv/
+
+# Local data, database and NetCDF files
+data/
+*.sqlite
+*.sqlite3
+*.nc
