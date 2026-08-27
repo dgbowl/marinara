@@ -1,8 +1,14 @@
+import dataclasses
+import logging
+import math
+import numpy as np
 import zmq
 from dash import html, dcc
 import tomato
 from typing import Any, Union, Optional
 import pint
+
+logger = logging.getLogger(__name__)
 
 PORT = 1234
 TOUT = 1000
@@ -23,24 +29,79 @@ def get_field(obj: Any, key: str, default: Any = None) -> Any:
 
 def clean_value(val: Any) -> Any:
     """
-    Coerces Pint Quantity objects and numpy types to standard serializable types.
-
-    Sequential if/elif is avoided here because the conversions can be chained:
-    1. If the value is a Pint Quantity, we extract its magnitude using .magnitude or .m.
-    2. After this extraction, the resulting value might be a numpy type (like a numpy scalar).
-       We then check if it has the .item() method to convert it to a standard Python scalar
-       for proper JSON serialization in Dash's dcc.Store.
+    Coerces Pint Quantity objects, numpy types, Pydantic models, dataclasses,
+    and collections to standard JSON-serializable primitives.
     """
+    if val is None:
+        return ""
+
+    # Pydantic v2 check
+    if hasattr(val, "model_dump") and callable(val.model_dump):
+        try:
+            return clean_value(val.model_dump())
+        except Exception as e:
+            logger.warning("Failed to model_dump value of type %s: %s", type(val).__name__, e)
+            return str(val)
+
+    # Pydantic v1 check
+    if hasattr(val, "dict") and callable(val.dict) and not isinstance(val, dict):
+        try:
+            return clean_value(val.dict())
+        except Exception as e:
+            logger.warning("Failed to dict() value of type %s: %s", type(val).__name__, e)
+            return str(val)
+
+    # Dataclass check
+    if dataclasses.is_dataclass(val) and not isinstance(val, type):
+        try:
+            return clean_value(dataclasses.asdict(val))
+        except Exception as e:
+            logger.warning("Failed to asdict dataclass of type %s: %s", type(val).__name__, e)
+            return str(val)
+
     if hasattr(val, "magnitude"):
         val = val.magnitude
     elif hasattr(val, "m"):
         val = val.m
+
+    if isinstance(val, np.ndarray):
+        if val.size == 1:
+            val = val.item()
+        elif val.size == 0:
+            return ""
+        else:
+            return [clean_value(x) for x in val.tolist()]
 
     if hasattr(val, "item") and callable(val.item):
         try:
             val = val.item()
         except Exception:
             pass
+
+    if isinstance(val, (float, np.floating)):
+        if math.isnan(val) or math.isinf(val):
+            return ""
+        return float(val)
+
+    if isinstance(val, (int, np.integer)):
+        return int(val)
+
+    if isinstance(val, (str, bool)):
+        return val
+
+    if isinstance(val, (list, tuple)):
+        return [clean_value(x) for x in val]
+
+    if isinstance(val, dict):
+        return {str(k): clean_value(v) for k, v in val.items()}
+
+    # General custom object with __dict__ check
+    if hasattr(val, "__dict__") and not isinstance(val, (type, dict, list, tuple)):
+        try:
+            return clean_value(val.__dict__)
+        except Exception:
+            pass
+
     return val
 
 
