@@ -3,11 +3,6 @@ import dash
 from dash import html, dcc, Output, Input, State
 from marinara.icons import get_icon
 
-try:
-    __version__ = importlib.metadata.version("marinara")
-except Exception:
-    __version__ = "0.0.1"
-
 app = dash.Dash(
     __name__, use_pages=True, suppress_callback_exceptions=True, title="Marinara"
 )
@@ -192,7 +187,7 @@ sidebar = html.Div(
                 html.Div(
                     children=[
                         html.Span("Tomato Port: 1234", id="sidebar-port-display"),
-                        html.Span(f"v{__version__}", style={"margin-left": "auto", "opacity": "0.7"}),
+                        html.Span(f"v{importlib.metadata.version('marinara')}", style={"margin-left": "auto", "opacity": "0.7"}),
                     ],
                     className="text-secondary",
                     style={
