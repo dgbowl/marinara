@@ -1,7 +1,4 @@
 import importlib.metadata
-import logging
-import warnings
-from asyncio import Future
 
 import dash
 from dash import Input, Output, State, dcc, html
@@ -354,16 +351,6 @@ def apply_sidebar_state(state):
             "Open the sidebar",
         )
     return "sidebar", get_icon("chevron-left", size=18), "Close the sidebar"
-
-
-def main(host: str = "0.0.0.0", port: int = 8050, loglevel: int = 20) -> None:
-    app.logger.setLevel(loglevel)
-    log_werkzeug = logging.getLogger("werkzeug")
-    log_werkzeug.setLevel(loglevel)
-    with warnings.catch_warnings():
-        if loglevel > logging.INFO:
-            warnings.simplefilter(action="ignore", category=FutureWarning)
-        app.run(debug=loglevel < logging.INFO, host=host, port=port)
 
 
 if __name__ == "__main__":

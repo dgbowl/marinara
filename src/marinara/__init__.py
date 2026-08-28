@@ -1,18 +1,18 @@
 import argparse
 import importlib.metadata
 import logging
-import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
 import appdirs
-import psutil
 
 import marinara.app
 
 __version__ = importlib.metadata.version("marinara")
 VERSION = __version__
 DIRS = appdirs.AppDirs("marinara", "dgbowl", version=VERSION)
-logger = logging.getLogger(__name__)
+logging.captureWarnings(True)
+logger = logging.getLogger()
 
 
 def parse_args():
@@ -59,20 +59,20 @@ def parse_args():
     return parser.parse_known_args()
 
 
-def spawn_cmd(cmd: list[str]) -> None:
-    logger.debug("starting %s", cmd[0])
-    if psutil.WINDOWS:
-        cfs = subprocess.CREATE_NO_WINDOW
-        cfs |= subprocess.CREATE_NEW_PROCESS_GROUP
-        subprocess.Popen(cmd, creationflags=cfs)
-    elif psutil.POSIX:
-        subprocess.Popen(cmd, start_new_session=True)
-
-
 def run_marinara():
     args, _ = parse_args()
-    loglevel = min(max((2 + args.quiet - args.verbose) * 10, 10), 50)
-    logging.basicConfig(level=loglevel)
+    loglevel = min(max((3 + args.quiet - args.verbose) * 10, 10), 50)
+    sh = logging.StreamHandler()
+    args.logdir.mkdir(exist_ok=True, parents=True)
+    fname = f"marinara_{datetime.now(UTC).timestamp():.0f}.log"
+    fh = logging.FileHandler(args.logdir / fname)
+    logging.basicConfig(level=loglevel, handlers=[sh, fh])
     logger.debug("loglevel set to '%s'", logging._levelToName[loglevel])
     logger.debug("args=%s", args)
-    marinara.app.main(host=args.address, port=args.port, loglevel=loglevel)
+
+    marinara.app.app.logger.setLevel(loglevel)
+    log_werkzeug = logging.getLogger("werkzeug")
+    log_werkzeug.setLevel(loglevel)
+    marinara.app.app.run(
+        debug=loglevel < logging.INFO, host=args.address, port=args.port
+    )
