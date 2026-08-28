@@ -46,11 +46,13 @@ Repository = "https://github.com/dgbowl/marinara/"
 [project.scripts]
 marinara = "marinara:run_marinara"
 
-
 [tool.setuptools-git-versioning]
 enabled = true
 dev_template = "{tag}.post{ccount}"
 dirty_template = "{tag}.post{ccount}+dirty"
+
+[tool.setuptools.package-data]
+marinara = ["src/marinara/assets/*"]
 
 [tool.ruff]
 
