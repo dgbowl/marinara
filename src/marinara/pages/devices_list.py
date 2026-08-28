@@ -57,7 +57,7 @@ def update_devices(n_clicks, port):
                 className="text-secondary",
                 style={"text-align": "center", "padding": "20px"},
             )
-        devs = ret.data.devs
+        devs = ret.data.devicefile.devices
         return format_obj(
             obj=devs,
             headers=["Device Name", "Driver", "Address", "Channels"],

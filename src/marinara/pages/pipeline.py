@@ -140,6 +140,8 @@ def object_from_attrs(cname, attr, params, value):
 def create_content_div(port, name):
     try:
         pip_ret = tomato.status(**kwargs, port=port, stgrp="pipelines")
+        cfg_ret = tomato.status(**kwargs, port=port, stgrp="tomato")
+        pip_components = cfg_ret.data.devicefile.pipelines[name].components if cfg_ret.success and name in cfg_ret.data.devicefile.pipelines else []
         pip = pip_ret.data[name] if pip_ret.success else None
     except Exception:
         pip = None
@@ -151,9 +153,9 @@ def create_content_div(port, name):
         "store-pipeline-params",
         {
             "data": {
-                "jobid": pip.jobid,
-                "sampleid": str(pip.sampleid) if pip.sampleid is not None else "",
-                "ready": ["ready"] if pip.ready else [],
+                "jobid": pip.get("jobid"),
+                "sampleid": str(pip.get("sampleid")) if pip.get("sampleid") is not None else "",
+                "ready": ["ready"] if pip.get("ready", False) else [],
             }
         },
     )
@@ -172,7 +174,7 @@ def create_content_div(port, name):
             dcc.Input(
                 id="pipeline-input-jobid",
                 type="number",
-                value=pip.jobid,
+                value=pip.get("jobid"),
                 disabled=True,
                 className="top-card-input",
                 style={"width": "100%", "height": "36px"},
@@ -201,7 +203,7 @@ def create_content_div(port, name):
             dcc.Input(
                 id="pipeline-input-sampleid",
                 type="text",
-                value=str(pip.sampleid) if pip.sampleid is not None else "",
+                value=str(pip.get("sampleid")) if pip.get("sampleid") is not None else "",
                 debounce=True,
                 className="top-card-input",
                 style={"width": "100%", "height": "36px"},
@@ -229,7 +231,7 @@ def create_content_div(port, name):
             ),
             dcc.Checklist(
                 options=[{"label": " Ready", "value": "ready"}],
-                value=["ready"] if pip.ready else [],
+                value=["ready"] if pip.get("ready", False) else [],
                 id="pipeline-input-ready",
                 style={
                     "display": "inline-block",
@@ -248,7 +250,9 @@ def create_content_div(port, name):
     attrs_rw_store = {}
     components = []
 
-    for cname in pip.components:
+    # pip_components maps role name -> real component name (e.g. "counter" -> "example_counter:(addr,1)").
+    # We need the real component names (the values) to look components up below, not the role names (the keys).
+    for cname in pip_components.values():
         try:
             cmp = tomato.status(**kwargs, port=port, stgrp="components").data[cname]
         except Exception:
@@ -458,7 +462,7 @@ def create_content_div(port, name):
             )
         )
 
-    set_props("store-pipeline-component-names", {"data": pip.components})
+    set_props("store-pipeline-component-names", {"data": list(pip_components.values())})
     set_props("store-pipeline-component-running", {"data": running_store})
     set_props("store-pipeline-component-attrs-vals", {"data": attrs_vals_store})
     set_props("store-pipeline-component-attrs-units", {"data": attrs_units_store})
@@ -679,9 +683,9 @@ def pipeline_periodic_update_params_store(_, data, port, name):
     try:
         pip = tomato.status(**kwargs, port=port, stgrp="pipelines").data[name]
         newdata = {
-            "jobid": pip.jobid,
-            "sampleid": str(pip.sampleid) if pip.sampleid is not None else "",
-            "ready": ["ready"] if pip.ready else [],
+            "jobid": pip.get("jobid"),
+            "sampleid": str(pip.get("sampleid")) if pip.get("sampleid") is not None else "",
+            "ready": ["ready"] if pip.get("ready", False) else [],
         }
     except Exception:
         newdata = data

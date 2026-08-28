@@ -56,12 +56,13 @@ layout = html.Div(
 def update_jobs_list(n_clicks, port):
     try:
         import zmq
-        from tomato import ketchup
+        from tomato import ketchup, tomato
 
         CTXT = zmq.Context()
-        ret = ketchup.status(
-            port=port, context=CTXT, verbosity=20, jobids=[], timeout=1000
-        )
+        daemon_ret = tomato.status(stgrp="tomato", port=port, timeout=1000, context=CTXT)
+        ret = ketchup.status(daemon=daemon_ret.data, jobids=[]
+)
+
         if not ret.success:
             if ret.msg == "job queue is empty":
                 return html.Div(

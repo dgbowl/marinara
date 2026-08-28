@@ -57,7 +57,7 @@ def update_components(n_clicks, port):
                 className="text-secondary",
                 style={"text-align": "center", "padding": "20px"},
             )
-        cmps = ret.data.cmps
+        cmps = ret.data.devicefile.components
         return format_obj(
             obj=cmps,
             headers=[

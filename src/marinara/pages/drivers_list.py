@@ -57,7 +57,7 @@ def update_drivers(n_clicks, port):
                 className="text-secondary",
                 style={"text-align": "center", "padding": "20px"},
             )
-        drvs = ret.data.drvs
+        drvs = ret.data.devicefile.drivers
         return format_obj(
             obj=drvs,
             headers=["Driver Name", "Version", "Port", "Process ID (PID)"],

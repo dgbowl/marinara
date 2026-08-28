@@ -47,28 +47,33 @@ def update_pipelines(n_clicks, port):
     try:
         import zmq
         from tomato import tomato
-
         CTXT = zmq.Context()
         ret = tomato.status(stgrp="tomato", port=port, timeout=1000, context=CTXT)
+        pipret = tomato.status(stgrp="pipelines", port=port, timeout=1000, context=CTXT)
         if not ret.success:
             return html.Div(
                 f"No data found. Error: {ret.msg}. Please check the reload button above.",
                 className="text-secondary",
                 style={"text-align": "center", "padding": "20px"},
             )
-        pips = ret.data.pips
-        cmps = ret.data.cmps
+        pips = ret.data.devicefile.pipelines
+        cmps = ret.data.devicefile.components
         if not pips:
             return html.Div(
                 "No pipelines registered in system.",
                 className="text-secondary",
                 style={"text-align": "center", "padding": "20px"},
             )
-
         pipeline_cards = []
         for name, pip in pips.items():
+            pstate = pipret.data.get(name, {}) if pipret.success else {}
+            pip_jobid = pstate.get("jobid")
+            pip_ready = pstate.get("ready", False)
+            pip_sampleid = pstate.get("sampleid")
             comp_details = []
-            for cname in pip.components:
+            # pip.components maps role name -> real component name (e.g. "counter" -> "example_counter:(addr,1)").
+            # We need the real component names (the values) to look components up below, not the role names (the keys).
+            for cname in pip.components.values():
                 cmp = cmps.get(cname)
                 if cmp:
                     capabilities_str = (
@@ -177,12 +182,12 @@ def update_pipelines(n_clicks, port):
                                     },
                                 ),
                                 html.Span(
-                                    "Executing" if pip.jobid else ("Ready" if pip.ready else "Not Ready"),
+                                    "Executing" if pip_jobid else ("Ready" if pip_ready else "Not Ready"),
                                     className="badge badge-primary"
-                                    if pip.jobid
+                                    if pip_jobid
                                     else (
                                         "badge badge-success"
-                                        if pip.ready
+                                        if pip_ready
                                         else "badge badge-warning"
                                     ),
                                     style={"margin-left": "15px"},
@@ -200,7 +205,7 @@ def update_pipelines(n_clicks, port):
                                     [
                                         html.Strong("Active Job ID: "),
                                         str(
-                                            pip.jobid if pip.jobid is not None else "-"
+                                            pip_jobid if pip_jobid is not None else "-"
                                         ),
                                     ],
                                     style={"margin-right": "30px"},
@@ -209,8 +214,8 @@ def update_pipelines(n_clicks, port):
                                     [
                                         html.Strong("Sample ID: "),
                                         str(
-                                            pip.sampleid
-                                            if pip.sampleid is not None
+                                            pip_sampleid
+                                            if pip_sampleid is not None
                                             else "-"
                                         ),
                                     ]
@@ -245,4 +250,6 @@ def update_pipelines(n_clicks, port):
             f"Error loading pipelines: {str(e)}",
             className="text-secondary",
             style={"padding": "20px"},
+    # pip_components maps role name -> real component name (e.g. "counter" -> "example_counter:(addr,1)").
+    # We need the real component names (the values) to look components up below, not the role names (the keys).
         )

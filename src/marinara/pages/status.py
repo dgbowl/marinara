@@ -217,11 +217,12 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
                 html.Div("Daemon offline.", className="text-secondary"),
             )
 
-        pips = ret.data.pips
+        pips = ret.data.devicefile.pipelines
+        pipret = tomato.status(stgrp="pipelines", port=port, **kwargs)
         pips_count = len(pips)
-        devs_count = len(ret.data.devs)
-        drvs_count = len(ret.data.drvs)
-        cmps = ret.data.cmps
+        devs_count = len(ret.data.devicefile.devices)
+        drvs_count = len(ret.data.devicefile.drivers)
+        cmps = ret.data.devicefile.components
         cmps_count = len(cmps)
 
         selector_options = [{"label": k, "value": k} for k in pips.keys()]
@@ -231,7 +232,7 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
             default_val = list(pips.keys())[0]
 
         # Resolve active job users
-        jobs_ret = ketchup.status(port=port, context=CTXT, verbosity=20, jobids=[])
+        jobs_ret = ketchup.status(daemon=ret.data, jobids=[])
         jobs_map = {}
         if jobs_ret.success:
             for job in jobs_ret.data:
@@ -258,11 +259,15 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
         ]
 
         for pip_name, pip in pips.items():
-            if pip.jobid:
+            pstate = pipret.data.get(pip_name, {}) if pipret.success else {}
+            pip_jobid = pstate.get("jobid")
+            pip_ready = pstate.get("ready", False)
+            pip_sampleid = pstate.get("sampleid")
+            if pip_jobid:
                 status_badge = html.Span(
                     "Executing Job", className="badge badge-primary"
                 )
-            elif pip.ready:
+            elif pip_ready:
                 status_badge = html.Span(
                     "Ready / Idle", className="badge badge-success"
                 )
@@ -273,15 +278,15 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
 
             job_link = (
                 dcc.Link(
-                    f"Job #{pip.jobid}",
+                    f"Job #{pip_jobid}",
                     href="/jobs",
                     style={"font-weight": "600", "color": "var(--accent-color)"},
                 )
-                if pip.jobid
+                if pip_jobid
                 else "-"
             )
-            sample_name = pip.sampleid or "-"
-            owner_name = jobs_map.get(pip.jobid, "N/A") if pip.jobid else "-"
+            sample_name = pip_sampleid or "-"
+            owner_name = jobs_map.get(pip_jobid, "N/A") if pip_jobid else "-"
 
             rows.append(
                 html.Tr(
@@ -377,7 +382,7 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
         ret = tomato.status(stgrp="tomato", port=port, **kwargs)
         if not ret.success or not ret.data:
             raise Exception("Daemon offline")
-        pips = ret.data.pips
+        pips = ret.data.devicefile.pipelines
         pip = pips.get(selected_pip)
     except Exception as e:
         empty_fig = {
@@ -436,7 +441,9 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
 
     # 1. Fetch attributes/parameters for each component in the pipeline
     param_items = []
-    for cname in pip.components:
+    # pip.components maps role name to real component name, e.g. 'counter' to 'example_counter:(addr,1)'.
+    # We need the real component names (the values), not the role names (the keys). Used again further below.
+    for cname in pip.components.values():
         try:
             attrs_ret = passata.attrs(**kwargs, port=port, name=cname)
             attrs_meta = attrs_ret.data if attrs_ret.success else {}
@@ -485,7 +492,7 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
     if "traces" not in historical_data:
         historical_data["traces"] = {}
 
-    for cname in pip.components:
+    for cname in pip.components.values():
         try:
             data_ret = passata.get_last_data(**kwargs, port=port, name=cname)
             if data_ret.success and data_ret.data:
