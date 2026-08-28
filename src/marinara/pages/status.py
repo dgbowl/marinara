@@ -1,18 +1,12 @@
 import dash
 from dash import html, dcc, callback, Output, Input, State
 from tomato import passata, tomato
-import zmq
 import logging
 from datetime import datetime, timezone
 from marinara.icons import get_icon
-from marinara.utils import get_field, clean_value, clean_dict_values
+from marinara.utils import get_field, clean_value, clean_dict_values, CTXT, kwargs
 
 logger = logging.getLogger(__name__)
-
-CTXT = zmq.Context()
-TOUT = 1000
-PORT = 1234
-kwargs = dict(timeout=TOUT, context=CTXT)
 
 dash.register_page(__name__, path_template="/", title="Marinara")
 

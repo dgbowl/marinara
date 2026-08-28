@@ -1,6 +1,7 @@
 import dash
 from dash import html, callback, Input, Output, State
-from marinara.utils import format_obj
+from tomato import tomato
+from marinara.utils import format_obj, kwargs
 
 from marinara.icons import get_icon
 
@@ -46,11 +47,7 @@ layout = html.Div(
 )
 def update_drivers(n_clicks, port):
     try:
-        import zmq
-        from tomato import tomato
-
-        CTXT = zmq.Context()
-        ret = tomato.status(stgrp="tomato", port=port, timeout=1000, context=CTXT)
+        ret = tomato.status(stgrp="tomato", port=port, **kwargs)
         if not ret.success:
             return html.Div(
                 f"No data found. Error: {ret.msg}. Please check the reload button above.",
