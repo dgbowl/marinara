@@ -1,3 +1,4 @@
+import json
 import logging
 from datetime import UTC, datetime
 
@@ -13,10 +14,18 @@ from marinara.utils import (
     get_field,
     get_unit_str,
     kwargs,
+    theme_gridcolor,
+    theme_plot_colors,
 )
 
 logger = logging.getLogger(__name__)
 dash.register_page(__name__, path_template="/components/<port>/<name>")
+
+
+def triggered_pattern_index(ctx):
+    """Extracts the "index" field from a pattern-matching Input's triggered id."""
+    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    return json.loads(trigger_id)["index"]
 
 
 def layout(port: int, name: str, **_):
@@ -224,7 +233,7 @@ def layout(port: int, name: str, **_):
                     dcc.Checklist(
                         options=[
                             {
-                                "label": " Align start at t=0 (Relative)",
+                                "label": " Show elapsed time",
                                 "value": "relative",
                             }
                         ],
@@ -245,8 +254,25 @@ def layout(port: int, name: str, **_):
                     "margin-bottom": "15px",
                 },
             ),
-            dcc.Graph(
-                id="component-data-graph", style={"height": "400px"}, responsive=True
+            # Rendered directly in the initial layout (rather than injected
+            # later by a callback) so that other callbacks can target it as
+            # an Input from the start, instead of referencing an id that
+            # doesn't exist yet on first render.
+            dcc.Checklist(
+                id="component-graph-tab-checklist",
+                options=[],
+                value=["all"],
+                inline=True,
+                inputClassName="graph-tab-input",
+                style={
+                    "display": "flex",
+                    "flex-wrap": "wrap",
+                    "margin-bottom": "15px",
+                },
+            ),
+            html.Div(
+                id="component-data-graph-container",
+                style={"min-height": "400px"},
             ),
         ],
         className="card component-data",
@@ -289,6 +315,8 @@ def layout(port: int, name: str, **_):
         dcc.Store(id="component-attrs-vals-store", data=init_attrs_vals),
         dcc.Store(id="component-attrs-units-store", data=init_attrs_units),
         dcc.Store(id="component-attrs-rw-store", data=init_attrs_rw),
+        dcc.Store(id="component-graph-tab-store", data=["all"]),
+        dcc.Store(id="component-graph-units-store", data=None),
         dcc.Store(id="custom-graphs-list-store", data=[1]),
         dcc.Store(id="custom-graphs-counter-store", data=2),
         dcc.Store(id="custom-graphs-titles-store", data={}),
@@ -429,7 +457,11 @@ def component_data_update(port, name, data, n_intervals):
             ndata = ret.data
         else:
             odata = xr.Dataset.from_dict(data)
-            ndata = xr.merge([odata, ret.data])
+            # Pin explicitly: xarray's defaults for these are changing in a
+            # future release (join outer->exact, compat no_conflicts->override),
+            # and this merge relies on the current outer/no_conflicts behavior
+            # to combine datasets whose "uts" coordinate keeps growing.
+            ndata = xr.merge([odata, ret.data], join="outer", compat="no_conflicts")
         # Cap dataset size to prevent JSON serialization and memory bottlenecks
         if ndata.sizes["uts"] > 500:
             ndata = ndata.isel(uts=slice(-500, None))
@@ -439,17 +471,149 @@ def component_data_update(port, name, data, n_intervals):
         return data
 
 
+def group_by_unit(ds):
+    """Groups data_var keys by their pint-normalized unit label ("" bucket for
+    unitless vars), so equivalent units (e.g. "s" and "sec") share one tab."""
+    groups = {}
+    for key in ds["data_vars"]:
+        raw_unit = ds["data_vars"][key].get("attrs", {}).get("units") or ""
+        label = get_unit_str(raw_unit)
+        groups.setdefault(label, []).append(key)
+    return groups
+
+
+def unit_tab_id(label):
+    """Encodes a unit label as a graph-tab token, namespaced so it can never
+    collide with the "all" sentinel."""
+    return f"unit:{label}"
+
+
+def unit_tab_label(tab):
+    """Decodes a unit-tab token (as produced by unit_tab_id) back to its label."""
+    return tab.removeprefix("unit:")
+
+
+def iter_series(key, y_raw):
+    """Yields (name, y_values) pairs for a data_var, exploding multidimensional
+    variables into one named sub-series per index (key[0], key[1], ...)."""
+    if not (len(y_raw) > 0 and isinstance(y_raw[0], (list, tuple))):
+        yield key, y_raw
+        return
+
+    max_len = max(len(item) for item in y_raw if isinstance(item, (list, tuple)))
+    for i in range(max_len):
+        sub_y = [
+            item[i] if isinstance(item, (list, tuple)) and i < len(item) else None
+            for item in y_raw
+        ]
+        yield f"{key}[{i}]", sub_y
+
+
+def build_traces(ds, keys, formatted_x):
+    """Builds Plotly scatter traces for the given data_var keys, exploding
+    multidimensional variables into one named sub-trace per index."""
+    data = []
+    for key in keys:
+        y_raw = ds["data_vars"][key]["data"]
+        for name, y_vals in iter_series(key, y_raw):
+            data.append(
+                {
+                    "x": formatted_x,
+                    "y": y_vals,
+                    "name": name,
+                    "type": "scatter",
+                    "mode": "lines+markers",
+                }
+            )
+    return data
+
+
+# Tracks the set of distinct unit labels present in the data. Only changes
+# (and so only triggers a tab-bar rebuild) when that set actually changes,
+# instead of on every ~2s data poll - which would otherwise reset the
+# just-rendered buttons' n_clicks and risk clobbering the active tab.
+@callback(
+    Output("component-graph-units-store", "data"),
+    Input("component-data-store", "data"),
+    State("component-graph-units-store", "data"),
+)
+def update_available_units(ds, current_labels):
+    if ds is None:
+        return dash.no_update if current_labels is None else None
+    # Deterministic order: units alphabetically, unitless variables last
+    labels = sorted(group_by_unit(ds), key=lambda u: (u == "", u))
+    if labels == current_labels:
+        return dash.no_update
+    return labels
+
+
+# Renders the "All" / per-unit tab picker's options as a checklist styled
+# to look like tab pills (see .dash-options-list-option / .graph-tab-input in
+# assets/main.css). A native multi-select control reports its complete
+# checked set on every change, so - unlike the button + n_clicks +
+# ctx.triggered scheme this replaced - there is no per-click delta
+# bookkeeping and no ambiguity about click order. The checklist itself
+# lives in the initial layout (see layout()), so only its `options` need
+# updating here, not the whole component.
+@callback(
+    Output("component-graph-tab-checklist", "options"),
+    Input("component-graph-units-store", "data"),
+)
+def render_graph_tabs(group_labels):
+    if group_labels is None:
+        return []
+    return [{"label": "All", "value": "all"}] + [
+        {"label": label or "Unitless", "value": unit_tab_id(label)}
+        for label in group_labels
+    ]
+
+
+# Tracks which tabs (All, or one-or-more units) are currently selected.
+# "All" is exclusive: checking it drops every unit; checking a unit while
+# "All" was checked drops "All". Also prunes any selected unit whose label
+# has dropped out of the live data.
+@callback(
+    Output("component-graph-tab-store", "data"),
+    Output("component-graph-tab-checklist", "value"),
+    Input("component-graph-tab-checklist", "value"),
+    Input("component-graph-units-store", "data"),
+    State("component-graph-tab-store", "data"),
+    prevent_initial_call=True,
+)
+def update_active_graph_tab(checked, group_labels, previous_tabs):
+    previous_tabs = previous_tabs or ["all"]
+    checked = checked or []
+
+    if "all" in checked and "all" not in previous_tabs:
+        active_tabs = ["all"]
+    elif "all" in checked and len(checked) > 1:
+        active_tabs = [t for t in checked if t != "all"]
+    else:
+        active_tabs = list(checked) or ["all"]
+
+    if group_labels is not None:
+        valid = {unit_tab_id(label) for label in group_labels} | {"all"}
+        active_tabs = [t for t in active_tabs if t in valid]
+    active_tabs = active_tabs or ["all"]
+
+    store_update = dash.no_update if active_tabs == previous_tabs else active_tabs
+    checklist_update = dash.no_update if active_tabs == checked else active_tabs
+    return store_update, checklist_update
+
+
 # Plotly Graph Constructor with Local Time and Theme support
 @callback(
-    Output("component-data-graph", "figure"),
+    Output("component-data-graph-container", "children"),
     Input("component-data-store", "data"),
     Input("app-theme-store", "data"),
     Input("checkbox-align-time", "value"),
+    Input("component-graph-tab-store", "data"),
 )
-def component_data_graph(ds, theme, align_time):
+def component_data_graph(ds, theme, align_time, active_tabs):
     if ds is None:
-        return {}
-    keys = list(ds["data_vars"].keys())
+        return []
+
+    active_tabs = active_tabs or ["all"]
 
     # Formatting Unix timestamp (uts) to local timezone or relative time
     raw_x = ds["coords"]["uts"]["data"]
@@ -478,73 +642,67 @@ def component_data_graph(ds, theme, align_time):
                 formatted_x.append(t)
         x_title = "Time (Local)"
 
-    data = []
-    for key in keys:
-        y_raw = ds["data_vars"][key]["data"]
-        is_multidimensional = False
-        if len(y_raw) > 0 and isinstance(y_raw[0], (list, tuple)):
-            is_multidimensional = True
+    # Only needed for unit-scoped tabs; skip the pass over all data_vars
+    # entirely when every selected tab is "All".
+    groups = group_by_unit(ds) if any(t != "all" for t in active_tabs) else {}
 
-        if is_multidimensional:
-            max_len = max(
-                len(item) for item in y_raw if isinstance(item, (list, tuple))
-            )
-            for i in range(max_len):
-                sub_y = []
-                for item in y_raw:
-                    if isinstance(item, (list, tuple)) and i < len(item):
-                        sub_y.append(item[i])
-                    else:
-                        sub_y.append(None)
-                data.append(
-                    {
-                        "x": formatted_x,
-                        "y": sub_y,
-                        "name": f"{key}[{i}]",
-                        "type": "scatter",
-                        "mode": "lines+markers",
-                    }
-                )
-        else:
-            data.append(
-                {
-                    "x": formatted_x,
-                    "y": y_raw,
-                    "name": key,
-                    "type": "scatter",
-                    "mode": "lines+markers",
-                }
-            )
-
-    layout = {
+    # Shared across every selected tab's figure; only yaxis.title varies below.
+    base_layout = {
         "autosize": True,
         "uirevision": True,
-        "template": "plotly_dark" if theme == "dark" else "plotly",
-        "paper_bgcolor": "rgba(0,0,0,0)",
-        "plot_bgcolor": "rgba(0,0,0,0)",
-        "font": {"color": "#ffffff" if theme == "dark" else "#212529"},
+        **theme_plot_colors(theme),
         "xaxis": {
-            "gridcolor": "rgba(255,255,255,0.08)"
-            if theme == "dark"
-            else "rgba(0,0,0,0.08)",
+            "gridcolor": theme_gridcolor(theme),
             "title": x_title,
             "tickangle": -30,
         },
-        "yaxis": {
-            "gridcolor": "rgba(255,255,255,0.08)"
-            if theme == "dark"
-            else "rgba(0,0,0,0.08)"
-        },
+        # Legend sits above the plot rather than below: with rotated x-axis
+        # tick labels, a bottom-anchored legend collides with the axis title
+        # (Plotly positions the title right after the tick labels, so a
+        # fixed y-fraction legend can land on the same line as the title).
+        "showlegend": True,
         "legend": {
             "orientation": "h",
             "x": 0.5,
-            "y": -0.22,
+            "y": 1.18,
             "xanchor": "center",
-            "yanchor": "top",
+            "yanchor": "bottom",
         },
-        "margin": {"t": 30, "b": 100, "l": 50, "r": 20},
+        "margin": {"t": 60 if len(active_tabs) <= 1 else 90, "b": 90, "l": 50, "r": 20},
     }
-    return {"data": data, "layout": layout}
+    # Shrink each graph when several are stacked so more fit on screen at once,
+    # and give stacked graphs extra breathing room so one graph's legend
+    # doesn't crowd against the next graph's title.
+    graph_height = "400px" if len(active_tabs) <= 1 else "280px"
+    graph_gap = "15px" if len(active_tabs) <= 1 else "40px"
+
+    graphs = []
+    for tab in active_tabs:
+        if tab == "all":
+            # Default view: every variable overlaid on a single graph
+            keys_to_plot = list(ds["data_vars"].keys())
+            y_title = "Value"
+        else:
+            label = unit_tab_label(tab)
+            keys_to_plot = groups.get(label, [])
+            if not keys_to_plot:
+                continue
+            y_title = label or "Value"
+
+        data = build_traces(ds, keys_to_plot, formatted_x)
+        layout = {
+            **base_layout,
+            "yaxis": {"gridcolor": theme_gridcolor(theme), "title": y_title},
+        }
+        graphs.append(
+            dcc.Graph(
+                id={"type": "component-data-graph", "index": tab},
+                figure={"data": data, "layout": layout},
+                style={"height": graph_height, "margin-bottom": graph_gap},
+                responsive=True,
+            )
+        )
+    return graphs
 
 
 # Manages adding and removing custom graphs
@@ -568,11 +726,8 @@ def manage_graphs(add_clicks, remove_clicks, active_ids, next_id):
         new_ids = active_ids + [next_id]
         return new_ids, next_id + 1
     else:
-        import json
-
         try:
-            trigger_info = json.loads(trigger_id.split(".")[0])
-            remove_idx = trigger_info["index"]
+            remove_idx = triggered_pattern_index(ctx)
             new_ids = [i for i in active_ids if i != remove_idx]
             return new_ids, next_id
         except Exception as e:
@@ -909,65 +1064,15 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
     y_titles = []
 
     for y_name in y_vars:
-        if y_name in ds.get("data_vars", {}):
-            y_raw = ds["data_vars"][y_name]["data"]
-            y_titles.append(y_name)
-        else:
+        if y_name not in ds.get("data_vars", {}):
             continue
+        y_raw = ds["data_vars"][y_name]["data"]
+        y_titles.append(y_name)
 
-        # Handle multidimensional variables
-        is_multidimensional = False
-        if len(y_raw) > 0 and isinstance(y_raw[0], (list, tuple)):
-            is_multidimensional = True
-
-        if is_multidimensional:
-            max_len = max(
-                len(item) for item in y_raw if isinstance(item, (list, tuple))
-            )
-            for i in range(max_len):
-                sub_y = []
-                for item in y_raw:
-                    if isinstance(item, (list, tuple)) and i < len(item):
-                        sub_y.append(item[i])
-                    else:
-                        sub_y.append(None)
-
-                min_len = min(len(x_data), len(sub_y), len(formatted_times))
-                sub_x = x_data[:min_len]
-                sub_y_trimmed = sub_y[:min_len]
-                sub_hover = formatted_times[:min_len]
-
-                if sort_x:
-                    paired = list(zip(sub_x, sub_y_trimmed, sub_hover))
-                    try:
-                        paired.sort(key=lambda item: item[0])
-                    except Exception as e:
-                        logger.warning("Exception during sorting:", exc_info=e)
-                    if paired:
-                        sub_x_t, sub_y_t, sub_hover_t = zip(*paired)
-                        sub_x = list(sub_x_t)
-                        sub_y_trimmed = list(sub_y_t)
-                        sub_hover = list(sub_hover_t)
-                    else:
-                        sub_x, sub_y_trimmed, sub_hover = [], [], []
-
-                fig_data.append(
-                    {
-                        "x": sub_x,
-                        "y": sub_y_trimmed,
-                        "mode": mode,
-                        "type": "scatter",
-                        "marker": {"size": 8, "opacity": 0.8},
-                        "hovertext": sub_hover,
-                        "hovertemplate": "<b>Time: %{hovertext}</b><br>"
-                        + f"{x_title}: %{{x}}<br>{y_name}[{i}]: %{{y}}<extra></extra>",
-                        "name": f"{y_name}[{i}]",
-                    }
-                )
-        else:
-            min_len = min(len(x_data), len(y_raw), len(formatted_times))
+        for name, y_vals in iter_series(y_name, y_raw):
+            min_len = min(len(x_data), len(y_vals), len(formatted_times))
             sub_x = x_data[:min_len]
-            sub_y_trimmed = y_raw[:min_len]
+            sub_y_trimmed = y_vals[:min_len]
             sub_hover = formatted_times[:min_len]
 
             if sort_x:
@@ -993,8 +1098,8 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
                     "marker": {"size": 8, "opacity": 0.8},
                     "hovertext": sub_hover,
                     "hovertemplate": "<b>Time: %{hovertext}</b><br>"
-                    + f"{x_title}: %{{x}}<br>{y_name}: %{{y}}<extra></extra>",
-                    "name": y_name,
+                    + f"{x_title}: %{{x}}<br>{name}: %{{y}}<extra></extra>",
+                    "name": name,
                 }
             )
 
@@ -1008,22 +1113,9 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
     layout = {
         "autosize": True,
         "uirevision": f"{x_var}-{y_var}",
-        "template": "plotly_dark" if theme == "dark" else "plotly",
-        "paper_bgcolor": "rgba(0,0,0,0)",
-        "plot_bgcolor": "rgba(0,0,0,0)",
-        "font": {"color": "#ffffff" if theme == "dark" else "#212529"},
-        "xaxis": {
-            "gridcolor": "rgba(255,255,255,0.08)"
-            if theme == "dark"
-            else "rgba(0,0,0,0.08)",
-            "title": x_title,
-        },
-        "yaxis": {
-            "gridcolor": "rgba(255,255,255,0.08)"
-            if theme == "dark"
-            else "rgba(0,0,0,0.08)",
-            "title": y_title,
-        },
+        **theme_plot_colors(theme),
+        "xaxis": {"gridcolor": theme_gridcolor(theme), "title": x_title},
+        "yaxis": {"gridcolor": theme_gridcolor(theme), "title": y_title},
         "legend": {
             "orientation": "h",
             "x": 0.5,

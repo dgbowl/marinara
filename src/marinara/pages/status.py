@@ -6,7 +6,15 @@ from dash import Input, Output, State, callback, dcc, html
 from tomato import passata, tomato
 
 from marinara.icons import get_icon
-from marinara.utils import CTXT, clean_data, clean_value, get_field, kwargs
+from marinara.utils import (
+    CTXT,
+    clean_data,
+    clean_value,
+    get_field,
+    kwargs,
+    theme_gridcolor,
+    theme_plot_colors,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -353,9 +361,7 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
                         "font": {"size": 16, "color": "gray"},
                     }
                 ],
-                "paper_bgcolor": "rgba(0,0,0,0)",
-                "plot_bgcolor": "rgba(0,0,0,0)",
-                "template": "plotly_dark" if theme == "dark" else "plotly",
+                **theme_plot_colors(theme),
             }
         }
         return (
@@ -388,9 +394,7 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
                         "font": {"size": 14, "color": "gray"},
                     }
                 ],
-                "paper_bgcolor": "rgba(0,0,0,0)",
-                "plot_bgcolor": "rgba(0,0,0,0)",
-                "template": "plotly_dark" if theme == "dark" else "plotly",
+                **theme_plot_colors(theme),
             }
         }
         return (
@@ -414,9 +418,7 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
                         "font": {"size": 14, "color": "gray"},
                     }
                 ],
-                "paper_bgcolor": "rgba(0,0,0,0)",
-                "plot_bgcolor": "rgba(0,0,0,0)",
-                "template": "plotly_dark" if theme == "dark" else "plotly",
+                **theme_plot_colors(theme),
             }
         }
         return (
@@ -560,21 +562,10 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
         "data": traces,
         "layout": {
             "autosize": True,
-            "template": "plotly_dark" if theme == "dark" else "plotly",
-            "paper_bgcolor": "rgba(0,0,0,0)",
-            "plot_bgcolor": "rgba(0,0,0,0)",
-            "font": {"color": "#ffffff" if theme == "dark" else "#212529"},
+            **theme_plot_colors(theme),
             "margin": {"t": 15, "b": 90, "l": 50, "r": 15},
-            "xaxis": {
-                "gridcolor": "rgba(255,255,255,0.08)"
-                if theme == "dark"
-                else "rgba(0,0,0,0.08)",
-            },
-            "yaxis": {
-                "gridcolor": "rgba(255,255,255,0.08)"
-                if theme == "dark"
-                else "rgba(0,0,0,0.08)",
-            },
+            "xaxis": {"gridcolor": theme_gridcolor(theme)},
+            "yaxis": {"gridcolor": theme_gridcolor(theme)},
             "legend": {
                 "orientation": "h",
                 "x": 0.5,
