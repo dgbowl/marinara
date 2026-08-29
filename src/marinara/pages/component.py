@@ -16,7 +16,6 @@ from marinara.utils import (
 )
 
 logger = logging.getLogger(__name__)
-
 dash.register_page(__name__, path_template="/components/<port>/<name>")
 
 
@@ -28,14 +27,14 @@ def layout(port: int, name: str, **_):
         status_ret = passata.status(**kwargs, port=port, name=name)
         running = status_ret.data["running"] if status_ret.success else False
     except Exception as e:
-        logger.warning(f"Failed to fetch initial status for component {name}: {e}")
+        logger.warning("Exception during passata.status:", exc_info=e)
         running = False
 
     try:
         attrs_ret = passata.attrs(**kwargs, port=port, name=name)
         attrs_dict = attrs_ret.data if attrs_ret.success else {}
     except Exception as e:
-        logger.warning(f"Failed to fetch attributes for component {name}: {e}")
+        logger.warning("Exception during passata.attrs:", exc_info=e)
         attrs_dict = {}
 
     try:
@@ -44,7 +43,7 @@ def layout(port: int, name: str, **_):
         )
         avals_dict = avals_ret.data if avals_ret.success else {}
     except Exception as e:
-        logger.warning(f"Failed to fetch attribute values for component {name}: {e}")
+        logger.warning("Exception during passata.get_attrs:", exc_info=e)
         avals_dict = {}
 
     # Initialize store datasets
@@ -128,7 +127,7 @@ def layout(port: int, name: str, **_):
             if options:
                 control = dcc.Dropdown(
                     id={"type": "component-attr-input", "index": k},
-                    options=sorted(list(options)),
+                    options=sorted(options),
                     value=val,
                     clearable=False,
                     className="attr-control mutable-input",
@@ -326,7 +325,7 @@ def periodic_attrs_update(_, port, name, current_vals, units_dict):
         status_ret = passata.status(**kwargs, port=port, name=name)
         running = status_ret.data["running"] if status_ret.success else False
     except Exception as e:
-        logger.warning(f"Failed to fetch periodic status for component {name}: {e}")
+        logger.warning("Exception during passata.status:", exc_info=e)
         running = False
 
     try:
@@ -335,13 +334,11 @@ def periodic_attrs_update(_, port, name, current_vals, units_dict):
         )
         avals_dict = avals_ret.data if avals_ret.success else {}
     except Exception as e:
-        logger.warning(
-            f"Failed to fetch periodic attribute values for component {name}: {e}"
-        )
+        logger.warning("Exception during passata.get_attrs:", exc_info=e)
         avals_dict = {}
 
     new_vals = {}
-    for k in current_vals.keys():
+    for k in current_vals:
         val = avals_dict.get(k)
         new_vals[k] = clean_value(val)
 
@@ -404,13 +401,14 @@ def set_component_attribute(n_clicks, value, id, port, name):
         )
         return clean_value(current)
     except Exception as e:
-        logger.warning(f"Failed to set attribute {k} on component {name}: {e}")
+        logger.warning("Exception during passata.get_attrs:", exc_info=e)
         try:
             current = passata.get_attrs(
                 **kwargs, port=port, name=name, attrs=[k]
             ).data.get(k)
             return clean_value(current)
-        except Exception:
+        except Exception as e:
+            logger.warning("Exception during passata.get_attrs:", exc_info=e)
             return dash.no_update
 
 
@@ -437,7 +435,7 @@ def component_data_update(port, name, data, n_intervals):
             ndata = ndata.isel(uts=slice(-500, None))
         return clean_data(ndata.to_dict())
     except Exception as e:
-        logger.warning(f"Failed to fetch last data for component {name}: {e}")
+        logger.warning("Exception during component_data_update:", exc_info=e)
         return data
 
 
@@ -462,7 +460,8 @@ def component_data_graph(ds, theme, align_time):
         for t in raw_x:
             try:
                 formatted_x.append(f"+{round(t - start_t, 1)}s")
-            except Exception:
+            except Exception as e:
+                logger.warning("Exception during time formatting:", exc_info=e)
                 formatted_x.append(t)
         x_title = "Relative Time (Seconds)"
     else:
@@ -474,7 +473,8 @@ def component_data_graph(ds, theme, align_time):
                     .astimezone()
                     .strftime("%Y-%m-%d %H:%M:%S")
                 )
-            except Exception:
+            except Exception as e:
+                logger.warning("Exception during time formatting:", exc_info=e)
                 formatted_x.append(t)
         x_title = "Time (Local)"
 
@@ -576,7 +576,7 @@ def manage_graphs(add_clicks, remove_clicks, active_ids, next_id):
             new_ids = [i for i in active_ids if i != remove_idx]
             return new_ids, next_id
         except Exception as e:
-            logger.error(f"Failed to parse remove trigger: {e}")
+            logger.warning("Exception during manage_graphs:", exc_info=e)
             return active_ids, next_id
 
 
@@ -603,10 +603,10 @@ def render_graphs_list(active_ids, titles_dict, ds):
         )
 
     titles_dict = titles_dict or {}
-    vars_list = sorted(list(ds.get("data_vars", {}).keys())) if ds else []
-    options = [{"label": "Time (uts)", "value": "uts"}] + [
-        {"label": v, "value": v} for v in vars_list
-    ]
+    vars_list = sorted(ds.get("data_vars", {}).keys()) if ds else []
+    # options = [{"label": "Time (uts)", "value": "uts"}] + [
+    #     {"label": v, "value": v} for v in vars_list
+    # ]
 
     graphs_layouts = []
     for idx, i in enumerate(active_ids):
@@ -801,7 +801,7 @@ def update_graph_titles(title_values, current_titles):
 def populate_dynamic_selectors(ds):
     if ds is None:
         return [], []
-    vars_list = sorted(list(ds.get("data_vars", {}).keys()))
+    vars_list = sorted(ds.get("data_vars", {}).keys())
     x_options = [{"label": "Time (uts)", "value": "uts"}]
     y_options = [{"label": v, "value": v} for v in vars_list]
     return x_options, y_options
@@ -848,7 +848,8 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
                     .astimezone()
                     .strftime("%Y-%m-%d %H:%M:%S")
                 )
-            except Exception:
+            except Exception as e:
+                logger.warning("Exception during time formatting:", exc_info=e)
                 x_data.append(t)
         x_title = "Time (Local)"
     else:
@@ -894,7 +895,8 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
                 .astimezone()
                 .strftime("%Y-%m-%d %H:%M:%S")
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("Exception during time formatting:", exc_info=e)
             formatted_times.append(str(t))
 
     # Handle sorting and lines connection options
@@ -939,8 +941,8 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
                     paired = list(zip(sub_x, sub_y_trimmed, sub_hover))
                     try:
                         paired.sort(key=lambda item: item[0])
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("Exception during sorting:", exc_info=e)
                     if paired:
                         sub_x_t, sub_y_t, sub_hover_t = zip(*paired)
                         sub_x = list(sub_x_t)
@@ -972,8 +974,8 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
                 paired = list(zip(sub_x, sub_y_trimmed, sub_hover))
                 try:
                     paired.sort(key=lambda item: item[0])
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Exception during sorting:", exc_info=e)
                 if paired:
                     sub_x_t, sub_y_t, sub_hover_t = zip(*paired)
                     sub_x = list(sub_x_t)

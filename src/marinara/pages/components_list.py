@@ -1,3 +1,5 @@
+import logging
+
 import dash
 from dash import Input, Output, State, callback, html
 from tomato import tomato
@@ -5,6 +7,7 @@ from tomato import tomato
 from marinara.icons import get_icon
 from marinara.utils import format_obj, kwargs
 
+logger = logging.getLogger(__name__)
 dash.register_page(__name__, path="/components", title="Components")
 
 layout = html.Div(
@@ -70,6 +73,7 @@ def update_components(n_clicks, port):
             port=port,
         )
     except Exception as e:
+        logger.warning("Exception during update_components:", exc_info=e)
         return html.Div(
             f"Error loading components: {e!s}",
             className="text-secondary",

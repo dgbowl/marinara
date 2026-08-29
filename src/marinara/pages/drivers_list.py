@@ -1,3 +1,5 @@
+import logging
+
 import dash
 from dash import Input, Output, State, callback, html
 from tomato import tomato
@@ -5,6 +7,7 @@ from tomato import tomato
 from marinara.icons import get_icon
 from marinara.utils import format_obj, kwargs
 
+logger = logging.getLogger(__name__)
 dash.register_page(__name__, path="/drivers", title="Drivers")
 
 layout = html.Div(
@@ -63,6 +66,7 @@ def update_drivers(n_clicks, port):
             port=port,
         )
     except Exception as e:
+        logger.warning("Exception during update_drivers:", exc_info=e)
         return html.Div(
             f"Error loading drivers: {e!s}",
             className="text-secondary",

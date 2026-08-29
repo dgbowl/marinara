@@ -220,11 +220,11 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
         cmps = ret.data.cmps
         cmps_count = len(cmps)
 
-        selector_options = [{"label": k, "value": k} for k in pips.keys()]
+        selector_options = [{"label": k, "value": k} for k in pips]
 
         default_val = current_selector_value
         if not default_val and pips.keys():
-            default_val = list(pips.keys())[0]
+            default_val = next(iter(pips.keys()))
 
         # Resolve active job users
         jobs_ret = ketchup.status(port=port, context=CTXT, verbosity=20, jobids=[])
@@ -315,6 +315,7 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
             table,
         )
     except Exception as e:
+        logger.warning("Exception during update_dashboard_stats:", exc_info=e)
         return (
             "0",
             "0",
@@ -368,10 +369,11 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
     try:
         ret = tomato.status(stgrp="tomato", port=port, **kwargs)
         if not ret.success or not ret.data:
-            raise Exception("Daemon offline")
+            raise RuntimeError("Daemon offline")
         pips = ret.data.pips
         pip = pips.get(selected_pip)
-    except Exception:
+    except Exception as e:
+        logger.warning("Exception during update_dashboard_live_view:", exc_info=e)
         empty_fig = {
             "layout": {
                 "autosize": True,
@@ -471,7 +473,8 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
                     )
         except Exception as e:
             logger.warning(
-                f"Failed to fetch parameters for component {cname} of pipeline {selected_pip}: {e}"
+                f"Failed to fetch parameters for component {cname} of pipeline {selected_pip}: {e}",
+                exc_info=e,
             )
 
     params_list = html.Div(param_items, className="params-list-container")
@@ -527,7 +530,8 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
                                     trace["y"].pop(0)
         except Exception as e:
             logger.warning(
-                f"Failed to fetch live data for component {cname} of pipeline {selected_pip}: {e}"
+                f"Failed to fetch live data for component {cname} of pipeline {selected_pip}: {e}",
+                exc_info=e,
             )
 
     traces = []
@@ -538,7 +542,8 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
                 formatted_x.append(
                     datetime.fromtimestamp(t, UTC).astimezone().strftime("%H:%M:%S")
                 )
-            except Exception:
+            except Exception as e:
+                logger.warning("Exception during time formatting:", exc_info=e)
                 formatted_x.append(str(t))
 
         traces.append(

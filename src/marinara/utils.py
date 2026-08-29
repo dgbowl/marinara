@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 import pint
@@ -7,7 +8,8 @@ from dash import dcc, html
 PORT = 1234
 TOUT = 1000
 CTXT = zmq.Context()
-kwargs = dict(timeout=TOUT, context=CTXT)
+kwargs = {"timeout": TOUT, "context": CTXT}
+logger = logging.getLogger(__name__)
 
 
 def get_field(obj: Any, key: str, default: Any = None) -> Any:
@@ -37,10 +39,7 @@ def clean_value(val: Any) -> Any:
         val = val.m
 
     if hasattr(val, "item") and callable(val.item):
-        try:
-            val = val.item()
-        except Exception:
-            pass
+        val = val.item()
     return val
 
 
@@ -63,7 +62,7 @@ def get_unit_str(units: str | Any | None) -> str:
     try:
         q = pint.Quantity(1, units)
         return f"{q.units:~H}"
-    except Exception:
+    except pint.errors.UndefinedUnitError:
         return str(units)
 
 
@@ -82,8 +81,8 @@ def format_constraint(val: Any, base_unit: str) -> str:
             try:
                 # Convert to base_unit to keep it consistent if compatible
                 val = val.to(base_unit)
-            except Exception:
-                pass
+            except pint.errors.DimensionalityError:
+                logger.error("could not convert val '%s' to unit '%s'", val, base_unit)
         mag = clean_value(val)
         u_str = get_unit_str(val.units)
         return f"{mag} {u_str}" if u_str else str(mag)
@@ -141,7 +140,7 @@ def format_obj(obj, headers, attrs, otype, port):
         for idx, attr in enumerate(attrs[1:]):
             header_label = headers[idx + 1]
             val = get_field(v, attr, "")
-            if isinstance(val, list) or isinstance(val, tuple) or isinstance(val, set):
+            if isinstance(val, (list, tuple, set)):
                 val_str = ", ".join(str(x) for x in val)
             else:
                 val_str = str(val)
