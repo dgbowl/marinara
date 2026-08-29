@@ -19,7 +19,7 @@ classifiers = [
     "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Operating System :: OS Independent",
 ]
-requires-python = ">= 3.10"
+requires-python = ">= 3.11"
 dependencies = [
     "tomato >= 2.1rc1, < 3.0rc1",
     "dash >= 2.18",
@@ -44,11 +44,15 @@ Issues = "https://github.com/dgbowl/marinara/issues"
 Repository = "https://github.com/dgbowl/marinara/"
 
 [project.scripts]
+marinara = "marinara:run_marinara"
 
 [tool.setuptools-git-versioning]
 enabled = true
 dev_template = "{tag}.post{ccount}"
 dirty_template = "{tag}.post{ccount}+dirty"
+
+[tool.setuptools.package-data]
+marinara = ["src/marinara/assets/*"]
 
 [tool.ruff]
 

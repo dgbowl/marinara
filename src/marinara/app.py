@@ -1,4 +1,5 @@
 import importlib.metadata
+
 import dash
 from dash import html, dcc
 from marinara.sidebar import create_sidebar
@@ -6,7 +7,10 @@ from marinara.sidebar import create_sidebar
 __version__ = importlib.metadata.version("marinara")
 
 app = dash.Dash(
-    __name__, use_pages=True, suppress_callback_exceptions=True, title="Marinara"
+    __name__,
+    use_pages=True,
+    suppress_callback_exceptions=True,
+    title="Marinara",
 )
 
 app.layout = html.Div(
@@ -30,4 +34,4 @@ app.layout = html.Div(
 )
 
 if __name__ == "__main__":
-    app.run(debug=True, host="127.0.0.1")
+    app.run(debug=True, host="127.0.0.1", port=8050)
