@@ -1,7 +1,6 @@
 import dash
 from dash import html, dcc, callback, Input, State, Output, MATCH, ALL
 from tomato import passata
-import zmq
 import xarray as xr
 import logging
 from datetime import datetime, timezone
@@ -11,14 +10,10 @@ from marinara.utils import (
     clean_data,
     get_unit_str,
     format_constraint,
+    kwargs,
 )
 
 logger = logging.getLogger(__name__)
-
-# ZeroMQ Context Setup
-CTXT = zmq.Context()
-TOUT = 1000
-kwargs = dict(timeout=TOUT, context=CTXT)
 
 dash.register_page(__name__, path_template="/components/<port>/<name>")
 

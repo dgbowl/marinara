@@ -1,15 +1,16 @@
 import dash
 from dash import html, dcc, callback, set_props, Input, Output, State, MATCH
 from tomato import passata, tomato
-from zmq import Context
 import logging
-from marinara.utils import get_field, clean_value, get_unit_str, format_constraint
+from marinara.utils import (
+    get_field,
+    clean_value,
+    get_unit_str,
+    format_constraint,
+    kwargs,
+)
 
 logger = logging.getLogger(__name__)
-
-CTXT = Context()
-TOUT = 1000
-kwargs = dict(timeout=TOUT, context=CTXT)
 
 
 def create_header_div(port: int, name: str):
