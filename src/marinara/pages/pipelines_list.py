@@ -53,6 +53,7 @@ def update_pipelines(n_clicks, port):
     try:
         ret = tomato.status(stgrp="tomato", port=port, **kwargs)
         if not ret.success:
+            logger.warning(f"tomato.status returned failure: {ret.msg}")
             return html.Div(
                 f"No data found. Error: {ret.msg}. Please check the reload button above.",
                 className="text-secondary",

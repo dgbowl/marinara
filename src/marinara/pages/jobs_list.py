@@ -67,6 +67,7 @@ def update_jobs_list(n_clicks, port):
                     className="text-secondary",
                     style={"text-align": "center", "padding": "20px"},
                 )
+            logger.warning(f"ketchup.status returned failure: {ret.msg}")
             return html.Div(
                 f"No data found. Error: {ret.msg}",
                 className="text-secondary",
