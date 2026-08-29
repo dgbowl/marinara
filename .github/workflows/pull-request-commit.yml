@@ -1,0 +1,7 @@
+name: pull-request-commit
+on:
+    pull_request:
+        branches: ['main']
+jobs:
+    call-lint:
+        uses: ./.github/workflows/workflow-lint.yml
