@@ -1,4 +1,5 @@
-from dash import html, dcc, Output, Input, State, callback
+from dash import Input, Output, State, callback, dcc, html
+
 from marinara.icons import get_icon
 
 

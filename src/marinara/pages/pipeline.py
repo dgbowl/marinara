@@ -1,12 +1,14 @@
-import dash
-from dash import html, dcc, callback, set_props, Input, Output, State, MATCH
-from tomato import passata, tomato
 import logging
+
+import dash
+from dash import MATCH, Input, Output, State, callback, dcc, html, set_props
+from tomato import passata, tomato
+
 from marinara.utils import (
-    get_field,
     clean_value,
-    get_unit_str,
     format_constraint,
+    get_field,
+    get_unit_str,
     kwargs,
 )
 
@@ -600,9 +602,7 @@ def components_periodic_update_data_store(_, cmps, data, port, name):
         for k, v in dd["data_vars"].items():
             newdata[cmp][k] = clean_value(v["data"][-1])
 
-    if newdata == {}:
-        return dash.no_update
-    elif newdata == data:
+    if newdata == {} or newdata == data:
         return dash.no_update
     else:
         return newdata
@@ -773,9 +773,7 @@ def components_update_param_display(data, value, id):
 )
 def components_update_data_display(data, value, id):
     cname, key = id["index"].split("/")
-    if data is None or key not in data.get(cname, {}):
-        return dash.no_update
-    elif value == data[cname][key]:
+    if data is None or key not in data.get(cname, {}) or value == data[cname][key]:
         return dash.no_update
     else:
         val = data[cname][key]

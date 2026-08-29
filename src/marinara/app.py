@@ -1,7 +1,8 @@
 import importlib.metadata
 
 import dash
-from dash import html, dcc
+from dash import dcc, html
+
 from marinara.sidebar import create_sidebar
 
 __version__ = importlib.metadata.version("marinara")

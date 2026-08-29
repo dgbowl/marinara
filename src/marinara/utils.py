@@ -1,7 +1,8 @@
-import zmq
-from dash import html, dcc
-from typing import Any, Union, Optional
+from typing import Any
+
 import pint
+import zmq
+from dash import dcc, html
 
 PORT = 1234
 TOUT = 1000
@@ -55,7 +56,7 @@ def clean_data(d: Any) -> Any:
         return clean_value(d)
 
 
-def get_unit_str(units: Optional[Union[str, Any]]) -> str:
+def get_unit_str(units: str | Any | None) -> str:
     """Formats unit names for human-friendly display using Pint."""
     if units is None or units == "":
         return ""

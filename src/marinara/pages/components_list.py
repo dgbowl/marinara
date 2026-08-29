@@ -1,9 +1,9 @@
 import dash
-from dash import html, callback, Input, Output, State
+from dash import Input, Output, State, callback, html
 from tomato import tomato
-from marinara.utils import format_obj, kwargs
 
 from marinara.icons import get_icon
+from marinara.utils import format_obj, kwargs
 
 dash.register_page(__name__, path="/components", title="Components")
 
@@ -71,7 +71,7 @@ def update_components(n_clicks, port):
         )
     except Exception as e:
         return html.Div(
-            f"Error loading components: {str(e)}",
+            f"Error loading components: {e!s}",
             className="text-secondary",
             style={"padding": "20px"},
         )

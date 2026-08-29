@@ -1,9 +1,9 @@
 import dash
-from dash import html, callback, Input, Output, State
+from dash import Input, Output, State, callback, html
 from tomato import tomato
-from marinara.utils import format_obj, kwargs
 
 from marinara.icons import get_icon
+from marinara.utils import format_obj, kwargs
 
 dash.register_page(__name__, path="/devices", title="Devices")
 
@@ -64,7 +64,7 @@ def update_devices(n_clicks, port):
         )
     except Exception as e:
         return html.Div(
-            f"Error loading devices: {str(e)}",
+            f"Error loading devices: {e!s}",
             className="text-secondary",
             style={"padding": "20px"},
         )
