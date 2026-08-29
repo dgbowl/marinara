@@ -533,7 +533,7 @@ def pipeline_param_interaction_ready(values, data, port, name):
             if ret.success:
                 set_props("pipeline-ready-error", {"children": ""})
             else:
-                logger.warning(f"tomato.pipeline_ready returned failure: {ret.msg}")
+                logger.warning("tomato.pipeline_ready returned failure: %s", ret.msg)
                 set_props(
                     "pipeline-ready-error",
                     {"children": f"Failed to set ready: {ret.msg}"},
@@ -566,7 +566,7 @@ def pipeline_param_interaction_sampleid(sampleid, port, name):
         if ret.success:
             set_props("pipeline-sampleid-error", {"children": ""})
         else:
-            logger.warning(f"tomato.pipeline_eject/load returned failure: {ret.msg}")
+            logger.warning("tomato.pipeline_eject/load returned failure: %s", ret.msg)
             set_props("pipeline-sampleid-error", {"children": f"Failed: {ret.msg}"})
     except Exception as e:
         logger.warning("Exception during tomato.pipeline_eject:", exc_info=e)
