@@ -1,20 +1,21 @@
-import dash
-from dash import html, dcc, callback, Input, State, Output, MATCH, ALL
-from tomato import passata
-import xarray as xr
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
+import dash
+import xarray as xr
+from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
+from tomato import passata
+
 from marinara.utils import (
-    get_field,
-    clean_value,
     clean_data,
-    get_unit_str,
+    clean_value,
     format_constraint,
+    get_field,
+    get_unit_str,
     kwargs,
 )
 
 logger = logging.getLogger(__name__)
-
 dash.register_page(__name__, path_template="/components/<port>/<name>")
 
 
@@ -26,14 +27,14 @@ def layout(port: int, name: str, **_):
         status_ret = passata.status(**kwargs, port=port, name=name)
         running = status_ret.data["running"] if status_ret.success else False
     except Exception as e:
-        logger.warning(f"Failed to fetch initial status for component {name}: {e}")
+        logger.warning("Exception during passata.status:", exc_info=e)
         running = False
 
     try:
         attrs_ret = passata.attrs(**kwargs, port=port, name=name)
         attrs_dict = attrs_ret.data if attrs_ret.success else {}
     except Exception as e:
-        logger.warning(f"Failed to fetch attributes for component {name}: {e}")
+        logger.warning("Exception during passata.attrs:", exc_info=e)
         attrs_dict = {}
 
     try:
@@ -42,7 +43,7 @@ def layout(port: int, name: str, **_):
         )
         avals_dict = avals_ret.data if avals_ret.success else {}
     except Exception as e:
-        logger.warning(f"Failed to fetch attribute values for component {name}: {e}")
+        logger.warning("Exception during passata.get_attrs:", exc_info=e)
         avals_dict = {}
 
     # Initialize store datasets
@@ -126,7 +127,7 @@ def layout(port: int, name: str, **_):
             if options:
                 control = dcc.Dropdown(
                     id={"type": "component-attr-input", "index": k},
-                    options=sorted(list(options)),
+                    options=sorted(options),
                     value=val,
                     clearable=False,
                     className="attr-control mutable-input",
@@ -267,8 +268,8 @@ def layout(port: int, name: str, **_):
                     "border-radius": "4px",
                     "cursor": "pointer",
                     "font-weight": "600",
-                }
-            )
+                },
+            ),
         ],
         style={
             "display": "flex",
@@ -276,8 +277,8 @@ def layout(port: int, name: str, **_):
             "margin-bottom": "20px",
             "border-bottom": "1px solid var(--border-color)",
             "padding-bottom": "10px",
-            "margin-top": "20px"
-        }
+            "margin-top": "20px",
+        },
     )
 
     layout_children = [
@@ -295,12 +296,9 @@ def layout(port: int, name: str, **_):
         header,
         # Row 1: Attributes & Controls (Left) and Data Graph (Right)
         html.Div(
-            children=[
-                attrs_card,
-                graph_card
-            ],
+            children=[attrs_card, graph_card],
             className="component-grid",
-            style={"margin-bottom": "20px"}
+            style={"margin-bottom": "20px"},
         ),
         # Row 2: Custom Graphs Section
         custom_graphs_header,
@@ -327,7 +325,7 @@ def periodic_attrs_update(_, port, name, current_vals, units_dict):
         status_ret = passata.status(**kwargs, port=port, name=name)
         running = status_ret.data["running"] if status_ret.success else False
     except Exception as e:
-        logger.warning(f"Failed to fetch periodic status for component {name}: {e}")
+        logger.warning("Exception during passata.status:", exc_info=e)
         running = False
 
     try:
@@ -336,13 +334,11 @@ def periodic_attrs_update(_, port, name, current_vals, units_dict):
         )
         avals_dict = avals_ret.data if avals_ret.success else {}
     except Exception as e:
-        logger.warning(
-            f"Failed to fetch periodic attribute values for component {name}: {e}"
-        )
+        logger.warning("Exception during passata.get_attrs:", exc_info=e)
         avals_dict = {}
 
     new_vals = {}
-    for k in current_vals.keys():
+    for k in current_vals:
         val = avals_dict.get(k)
         new_vals[k] = clean_value(val)
 
@@ -405,13 +401,14 @@ def set_component_attribute(n_clicks, value, id, port, name):
         )
         return clean_value(current)
     except Exception as e:
-        logger.warning(f"Failed to set attribute {k} on component {name}: {e}")
+        logger.warning("Exception during passata.get_attrs:", exc_info=e)
         try:
             current = passata.get_attrs(
                 **kwargs, port=port, name=name, attrs=[k]
             ).data.get(k)
             return clean_value(current)
-        except Exception:
+        except Exception as e:
+            logger.warning("Exception during passata.get_attrs:", exc_info=e)
             return dash.no_update
 
 
@@ -438,7 +435,7 @@ def component_data_update(port, name, data, n_intervals):
             ndata = ndata.isel(uts=slice(-500, None))
         return clean_data(ndata.to_dict())
     except Exception as e:
-        logger.warning(f"Failed to fetch last data for component {name}: {e}")
+        logger.warning("Exception during component_data_update:", exc_info=e)
         return data
 
 
@@ -463,7 +460,8 @@ def component_data_graph(ds, theme, align_time):
         for t in raw_x:
             try:
                 formatted_x.append(f"+{round(t - start_t, 1)}s")
-            except Exception:
+            except Exception as e:
+                logger.warning("Exception during time formatting:", exc_info=e)
                 formatted_x.append(t)
         x_title = "Relative Time (Seconds)"
     else:
@@ -471,11 +469,12 @@ def component_data_graph(ds, theme, align_time):
         for t in raw_x:
             try:
                 formatted_x.append(
-                    datetime.fromtimestamp(t, timezone.utc)
+                    datetime.fromtimestamp(t, UTC)
                     .astimezone()
                     .strftime("%Y-%m-%d %H:%M:%S")
                 )
-            except Exception:
+            except Exception as e:
+                logger.warning("Exception during time formatting:", exc_info=e)
                 formatted_x.append(t)
         x_title = "Time (Local)"
 
@@ -556,27 +555,28 @@ def component_data_graph(ds, theme, align_time):
     Input({"type": "custom-graph-remove-btn", "index": ALL}, "n_clicks"),
     State("custom-graphs-list-store", "data"),
     State("custom-graphs-counter-store", "data"),
-    prevent_initial_call=True
+    prevent_initial_call=True,
 )
 def manage_graphs(add_clicks, remove_clicks, active_ids, next_id):
     ctx = dash.callback_context
     if not ctx.triggered:
         return active_ids, next_id
-        
+
     trigger_id = ctx.triggered[0]["prop_id"]
-    
+
     if "add-graph-btn" in trigger_id:
         new_ids = active_ids + [next_id]
         return new_ids, next_id + 1
     else:
         import json
+
         try:
             trigger_info = json.loads(trigger_id.split(".")[0])
             remove_idx = trigger_info["index"]
             new_ids = [i for i in active_ids if i != remove_idx]
             return new_ids, next_id
         except Exception as e:
-            logger.error(f"Failed to parse remove trigger: {e}")
+            logger.warning("Exception during manage_graphs:", exc_info=e)
             return active_ids, next_id
 
 
@@ -585,7 +585,7 @@ def manage_graphs(add_clicks, remove_clicks, active_ids, next_id):
     Output("custom-graphs-container", "children"),
     Input("custom-graphs-list-store", "data"),
     State("custom-graphs-titles-store", "data"),
-    State("component-data-store", "data")
+    State("component-data-store", "data"),
 )
 def render_graphs_list(active_ids, titles_dict, ds):
     if not active_ids:
@@ -599,21 +599,23 @@ def render_graphs_list(active_ids, titles_dict, ds):
                 "border": "1px dashed var(--border-color)",
                 "border-radius": "var(--radius)",
                 "margin-top": "15px",
-            }
+            },
         )
-        
+
     titles_dict = titles_dict or {}
-    vars_list = sorted(list(ds.get("data_vars", {}).keys())) if ds else []
-    options = [{"label": "Time (uts)", "value": "uts"}] + [{"label": v, "value": v} for v in vars_list]
-    
+    vars_list = sorted(ds.get("data_vars", {}).keys()) if ds else []
+    # options = [{"label": "Time (uts)", "value": "uts"}] + [
+    #     {"label": v, "value": v} for v in vars_list
+    # ]
+
     graphs_layouts = []
     for idx, i in enumerate(active_ids):
         display_number = idx + 1
         graph_id_str = str(i)
-        
+
         # Stored title or dynamic fallback based on display position
         title_val = titles_dict.get(graph_id_str, f"Custom Graph #{display_number}")
-        
+
         card = html.Div(
             id={"type": "custom-graph-card", "index": i},
             children=[
@@ -634,8 +636,8 @@ def render_graphs_list(active_ids, titles_dict, ds):
                                 "color": "var(--text-color)",
                                 "padding": "2px 5px",
                                 "width": "50%",
-                                "outline": "none"
-                            }
+                                "outline": "none",
+                            },
                         ),
                         html.Button(
                             "Remove",
@@ -651,8 +653,8 @@ def render_graphs_list(active_ids, titles_dict, ds):
                                 "cursor": "pointer",
                                 "font-size": "12px",
                                 "font-weight": "600",
-                            }
-                        )
+                            },
+                        ),
                     ],
                     style={
                         "display": "flex",
@@ -667,59 +669,103 @@ def render_graphs_list(active_ids, titles_dict, ds):
                     children=[
                         html.Div(
                             children=[
-                                html.Label("X Axis Variable:", style={"font-weight": "600", "font-size": "13px", "margin-bottom": "5px", "display": "block", "color": "var(--text-color)"}),
+                                html.Label(
+                                    "X Axis Variable:",
+                                    style={
+                                        "font-weight": "600",
+                                        "font-size": "13px",
+                                        "margin-bottom": "5px",
+                                        "display": "block",
+                                        "color": "var(--text-color)",
+                                    },
+                                ),
                                 dcc.Dropdown(
                                     id={"type": "custom-graph-x-selector", "index": i},
                                     options=[{"label": "Time (uts)", "value": "uts"}],
                                     value="uts",
                                     disabled=True,
                                     clearable=False,
-                                    style={"width": "100%"}
-                                )
+                                    style={"width": "100%"},
+                                ),
                             ],
-                            style={"flex": "1", "min-width": "150px"}
+                            style={"flex": "1", "min-width": "150px"},
                         ),
                         html.Div(
                             children=[
-                                html.Label("Y Axis Variables:", style={"font-weight": "600", "font-size": "13px", "margin-bottom": "5px", "display": "block", "color": "var(--text-color)"}),
+                                html.Label(
+                                    "Y Axis Variables:",
+                                    style={
+                                        "font-weight": "600",
+                                        "font-size": "13px",
+                                        "margin-bottom": "5px",
+                                        "display": "block",
+                                        "color": "var(--text-color)",
+                                    },
+                                ),
                                 dcc.Dropdown(
                                     id={"type": "custom-graph-y-selector", "index": i},
-                                    options=[{"label": v, "value": v} for v in vars_list],
+                                    options=[
+                                        {"label": v, "value": v} for v in vars_list
+                                    ],
                                     multi=True,
                                     placeholder="Select variables",
-                                    style={"width": "100%"}
-                                )
+                                    style={"width": "100%"},
+                                ),
                             ],
-                            style={"flex": "2", "min-width": "250px"}
+                            style={"flex": "2", "min-width": "250px"},
                         ),
                         html.Div(
                             children=[
-                                html.Label("Graph Options:", style={"font-weight": "600", "font-size": "13px", "margin-bottom": "5px", "display": "block", "color": "var(--text-color)"}),
+                                html.Label(
+                                    "Graph Options:",
+                                    style={
+                                        "font-weight": "600",
+                                        "font-size": "13px",
+                                        "margin-bottom": "5px",
+                                        "display": "block",
+                                        "color": "var(--text-color)",
+                                    },
+                                ),
                                 dcc.Checklist(
                                     id={"type": "custom-graph-options", "index": i},
                                     options=[
-                                        {"label": " Connect points (Lines)", "value": "lines"},
-                                        {"label": " Sort by X-Axis", "value": "sort"}
+                                        {
+                                            "label": " Connect points (Lines)",
+                                            "value": "lines",
+                                        },
+                                        {"label": " Sort by X-Axis", "value": "sort"},
                                     ],
                                     value=["lines"],
-                                    labelStyle={"display": "inline-block", "margin-right": "15px", "font-size": "13px", "color": "var(--text-color)"},
-                                    style={"padding": "6px 0"}
-                                )
+                                    labelStyle={
+                                        "display": "inline-block",
+                                        "margin-right": "15px",
+                                        "font-size": "13px",
+                                        "color": "var(--text-color)",
+                                    },
+                                    style={"padding": "6px 0"},
+                                ),
                             ],
-                            style={"flex": "1.5", "min-width": "250px"}
+                            style={"flex": "1.5", "min-width": "250px"},
                         ),
                     ],
-                    style={"display": "flex", "gap": "15px", "flex-wrap": "wrap", "margin-bottom": "20px"}
+                    style={
+                        "display": "flex",
+                        "gap": "15px",
+                        "flex-wrap": "wrap",
+                        "margin-bottom": "20px",
+                    },
                 ),
                 dcc.Graph(
-                    id={"type": "custom-graph", "index": i}, style={"height": "400px"}, responsive=True
+                    id={"type": "custom-graph", "index": i},
+                    style={"height": "400px"},
+                    responsive=True,
                 ),
             ],
             className="card component-data",
-            style={"margin-bottom": "20px"}
+            style={"margin-bottom": "20px"},
         )
         graphs_layouts.append(card)
-        
+
     return graphs_layouts
 
 
@@ -728,21 +774,21 @@ def render_graphs_list(active_ids, titles_dict, ds):
     Output("custom-graphs-titles-store", "data"),
     Input({"type": "custom-graph-title-input", "index": ALL}, "value"),
     State("custom-graphs-titles-store", "data"),
-    prevent_initial_call=True
+    prevent_initial_call=True,
 )
 def update_graph_titles(title_values, current_titles):
     ctx = dash.callback_context
     if not ctx.triggered:
         return current_titles
-        
+
     new_titles = current_titles if current_titles else {}
     inputs_list = ctx.inputs_list[0]
-    
+
     for inp, val in zip(inputs_list, title_values):
         graph_id = str(inp["id"]["index"])
         if val is not None:
             new_titles[graph_id] = val
-            
+
     return new_titles
 
 
@@ -755,7 +801,7 @@ def update_graph_titles(title_values, current_titles):
 def populate_dynamic_selectors(ds):
     if ds is None:
         return [], []
-    vars_list = sorted(list(ds.get("data_vars", {}).keys()))
+    vars_list = sorted(ds.get("data_vars", {}).keys())
     x_options = [{"label": "Time (uts)", "value": "uts"}]
     y_options = [{"label": v, "value": v} for v in vars_list]
     return x_options, y_options
@@ -776,19 +822,21 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
             "layout": {
                 "xaxis": {"visible": False},
                 "yaxis": {"visible": False},
-                "annotations": [{
-                    "text": "Select variables above to view custom plot",
-                    "xref": "paper",
-                    "yref": "paper",
-                    "showarrow": False,
-                    "font": {"size": 16, "color": "gray"}
-                }],
+                "annotations": [
+                    {
+                        "text": "Select variables above to view custom plot",
+                        "xref": "paper",
+                        "yref": "paper",
+                        "showarrow": False,
+                        "font": {"size": 16, "color": "gray"},
+                    }
+                ],
                 "paper_bgcolor": "rgba(0,0,0,0)",
                 "plot_bgcolor": "rgba(0,0,0,0)",
-                "template": "plotly_dark" if theme == "dark" else "plotly"
+                "template": "plotly_dark" if theme == "dark" else "plotly",
             }
         }
-        
+
     # Fetch X data
     if x_var == "uts":
         raw_x = ds["coords"]["uts"]["data"]
@@ -796,11 +844,12 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
         for t in raw_x:
             try:
                 x_data.append(
-                    datetime.fromtimestamp(t, timezone.utc)
+                    datetime.fromtimestamp(t, UTC)
                     .astimezone()
                     .strftime("%Y-%m-%d %H:%M:%S")
                 )
-            except Exception:
+            except Exception as e:
+                logger.warning("Exception during time formatting:", exc_info=e)
                 x_data.append(t)
         x_title = "Time (Local)"
     else:
@@ -809,42 +858,45 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
             x_title = x_var
         else:
             return {}
-            
+
     # Process selected Y variables
     if isinstance(y_var, str):
         y_vars = [y_var]
     else:
         y_vars = y_var
-        
+
     if not y_vars:
         return {
             "layout": {
                 "xaxis": {"visible": False},
                 "yaxis": {"visible": False},
-                "annotations": [{
-                    "text": "Select variables above to view custom plot",
-                    "xref": "paper",
-                    "yref": "paper",
-                    "showarrow": False,
-                    "font": {"size": 16, "color": "gray"}
-                }],
+                "annotations": [
+                    {
+                        "text": "Select variables above to view custom plot",
+                        "xref": "paper",
+                        "yref": "paper",
+                        "showarrow": False,
+                        "font": {"size": 16, "color": "gray"},
+                    }
+                ],
                 "paper_bgcolor": "rgba(0,0,0,0)",
                 "plot_bgcolor": "rgba(0,0,0,0)",
-                "template": "plotly_dark" if theme == "dark" else "plotly"
+                "template": "plotly_dark" if theme == "dark" else "plotly",
             }
         }
-            
+
     # Format timestamps for hover text
     raw_uts = ds.get("coords", {}).get("uts", {}).get("data", [])
     formatted_times = []
     for t in raw_uts:
         try:
             formatted_times.append(
-                datetime.fromtimestamp(t, timezone.utc)
+                datetime.fromtimestamp(t, UTC)
                 .astimezone()
                 .strftime("%Y-%m-%d %H:%M:%S")
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("Exception during time formatting:", exc_info=e)
             formatted_times.append(str(t))
 
     # Handle sorting and lines connection options
@@ -855,19 +907,19 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
 
     fig_data = []
     y_titles = []
-    
+
     for y_name in y_vars:
         if y_name in ds.get("data_vars", {}):
             y_raw = ds["data_vars"][y_name]["data"]
             y_titles.append(y_name)
         else:
             continue
-            
+
         # Handle multidimensional variables
         is_multidimensional = False
         if len(y_raw) > 0 and isinstance(y_raw[0], (list, tuple)):
             is_multidimensional = True
-            
+
         if is_multidimensional:
             max_len = max(
                 len(item) for item in y_raw if isinstance(item, (list, tuple))
@@ -879,18 +931,18 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
                         sub_y.append(item[i])
                     else:
                         sub_y.append(None)
-                        
+
                 min_len = min(len(x_data), len(sub_y), len(formatted_times))
                 sub_x = x_data[:min_len]
                 sub_y_trimmed = sub_y[:min_len]
                 sub_hover = formatted_times[:min_len]
-                
+
                 if sort_x:
                     paired = list(zip(sub_x, sub_y_trimmed, sub_hover))
                     try:
                         paired.sort(key=lambda item: item[0])
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("Exception during sorting:", exc_info=e)
                     if paired:
                         sub_x_t, sub_y_t, sub_hover_t = zip(*paired)
                         sub_x = list(sub_x_t)
@@ -898,29 +950,32 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
                         sub_hover = list(sub_hover_t)
                     else:
                         sub_x, sub_y_trimmed, sub_hover = [], [], []
-                        
-                fig_data.append({
-                    "x": sub_x,
-                    "y": sub_y_trimmed,
-                    "mode": mode,
-                    "type": "scatter",
-                    "marker": {"size": 8, "opacity": 0.8},
-                    "hovertext": sub_hover,
-                    "hovertemplate": "<b>Time: %{hovertext}</b><br>" + f"{x_title}: %{{x}}<br>{y_name}[{i}]: %{{y}}<extra></extra>",
-                    "name": f"{y_name}[{i}]"
-                })
+
+                fig_data.append(
+                    {
+                        "x": sub_x,
+                        "y": sub_y_trimmed,
+                        "mode": mode,
+                        "type": "scatter",
+                        "marker": {"size": 8, "opacity": 0.8},
+                        "hovertext": sub_hover,
+                        "hovertemplate": "<b>Time: %{hovertext}</b><br>"
+                        + f"{x_title}: %{{x}}<br>{y_name}[{i}]: %{{y}}<extra></extra>",
+                        "name": f"{y_name}[{i}]",
+                    }
+                )
         else:
             min_len = min(len(x_data), len(y_raw), len(formatted_times))
             sub_x = x_data[:min_len]
             sub_y_trimmed = y_raw[:min_len]
             sub_hover = formatted_times[:min_len]
-            
+
             if sort_x:
                 paired = list(zip(sub_x, sub_y_trimmed, sub_hover))
                 try:
                     paired.sort(key=lambda item: item[0])
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Exception during sorting:", exc_info=e)
                 if paired:
                     sub_x_t, sub_y_t, sub_hover_t = zip(*paired)
                     sub_x = list(sub_x_t)
@@ -928,18 +983,21 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
                     sub_hover = list(sub_hover_t)
                 else:
                     sub_x, sub_y_trimmed, sub_hover = [], [], []
-                    
-            fig_data.append({
-                "x": sub_x,
-                "y": sub_y_trimmed,
-                "mode": mode,
-                "type": "scatter",
-                "marker": {"size": 8, "opacity": 0.8},
-                "hovertext": sub_hover,
-                "hovertemplate": "<b>Time: %{hovertext}</b><br>" + f"{x_title}: %{{x}}<br>{y_name}: %{{y}}<extra></extra>",
-                "name": y_name
-            })
-            
+
+            fig_data.append(
+                {
+                    "x": sub_x,
+                    "y": sub_y_trimmed,
+                    "mode": mode,
+                    "type": "scatter",
+                    "marker": {"size": 8, "opacity": 0.8},
+                    "hovertext": sub_hover,
+                    "hovertemplate": "<b>Time: %{hovertext}</b><br>"
+                    + f"{x_title}: %{{x}}<br>{y_name}: %{{y}}<extra></extra>",
+                    "name": y_name,
+                }
+            )
+
     if len(y_titles) == 1:
         y_title = y_titles[0]
     elif len(y_titles) > 1:
@@ -955,11 +1013,15 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
         "plot_bgcolor": "rgba(0,0,0,0)",
         "font": {"color": "#ffffff" if theme == "dark" else "#212529"},
         "xaxis": {
-            "gridcolor": "rgba(255,255,255,0.08)" if theme == "dark" else "rgba(0,0,0,0.08)",
+            "gridcolor": "rgba(255,255,255,0.08)"
+            if theme == "dark"
+            else "rgba(0,0,0,0.08)",
             "title": x_title,
         },
         "yaxis": {
-            "gridcolor": "rgba(255,255,255,0.08)" if theme == "dark" else "rgba(0,0,0,0.08)",
+            "gridcolor": "rgba(255,255,255,0.08)"
+            if theme == "dark"
+            else "rgba(0,0,0,0.08)",
             "title": y_title,
         },
         "legend": {
@@ -971,7 +1033,7 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
         },
         "margin": {"t": 30, "b": 80, "l": 50, "r": 20},
     }
-        
+
     return {"data": fig_data, "layout": layout}
 
 

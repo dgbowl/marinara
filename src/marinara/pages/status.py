@@ -1,10 +1,12 @@
-import dash
-from dash import html, dcc, callback, Output, Input, State
-from tomato import passata, tomato
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
+import dash
+from dash import Input, Output, State, callback, dcc, html
+from tomato import passata, tomato
+
 from marinara.icons import get_icon
-from marinara.utils import get_field, clean_value, clean_data, CTXT, kwargs
+from marinara.utils import CTXT, clean_data, clean_value, get_field, kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -218,11 +220,11 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
         cmps = ret.data.cmps
         cmps_count = len(cmps)
 
-        selector_options = [{"label": k, "value": k} for k in pips.keys()]
+        selector_options = [{"label": k, "value": k} for k in pips]
 
         default_val = current_selector_value
         if not default_val and pips.keys():
-            default_val = list(pips.keys())[0]
+            default_val = next(iter(pips.keys()))
 
         # Resolve active job users
         jobs_ret = ketchup.status(port=port, context=CTXT, verbosity=20, jobids=[])
@@ -261,9 +263,7 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
                     "Ready / Idle", className="badge badge-success"
                 )
             else:
-                status_badge = html.Span(
-                    "Not Ready", className="badge badge-warning"
-                )
+                status_badge = html.Span("Not Ready", className="badge badge-warning")
 
             job_link = (
                 dcc.Link(
@@ -315,6 +315,7 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
             table,
         )
     except Exception as e:
+        logger.warning("Exception during update_dashboard_stats:", exc_info=e)
         return (
             "0",
             "0",
@@ -322,9 +323,7 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
             "0",
             [],
             None,
-            html.Div(
-                f"Error loading assignments: {str(e)}", className="text-secondary"
-            ),
+            html.Div(f"Error loading assignments: {e!s}", className="text-secondary"),
         )
 
 
@@ -370,10 +369,11 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
     try:
         ret = tomato.status(stgrp="tomato", port=port, **kwargs)
         if not ret.success or not ret.data:
-            raise Exception("Daemon offline")
+            raise RuntimeError("Daemon offline")
         pips = ret.data.pips
         pip = pips.get(selected_pip)
     except Exception as e:
+        logger.warning("Exception during update_dashboard_live_view:", exc_info=e)
         empty_fig = {
             "layout": {
                 "autosize": True,
@@ -451,8 +451,8 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
                             "margin-bottom": "6px",
                             "border-bottom": "1px solid var(--border-color)",
                             "padding-bottom": "2px",
-                            "color": "var(--accent-color)"
-                        }
+                            "color": "var(--accent-color)",
+                        },
                     )
                 )
                 for k, v in vals.items():
@@ -465,13 +465,17 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
                             children=[
                                 html.Span(f"{k}:", className="param-item-name"),
                                 html.Span(
-                                    f"{clean_value(v)}{unit_str}", className="param-item-val"
+                                    f"{clean_value(v)}{unit_str}",
+                                    className="param-item-val",
                                 ),
                             ],
                         )
                     )
         except Exception as e:
-            logger.warning(f"Failed to fetch parameters for component {cname} of pipeline {selected_pip}: {e}")
+            logger.warning(
+                f"Failed to fetch parameters for component {cname} of pipeline {selected_pip}: {e}",
+                exc_info=e,
+            )
 
     params_list = html.Div(param_items, className="params-list-container")
 
@@ -485,20 +489,23 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
             if data_ret.success and data_ret.data:
                 ds = data_ret.data.to_dict()
                 uts_list = ds["coords"]["uts"]["data"]
-                
+
                 for idx, t in enumerate(uts_list):
                     cleaned_t = clean_value(t)
-                    
+
                     for var_name, var_info in ds["data_vars"].items():
                         raw_val = var_info["data"][idx]
-                        
+
                         # Handle multi-dimensional variables
                         if isinstance(raw_val, (list, tuple)):
                             for i, sub_val in enumerate(raw_val):
                                 trace_key = f"{cname}/{var_name}[{i}]"
                                 if trace_key not in historical_data["traces"]:
-                                    historical_data["traces"][trace_key] = {"x": [], "y": []}
-                                
+                                    historical_data["traces"][trace_key] = {
+                                        "x": [],
+                                        "y": [],
+                                    }
+
                                 trace = historical_data["traces"][trace_key]
                                 if cleaned_t not in trace["x"]:
                                     trace["x"].append(cleaned_t)
@@ -509,8 +516,11 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
                         else:
                             trace_key = f"{cname}/{var_name}"
                             if trace_key not in historical_data["traces"]:
-                                historical_data["traces"][trace_key] = {"x": [], "y": []}
-                            
+                                historical_data["traces"][trace_key] = {
+                                    "x": [],
+                                    "y": [],
+                                }
+
                             trace = historical_data["traces"][trace_key]
                             if cleaned_t not in trace["x"]:
                                 trace["x"].append(cleaned_t)
@@ -519,7 +529,10 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
                                     trace["x"].pop(0)
                                     trace["y"].pop(0)
         except Exception as e:
-            logger.warning(f"Failed to fetch live data for component {cname} of pipeline {selected_pip}: {e}")
+            logger.warning(
+                f"Failed to fetch live data for component {cname} of pipeline {selected_pip}: {e}",
+                exc_info=e,
+            )
 
     traces = []
     for trace_key, trace_data in historical_data["traces"].items():
@@ -527,13 +540,12 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
         for t in trace_data["x"]:
             try:
                 formatted_x.append(
-                    datetime.fromtimestamp(t, timezone.utc)
-                    .astimezone()
-                    .strftime("%H:%M:%S")
+                    datetime.fromtimestamp(t, UTC).astimezone().strftime("%H:%M:%S")
                 )
-            except Exception:
+            except Exception as e:
+                logger.warning("Exception during time formatting:", exc_info=e)
                 formatted_x.append(str(t))
-        
+
         traces.append(
             {
                 "x": formatted_x,

@@ -1,4 +1,5 @@
-from dash import html, dcc, Output, Input, State, callback
+from dash import Input, Output, State, callback, dcc, html
+
 from marinara.icons import get_icon
 
 
@@ -283,11 +284,11 @@ def update_sidebar_active_classes(pathname):
         classes[0] = "sidebar-link active"
     elif pathname.startswith("/pipelines"):
         classes[1] = "sidebar-link active"
-    elif pathname.startswith("/drivers") or pathname.startswith("/driver"):
+    elif pathname.startswith(("/drivers", "/driver")):
         classes[2] = "sidebar-link active"
-    elif pathname.startswith("/devices") or pathname.startswith("/device"):
+    elif pathname.startswith(("/devices", "/device")):
         classes[3] = "sidebar-link active"
-    elif pathname.startswith("/components") or pathname.startswith("/component"):
+    elif pathname.startswith(("/components", "/component")):
         classes[4] = "sidebar-link active"
     elif pathname.startswith("/jobs"):
         classes[5] = "sidebar-link active"

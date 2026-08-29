@@ -1,9 +1,13 @@
+import logging
+
 import dash
-from dash import html, dcc, callback, Input, Output, State
+from dash import Input, Output, State, callback, dcc, html
 from tomato import tomato
-from marinara.utils import kwargs
 
 from marinara.icons import get_icon
+from marinara.utils import kwargs
+
+logger = logging.getLogger(__name__)
 
 dash.register_page(__name__, path="/pipelines", title="Pipelines")
 
@@ -175,7 +179,9 @@ def update_pipelines(n_clicks, port):
                                     },
                                 ),
                                 html.Span(
-                                    "Executing" if pip.jobid else ("Ready" if pip.ready else "Not Ready"),
+                                    "Executing"
+                                    if pip.jobid
+                                    else ("Ready" if pip.ready else "Not Ready"),
                                     className="badge badge-primary"
                                     if pip.jobid
                                     else (
@@ -239,8 +245,9 @@ def update_pipelines(n_clicks, port):
             )
         return html.Div(pipeline_cards, className="card-grid")
     except Exception as e:
+        logger.warning("Exception during update_pipelines:", exc_info=e)
         return html.Div(
-            f"Error loading pipelines: {str(e)}",
+            f"Error loading pipelines: {e!s}",
             className="text-secondary",
             style={"padding": "20px"},
         )

@@ -1,11 +1,14 @@
-import dash
-from dash import html, callback, Input, Output, State
 import json
+import logging
+
+import dash
+from dash import Input, Output, State, callback, html
 from tomato import ketchup
-from marinara.utils import clean_data, kwargs
 
 from marinara.icons import get_icon
+from marinara.utils import clean_data, kwargs
 
+logger = logging.getLogger(__name__)
 dash.register_page(__name__, path="/jobs", title="Jobs")
 
 # Layout with only a single card for raw jobs data
@@ -97,8 +100,9 @@ def update_jobs_list(n_clicks, port):
             },
         )
     except Exception as e:
+        logger.warning("Exception during update_jobs_list:", exc_info=e)
         return html.Div(
-            f"Error loading jobs: {str(e)}",
+            f"Error loading jobs: {e!s}",
             className="text-secondary",
             style={"padding": "20px"},
         )
