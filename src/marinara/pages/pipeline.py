@@ -1,47 +1,16 @@
 import dash
 from dash import html, dcc, callback, set_props, Input, Output, State, MATCH
 from tomato import passata, tomato
-from zmq import Context
 import logging
-from marinara.utils import get_field, clean_value, get_unit_str, format_constraint
+from marinara.utils import (
+    get_field,
+    clean_value,
+    get_unit_str,
+    format_constraint,
+    kwargs,
+)
 
 logger = logging.getLogger(__name__)
-
-CTXT = Context()
-TOUT = 1000
-kwargs = dict(timeout=TOUT, context=CTXT)
-
-
-def get_data_fields(pname, dname):
-    if dname == "example_counter":
-        return (
-            "uts",
-            "val",
-        )
-    elif dname == "bronkhorst":
-        return (
-            "uts",
-            "setpoint",
-            "flow",
-            "pressure",
-            "control_mode",
-        )
-    elif dname == "jumo":
-        return (
-            "uts",
-            "setpoint",
-            "temperature",
-            "duty_cycle",
-            "ramp_rate",
-            "ramp_target",
-        )
-    elif dname == "drycal":
-        return (
-            "uts",
-            "flow",
-        )
-    else:
-        return ("uts",)
 
 
 def create_header_div(port: int, name: str):
@@ -404,39 +373,36 @@ def create_content_div(port, name):
                 },
             )
         ]
-        for key in get_data_fields(name, cmp.driver):
-            if data is None or key not in data:
-                value = None
-                units = ""
-            else:
+        if data is not None:
+            for key in data.data_vars:
                 value = clean_value(data[key].values[-1])
                 units = data[key].attrs.get("units", "")
 
-            if isinstance(value, float):
-                value = round(value, 3)
-            units_str = get_unit_str(units)
+                if isinstance(value, float):
+                    value = round(value, 3)
+                units_str = get_unit_str(units)
 
-            div_data_ch.append(
-                html.Div(
-                    children=[
-                        html.Div(f"{key}:", className="attr-label"),
-                        dcc.Input(
-                            id={
-                                "type": "component-data-val",
-                                "index": f"{cname}/{key}",
-                            },
-                            disabled=True,
-                            value=value,
-                            className="attr-control",
-                            style={"width": "200px"},
-                        ),
-                        html.Div(style={"width": "66px", "flex-shrink": "0"}),
-                        html.Span(f" {units_str}", className="attr-unit"),
-                    ],
-                    id={"type": "component-data-key", "index": f"{cname}/{key}"},
-                    className="attr-row",
+                div_data_ch.append(
+                    html.Div(
+                        children=[
+                            html.Div(f"{key}:", className="attr-label"),
+                            dcc.Input(
+                                id={
+                                    "type": "component-data-val",
+                                    "index": f"{cname}/{key}",
+                                },
+                                disabled=True,
+                                value=value,
+                                className="attr-control",
+                                style={"width": "200px"},
+                            ),
+                            html.Div(style={"width": "66px", "flex-shrink": "0"}),
+                            html.Span(f" {units_str}", className="attr-unit"),
+                        ],
+                        id={"type": "component-data-key", "index": f"{cname}/{key}"},
+                        className="attr-row",
+                    )
                 )
-            )
         div_data = html.Div(
             children=div_data_ch,
             className="component-data block",

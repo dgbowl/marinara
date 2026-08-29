@@ -1,6 +1,5 @@
 import zmq
 from dash import html, dcc
-import tomato
 from typing import Any, Union, Optional
 import pint
 
@@ -54,10 +53,6 @@ def clean_data(d: Any) -> Any:
         return tuple(clean_data(v) for v in d)
     else:
         return clean_value(d)
-
-
-# Keep clean_dict_values as alias for backward compatibility
-clean_dict_values = clean_data
 
 
 def get_unit_str(units: Optional[Union[str, Any]]) -> str:
@@ -229,13 +224,3 @@ def format_obj(obj, headers, attrs, otype, port):
 
     container_class = "card-grid" if otype == "components" else None
     return html.Div(cards, className=container_class)
-
-
-def get_tomato_status(port):
-    try:
-        ret = tomato.status(stgrp="tomato", port=port, **kwargs)
-        if not ret.success:
-            return None
-        return ret.data
-    except Exception:
-        return None

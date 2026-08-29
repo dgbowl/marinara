@@ -1,18 +1,12 @@
 import dash
 from dash import html, dcc, callback, Output, Input, State
 from tomato import passata, tomato
-import zmq
 import logging
 from datetime import datetime, timezone
 from marinara.icons import get_icon
-from marinara.utils import get_field, clean_value, clean_dict_values
+from marinara.utils import get_field, clean_value, clean_data, CTXT, kwargs
 
 logger = logging.getLogger(__name__)
-
-CTXT = zmq.Context()
-TOUT = 1000
-PORT = 1234
-kwargs = dict(timeout=TOUT, context=CTXT)
 
 dash.register_page(__name__, path_template="/", title="Marinara")
 
@@ -580,33 +574,7 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
         },
     }
 
-    return params_list, figure, clean_dict_values(historical_data)
-
-
-def format_obj(obj, headers, attrs, otype, port):
-    if not obj:
-        return html.Div(
-            "No registered elements found.",
-            className="text-secondary",
-            style={"text-align": "center", "padding": "20px"},
-        )
-
-    rows = [html.Tr(children=[html.Th(h) for h in headers])]
-    for k, v in obj.items():
-        row = [html.Td(str(v.get(i, ""))) for i in attrs]
-
-        if otype in ["pipelines", "components"]:
-            row[0].children = dcc.Link(
-                row[0].children,
-                href=f"/{otype}/{port}/{row[0].children}",
-                style={
-                    "font-weight": "600",
-                    "text-decoration": "none",
-                    "color": "var(--accent-color)",
-                },
-            )
-        rows.append(html.Tr(children=row))
-    return html.Table(children=rows, className="stgrp")
+    return params_list, figure, clean_data(historical_data)
 
 
 def layout(**_):

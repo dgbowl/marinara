@@ -4,10 +4,7 @@ import dash
 from dash import html, dcc
 from marinara.sidebar import create_sidebar
 
-try:
-    __version__ = importlib.metadata.version("marinara")
-except importlib.metadata.PackageNotFoundError:
-    __version__ = "0.0.1"
+__version__ = importlib.metadata.version("marinara")
 
 app = dash.Dash(
     __name__,
