@@ -997,7 +997,9 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
     for t in raw_x:
         try:
             x_data.append(
-                datetime.fromtimestamp(t, UTC).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+                datetime.fromtimestamp(t, UTC)
+                .astimezone()
+                .strftime("%Y-%m-%d %H:%M:%S")
             )
         except Exception as e:
             logger.warning("Exception during time formatting:", exc_info=e)
