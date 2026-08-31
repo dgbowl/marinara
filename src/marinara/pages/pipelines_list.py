@@ -57,7 +57,8 @@ def update_pipelines(n_clicks, port):
                 style={"text-align": "center", "padding": "20px"},
             )
         pips = ret.data.devicefile.pipelines
-        cmps = ret.data.devicefile.components
+        cmps_ret = tomato.status(stgrp="components", port=port, timeout=1000, context=CTXT)
+        cmps = cmps_ret.data if cmps_ret.success else {}
         if not pips:
             return html.Div(
                 "No pipelines registered in system.",
@@ -73,12 +74,12 @@ def update_pipelines(n_clicks, port):
             comp_details = []
             # pip.components maps role name -> real component name (e.g. "counter" -> "example_counter:(addr,1)").
             # We need the real component names (the values) to look components up below, not the role names (the keys).
-            for cname in pip.components.values():
+            for role, cname in pip.components.items():
                 cmp = cmps.get(cname)
                 if cmp:
                     capabilities_str = (
-                        ", ".join(str(x) for x in cmp.capabilities)
-                        if cmp.capabilities
+                        ", ".join(str(x) for x in cmp.get("capabilities"))
+                        if cmp.get("capabilities")
                         else "None"
                     )
 
@@ -96,19 +97,19 @@ def update_pipelines(n_clicks, port):
                     metadata_row = html.Div(
                         children=[
                             html.Div(
-                                [html.Strong("Driver: "), html.Span(cmp.driver)],
+                                [html.Strong("Driver: "), html.Span(cmp.get("driver"))],
                                 style={"margin-right": "25px"},
                             ),
                             html.Div(
-                                [html.Strong("Address: "), html.Span(cmp.address)],
+                                [html.Strong("Address: "), html.Span(cmp.get("address"))],
                                 style={"margin-right": "25px"},
                             ),
                             html.Div(
-                                [html.Strong("Channel: "), html.Span(str(cmp.channel))],
+                                [html.Strong("Channel: "), html.Span(str(cmp.get("channel")))],
                                 style={"margin-right": "25px"},
                             ),
                             html.Div(
-                                [html.Strong("Role: "), html.Span(cmp.role)],
+                                [html.Strong("Role: "), html.Span(role)],
                                 style={"margin-right": "25px"},
                             ),
                         ],
