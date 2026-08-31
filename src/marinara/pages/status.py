@@ -7,7 +7,6 @@ from tomato import passata, tomato
 
 from marinara.icons import get_icon
 from marinara.utils import (
-    CTXT,
     clean_data,
     clean_value,
     get_field,
@@ -235,7 +234,7 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
             default_val = next(iter(pips.keys()))
 
         # Resolve active job users
-        jobs_ret = ketchup.status(port=port, context=CTXT, verbosity=20, jobids=[])
+        jobs_ret = ketchup.status(port=port, verbosity=20, jobids=[], **kwargs)
         jobs_map = {}
         if jobs_ret.success:
             for job in jobs_ret.data:

@@ -317,8 +317,8 @@ def layout(port: int, name: str, **_):
         dcc.Store(id="component-attrs-rw-store", data=init_attrs_rw),
         dcc.Store(id="component-graph-tab-store", data=["all"]),
         dcc.Store(id="component-graph-units-store", data=None),
-        dcc.Store(id="custom-graphs-list-store", data=[1]),
-        dcc.Store(id="custom-graphs-counter-store", data=2),
+        dcc.Store(id="custom-graphs-list-store", data=[]),
+        dcc.Store(id="custom-graphs-counter-store", data=1),
         dcc.Store(id="custom-graphs-titles-store", data={}),
         dcc.Interval(id="component-interval", interval=2000),
         header,
@@ -476,7 +476,7 @@ def group_by_unit(ds):
     unitless vars), so equivalent units (e.g. "s" and "sec") share one tab."""
     groups = {}
     for key in ds["data_vars"]:
-        raw_unit = ds["data_vars"][key].get("attrs", {}).get("units") or ""
+        raw_unit = ds["data_vars"][key].get("attrs", {}).get("units", "")
         label = get_unit_str(raw_unit)
         groups.setdefault(label, []).append(key)
     return groups
@@ -743,7 +743,7 @@ def manage_graphs(add_clicks, remove_clicks, active_ids, next_id):
     State("component-data-store", "data"),
 )
 def render_graphs_list(active_ids, titles_dict, ds):
-    if not active_ids:
+    if len(active_ids) == 0:
         return html.Div(
             "No custom graphs added. Click '+ Add Graph' above to create one.",
             style={
@@ -757,7 +757,6 @@ def render_graphs_list(active_ids, titles_dict, ds):
             },
         )
 
-    titles_dict = titles_dict or {}
     vars_list = sorted(ds.get("data_vars", {}).keys()) if ds else []
     # options = [{"label": "Time (uts)", "value": "uts"}] + [
     #     {"label": v, "value": v} for v in vars_list
@@ -992,27 +991,18 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
             }
         }
 
-    # Fetch X data
-    if x_var == "uts":
-        raw_x = ds["coords"]["uts"]["data"]
-        x_data = []
-        for t in raw_x:
-            try:
-                x_data.append(
-                    datetime.fromtimestamp(t, UTC)
-                    .astimezone()
-                    .strftime("%Y-%m-%d %H:%M:%S")
-                )
-            except Exception as e:
-                logger.warning("Exception during time formatting:", exc_info=e)
-                x_data.append(t)
-        x_title = "Time (Local)"
-    else:
-        if x_var in ds.get("data_vars", {}):
-            x_data = ds["data_vars"][x_var]["data"]
-            x_title = x_var
-        else:
-            return {}
+    # X axis is always uts (the X-selector dropdown is locked to it)
+    raw_x = ds["coords"]["uts"]["data"]
+    x_data = []
+    for t in raw_x:
+        try:
+            x_data.append(
+                datetime.fromtimestamp(t, UTC).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+            )
+        except Exception as e:
+            logger.warning("Exception during time formatting:", exc_info=e)
+            x_data.append(t)
+    x_title = "Time (Local)"
 
     # Process selected Y variables
     if isinstance(y_var, str):
