@@ -52,6 +52,7 @@ def update_devices(n_clicks, port):
     try:
         ret = tomato.status(stgrp="tomato", port=port, **kwargs)
         if not ret.success:
+            logger.warning("tomato.status returned failure: %s", ret.msg)
             return html.Div(
                 f"No data found. Error: {ret.msg}. Please check the reload button above.",
                 className="text-secondary",
