@@ -252,7 +252,7 @@ def create_content_div(port, name):
 
     # pip_components maps role name -> real component name (e.g. "counter" -> "example_counter:(addr,1)").
     # We need the real component names (the values) to look components up below, not the role names (the keys).
-    for cname in pip_components.values():
+    for role, cname in pip_components.items():
         try:
             cmp = tomato.status(**kwargs, port=port, stgrp="components").data[cname]
         except Exception:
@@ -260,9 +260,9 @@ def create_content_div(port, name):
 
         div_info = html.Div(
             children=[
-                html.H4(f"Component: {cmp.name}", style={"margin": "0 0 5px 0"}),
+                html.H4(f"Component: {cmp.get("name")}", style={"margin": "0 0 5px 0"}),
                 html.Div(
-                    f"Role: {cmp.role} | Address: {cmp.address!r} | Channel: {cmp.channel!r}",
+                    f"Role: {role} | Address: {cfg_ret.data.devicefile.components.get(cname).address!r} | Channel: {cfg_ret.data.devicefile.components.get(cname).channel!r}",
                     className="text-secondary",
                     style={"font-size": "12px"},
                 ),
@@ -408,7 +408,7 @@ def create_content_div(port, name):
                 },
             )
         ]
-        for key in get_data_fields(name, cmp.driver):
+        for key in get_data_fields(name, cmp.get("driver")):
             if data is None or key not in data:
                 value = None
                 units = ""
