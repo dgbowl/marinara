@@ -1,1 +1,1 @@
-include src/marinara/assets
+include src/marinara/assets/*
