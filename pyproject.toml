@@ -54,6 +54,9 @@ dirty_template = "{tag}.post{ccount}+dirty"
 [tool.setuptools.package-data]
 marinara = ["src/marinara/assets/*"]
 
+[tool.uv_build.package-data]
+marinara = ["src/marinara/assets/*"]
+
 [tool.ruff]
 
 [tool.pytest.ini_options]
