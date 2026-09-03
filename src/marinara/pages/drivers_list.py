@@ -58,7 +58,8 @@ def update_drivers(n_clicks, port):
                 className="text-secondary",
                 style={"text-align": "center", "padding": "20px"},
             )
-        drvs = ret.data.devicefile.drivers
+        drvs_ret = tomato.status(stgrp="drivers", port=port, **kwargs)
+        drvs = drvs_ret.data if drvs_ret.success else {}
         return format_obj(
             obj=drvs,
             headers=["Driver Name", "Version", "Port", "Process ID (PID)"],

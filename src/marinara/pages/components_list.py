@@ -58,7 +58,22 @@ def update_components(n_clicks, port):
                 className="text-secondary",
                 style={"text-align": "center", "padding": "20px"},
             )
-        cmps = ret.data.devicefile.components
+        cmps_ret = tomato.status(stgrp="components", port=port, **kwargs)
+        cmps = cmps_ret.data if cmps_ret.success else {}
+        # Live components data only has name/driver/device/capabilities.
+        # address/channel come from the static config; role comes from
+        # scanning which pipeline uses each component under which role.
+        static_cmps = ret.data.devicefile.components
+        role_lookup = {}
+        for pipn in ret.data.devicefile.pipelines.values():
+            for role, cname in pipn.components.items():
+                role_lookup[cname] = role
+        for cname, cval in cmps.items():
+            static = static_cmps.get(cname)
+            if static:
+                cval["address"] = static.address
+                cval["channel"] = static.channel
+            cval["role"] = role_lookup.get(cname, "")
         return format_obj(
             obj=cmps,
             headers=[
