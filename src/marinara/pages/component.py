@@ -933,7 +933,6 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
             )
         # Simple 1-D plot of the last datapoint
         elif len(y_dims) == 2 and x_var != "uts":
-            print(f"{y_dims=}")
             fig_data.append(
                 {
                     "x": x_data,
