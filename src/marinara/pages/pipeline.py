@@ -249,7 +249,7 @@ def create_content_div(port, name):
 
         div_info = html.Div(
             children=[
-                html.H4(f"Component: {cmp.get("name")}", style={"margin": "0 0 5px 0"}),
+                html.H4(f"Component: {cmp.get('name')}", style={"margin": "0 0 5px 0"}),
                 html.Div(
                     f"Role: {role} | Address: {cfg_ret.data.devicefile.components.get(cname).address!r} | Channel: {cfg_ret.data.devicefile.components.get(cname).channel!r}",
                     className="text-secondary",

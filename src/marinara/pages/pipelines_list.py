@@ -2,10 +2,8 @@ import logging
 
 import dash
 from dash import Input, Output, State, callback, dcc, html
-from tomato import tomato
 
 from marinara.icons import get_icon
-from marinara.utils import kwargs
 
 logger = logging.getLogger(__name__)
 

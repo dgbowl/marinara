@@ -6,7 +6,7 @@ from dash import Input, Output, State, callback, dcc, html
 from tomato import passata, tomato
 
 from marinara.icons import get_icon
-from marinara.utils import CTXT, clean_data, clean_value, get_field, kwargs
+from marinara.utils import clean_data, clean_value, get_field, kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -254,7 +254,7 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
             )
         ]
 
-        for pip_name, pip in pips.items():
+        for pip_name in pips:
             pstate = pipret.data.get(pip_name, {}) if pipret.success else {}
             pip_jobid = pstate.get("jobid")
             pip_ready = pstate.get("ready", False)
