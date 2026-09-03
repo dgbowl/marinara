@@ -1,9 +1,13 @@
+import logging
+
 import dash
-from dash import html, callback, Input, Output, State
-from marinara.utils import format_obj
+from dash import Input, Output, State, callback, html
+from tomato import tomato
 
 from marinara.icons import get_icon
+from marinara.utils import format_obj, kwargs
 
+logger = logging.getLogger(__name__)
 dash.register_page(__name__, path="/devices", title="Devices")
 
 layout = html.Div(
@@ -46,12 +50,9 @@ layout = html.Div(
 )
 def update_devices(n_clicks, port):
     try:
-        import zmq
-        from tomato import tomato
-
-        CTXT = zmq.Context()
-        ret = tomato.status(stgrp="tomato", port=port, timeout=1000, context=CTXT)
+        ret = tomato.status(stgrp="tomato", port=port, **kwargs)
         if not ret.success:
+            logger.warning("tomato.status returned failure: %s", ret.msg)
             return html.Div(
                 f"No data found. Error: {ret.msg}. Please check the reload button above.",
                 className="text-secondary",
@@ -66,8 +67,9 @@ def update_devices(n_clicks, port):
             port=port,
         )
     except Exception as e:
+        logger.warning("Exception during update_devices:", exc_info=e)
         return html.Div(
-            f"Error loading devices: {str(e)}",
+            f"Error loading devices: {e!s}",
             className="text-secondary",
             style={"padding": "20px"},
         )

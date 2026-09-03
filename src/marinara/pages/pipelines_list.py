@@ -1,7 +1,13 @@
+import logging
+
 import dash
-from dash import html, dcc, callback, Input, Output, State
+from dash import Input, Output, State, callback, dcc, html
+from tomato import tomato
 
 from marinara.icons import get_icon
+from marinara.utils import kwargs
+
+logger = logging.getLogger(__name__)
 
 dash.register_page(__name__, path="/pipelines", title="Pipelines")
 
@@ -51,6 +57,7 @@ def update_pipelines(n_clicks, port):
         ret = tomato.status(stgrp="tomato", port=port, timeout=1000, context=CTXT)
         pipret = tomato.status(stgrp="pipelines", port=port, timeout=1000, context=CTXT)
         if not ret.success:
+            logger.warning("tomato.status returned failure: %s", ret.msg)
             return html.Div(
                 f"No data found. Error: {ret.msg}. Please check the reload button above.",
                 className="text-secondary",
@@ -247,8 +254,9 @@ def update_pipelines(n_clicks, port):
             )
         return html.Div(pipeline_cards, className="card-grid")
     except Exception as e:
+        logger.warning("Exception during update_pipelines:", exc_info=e)
         return html.Div(
-            f"Error loading pipelines: {str(e)}",
+            f"Error loading pipelines: {e!s}",
             className="text-secondary",
             style={"padding": "20px"},
     # pip_components maps role name -> real component name (e.g. "counter" -> "example_counter:(addr,1)").

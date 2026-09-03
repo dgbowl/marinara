@@ -1,10 +1,14 @@
-import dash
-from dash import html, callback, Input, Output, State
 import json
-from marinara.utils import clean_data
+import logging
+
+import dash
+from dash import Input, Output, State, callback, html
+from tomato import ketchup
 
 from marinara.icons import get_icon
+from marinara.utils import clean_data, kwargs
 
+logger = logging.getLogger(__name__)
 dash.register_page(__name__, path="/jobs", title="Jobs")
 
 # Layout with only a single card for raw jobs data
@@ -57,12 +61,9 @@ def update_jobs_list(n_clicks, port):
     try:
         import zmq
         from tomato import ketchup, tomato
-
         CTXT = zmq.Context()
         daemon_ret = tomato.status(stgrp="tomato", port=port, timeout=1000, context=CTXT)
-        ret = ketchup.status(daemon=daemon_ret.data, jobids=[]
-)
-
+        ret = ketchup.status(daemon=daemon_ret.data, jobids=[])
         if not ret.success:
             if ret.msg == "job queue is empty":
                 return html.Div(
@@ -70,6 +71,7 @@ def update_jobs_list(n_clicks, port):
                     className="text-secondary",
                     style={"text-align": "center", "padding": "20px"},
                 )
+            logger.warning("ketchup.status returned failure: %s", ret.msg)
             return html.Div(
                 f"No data found. Error: {ret.msg}",
                 className="text-secondary",
@@ -103,8 +105,9 @@ def update_jobs_list(n_clicks, port):
             },
         )
     except Exception as e:
+        logger.warning("Exception during update_jobs_list:", exc_info=e)
         return html.Div(
-            f"Error loading jobs: {str(e)}",
+            f"Error loading jobs: {e!s}",
             className="text-secondary",
             style={"padding": "20px"},
         )

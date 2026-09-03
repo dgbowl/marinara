@@ -1,47 +1,18 @@
-import dash
-from dash import html, dcc, callback, set_props, Input, Output, State, MATCH
-from tomato import passata, tomato
-from zmq import Context
 import logging
-from marinara.utils import get_field, clean_value, get_unit_str, format_constraint
+
+import dash
+from dash import MATCH, Input, Output, State, callback, dcc, html, set_props
+from tomato import passata, tomato
+
+from marinara.utils import (
+    clean_value,
+    format_constraint,
+    get_field,
+    get_unit_str,
+    kwargs,
+)
 
 logger = logging.getLogger(__name__)
-
-CTXT = Context()
-TOUT = 1000
-kwargs = dict(timeout=TOUT, context=CTXT)
-
-
-def get_data_fields(pname, dname):
-    if dname == "example_counter":
-        return (
-            "uts",
-            "val",
-        )
-    elif dname == "bronkhorst":
-        return (
-            "uts",
-            "setpoint",
-            "flow",
-            "pressure",
-            "control_mode",
-        )
-    elif dname == "jumo":
-        return (
-            "uts",
-            "setpoint",
-            "temperature",
-            "duty_cycle",
-            "ramp_rate",
-            "ramp_target",
-        )
-    elif dname == "drycal":
-        return (
-            "uts",
-            "flow",
-        )
-    else:
-        return ("uts",)
 
 
 def create_header_div(port: int, name: str):
@@ -106,8 +77,8 @@ def object_from_attrs(cname, attr, params, value):
                 "type": "component-attr-val",
                 "index": f"{cname}/{attr}",
             },
-            disabled=False if is_rw else True,
-            options=sorted(list(options)),
+            disabled=not is_rw,
+            options=sorted(options),
             value=value,
             clearable=False,
             className="attr-control mutable-input"
@@ -120,7 +91,7 @@ def object_from_attrs(cname, attr, params, value):
                 "type": "component-attr-val",
                 "index": f"{cname}/{attr}",
             },
-            disabled=False if is_rw else True,
+            disabled=not is_rw,
             debounce=True,
             value=value,
             type="text",
@@ -143,7 +114,8 @@ def create_content_div(port, name):
         cfg_ret = tomato.status(**kwargs, port=port, stgrp="tomato")
         pip_components = cfg_ret.data.devicefile.pipelines[name].components if cfg_ret.success and name in cfg_ret.data.devicefile.pipelines else []
         pip = pip_ret.data[name] if pip_ret.success else None
-    except Exception:
+    except Exception as e:
+        logger.warning("Exception during tomato.status:", exc_info=e)
         pip = None
 
     if not pip:
@@ -208,6 +180,14 @@ def create_content_div(port, name):
                 className="top-card-input",
                 style={"width": "100%", "height": "36px"},
             ),
+            html.Span(
+                id="pipeline-sampleid-error",
+                style={
+                    "font-size": "12px",
+                    "margin-left": "10px",
+                    "color": "var(--danger-color)",
+                },
+            ),
         ],
         style={
             "display": "flex",
@@ -240,6 +220,14 @@ def create_content_div(port, name):
                     "flex-shrink": "0",
                 },
             ),
+            html.Span(
+                id="pipeline-ready-error",
+                style={
+                    "font-size": "12px",
+                    "margin-left": "10px",
+                    "color": "var(--danger-color)",
+                },
+            ),
         ],
         style={"display": "flex", "align-items": "center", "flex-shrink": "0"},
     )
@@ -255,7 +243,8 @@ def create_content_div(port, name):
     for role, cname in pip_components.items():
         try:
             cmp = tomato.status(**kwargs, port=port, stgrp="components").data[cname]
-        except Exception:
+        except Exception as e:
+            logger.warning("Exception during tomato.status:", exc_info=e)
             continue
 
         div_info = html.Div(
@@ -278,7 +267,8 @@ def create_content_div(port, name):
         try:
             status_ret = passata.status(**kwargs, port=port, name=cname)
             status = status_ret.data if status_ret.success else {"running": False}
-        except Exception:
+        except Exception as e:
+            logger.warning("Exception during passata.status:", exc_info=e)
             status = {"running": False}
 
         badge_class = (
@@ -305,7 +295,8 @@ def create_content_div(port, name):
         try:
             attrs_ret = passata.attrs(**kwargs, port=port, name=cname)
             attrs = attrs_ret.data if attrs_ret.success else {}
-        except Exception:
+        except Exception as e:
+            logger.warning("caught Exception during passata.attrs:", exc_info=e)
             attrs = {}
 
         try:
@@ -313,16 +304,13 @@ def create_content_div(port, name):
                 **kwargs, port=port, name=cname, attrs=list(attrs.keys())
             )
             avals = avals_ret.data if avals_ret.success else {}
-        except Exception:
+        except Exception as e:
+            logger.warning("Exception during passata.geT_attrs:", exc_info=e)
             avals = {}
 
         attrs_vals_store[cname] = {k: clean_value(v) for k, v in avals.items()}
-        attrs_units_store[cname] = {
-            k: get_field(attrs[k], "units") for k in attrs.keys()
-        }
-        attrs_rw_store[cname] = {
-            k: get_field(attrs[k], "rw", False) for k in attrs.keys()
-        }
+        attrs_units_store[cname] = {k: get_field(attrs[k], "units") for k in attrs}
+        attrs_rw_store[cname] = {k: get_field(attrs[k], "rw", False) for k in attrs}
 
         div_attrs_ch = [
             html.Div(
@@ -395,7 +383,8 @@ def create_content_div(port, name):
         try:
             data_ret = passata.get_last_data(**kwargs, port=port, name=cname)
             data = data_ret.data if data_ret.success else None
-        except Exception:
+        except Exception as e:
+            logger.warning("Exception during passata.get_last_data:", exc_info=e)
             data = None
 
         div_data_ch = [
@@ -408,39 +397,36 @@ def create_content_div(port, name):
                 },
             )
         ]
-        for key in get_data_fields(name, cmp.get("driver")):
-            if data is None or key not in data:
-                value = None
-                units = ""
-            else:
+        if data is not None:
+            for key in data.data_vars:
                 value = clean_value(data[key].values[-1])
                 units = data[key].attrs.get("units", "")
 
-            if isinstance(value, float):
-                value = round(value, 3)
-            units_str = get_unit_str(units)
+                if isinstance(value, float):
+                    value = round(value, 3)
+                units_str = get_unit_str(units)
 
-            div_data_ch.append(
-                html.Div(
-                    children=[
-                        html.Div(f"{key}:", className="attr-label"),
-                        dcc.Input(
-                            id={
-                                "type": "component-data-val",
-                                "index": f"{cname}/{key}",
-                            },
-                            disabled=True,
-                            value=value,
-                            className="attr-control",
-                            style={"width": "200px"},
-                        ),
-                        html.Div(style={"width": "66px", "flex-shrink": "0"}),
-                        html.Span(f" {units_str}", className="attr-unit"),
-                    ],
-                    id={"type": "component-data-key", "index": f"{cname}/{key}"},
-                    className="attr-row",
+                div_data_ch.append(
+                    html.Div(
+                        children=[
+                            html.Div(f"{key}:", className="attr-label"),
+                            dcc.Input(
+                                id={
+                                    "type": "component-data-val",
+                                    "index": f"{cname}/{key}",
+                                },
+                                disabled=True,
+                                value=value,
+                                className="attr-control",
+                                style={"width": "200px"},
+                            ),
+                            html.Div(style={"width": "66px", "flex-shrink": "0"}),
+                            html.Span(f" {units_str}", className="attr-unit"),
+                        ],
+                        id={"type": "component-data-key", "index": f"{cname}/{key}"},
+                        className="attr-row",
+                    )
                 )
-            )
         div_data = html.Div(
             children=div_data_ch,
             className="component-data block",
@@ -520,13 +506,15 @@ def component_attr_interaction(n_clicks, value, id, disabled, arw, port, name):
                 **kwargs, port=port, name=cname, attrs=[attr]
             ).data.get(attr)
             return clean_value(current)
-        except Exception:
+        except Exception as e:
+            logger.warning("Exception during passata.get_attrs:", exc_info=e)
             try:
                 current = passata.get_attrs(
                     **kwargs, port=port, name=cname, attrs=[attr]
                 ).data.get(attr)
                 return clean_value(current)
-            except Exception:
+            except Exception as e:
+                logger.warning("Exception during passata.get_attrs:", exc_info=e)
                 return dash.no_update
     return dash.no_update
 
@@ -543,11 +531,25 @@ def pipeline_param_interaction_ready(values, data, port, name):
     if values == data["ready"]:
         return dash.no_update
 
-    try:
-        if len(values) > 0 and all(values):
-            tomato.pipeline_ready(**kwargs, port=port, pipeline=name)
-    except Exception:
-        pass
+    if len(values) > 0 and all(values):
+        try:
+            ret = tomato.pipeline_ready(**kwargs, port=port, pipeline=name)
+            if ret.success:
+                set_props("pipeline-ready-error", {"children": ""})
+            else:
+                logger.warning("tomato.pipeline_ready returned failure: %s", ret.msg)
+                set_props(
+                    "pipeline-ready-error",
+                    {"children": f"Failed to set ready: {ret.msg}"},
+                )
+        except Exception as e:
+            logger.warning("Exception during tomato.pipeline_ready:", exc_info=e)
+            set_props(
+                "pipeline-ready-error",
+                {"children": "Failed to set ready: could not reach pipeline daemon."},
+            )
+    else:
+        set_props("pipeline-ready-error", {"children": ""})
     return ["ready"]
 
 
@@ -560,11 +562,22 @@ def pipeline_param_interaction_ready(values, data, port, name):
 def pipeline_param_interaction_sampleid(sampleid, port, name):
     try:
         if sampleid == "":
-            tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
+            ret = tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
         else:
-            tomato.pipeline_load(**kwargs, port=port, pipeline=name, sampleid=sampleid)
-    except Exception:
-        pass
+            ret = tomato.pipeline_load(
+                **kwargs, port=port, pipeline=name, sampleid=sampleid
+            )
+        if ret.success:
+            set_props("pipeline-sampleid-error", {"children": ""})
+        else:
+            logger.warning("tomato.pipeline_eject/load returned failure: %s", ret.msg)
+            set_props("pipeline-sampleid-error", {"children": f"Failed: {ret.msg}"})
+    except Exception as e:
+        logger.warning("Exception during tomato.pipeline_eject:", exc_info=e)
+        set_props(
+            "pipeline-sampleid-error",
+            {"children": "Failed to update sample: could not reach pipeline daemon."},
+        )
 
 
 # Periodic updates for attributes store values
@@ -591,16 +604,17 @@ def components_periodic_update_attrs_vals_store(_, cmps, avals, aunits, port, na
                 **kwargs, port=port, name=cmp, attrs=list(avals[cmp].keys())
             )
             nvals = nvals_ret.data if nvals_ret.success else {}
-        except Exception:
+        except Exception as e:
+            logger.warning("Exception during passata.get_attrs:", exc_info=e)
             nvals = {}
 
-        for key in avals[cmp].keys():
+        for key in avals[cmp]:
             val = nvals.get(key)
             if hasattr(val, "to") and aunits[cmp].get(key) is not None:
                 try:
                     val = val.to(aunits[cmp][key])
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.warning("Exception during unit conversion:", exc_info=e)
             newdata[cmp][key] = clean_value(val)
 
     if newdata == avals:
@@ -627,7 +641,8 @@ def components_periodic_update_data_store(_, cmps, data, port, name):
         try:
             ds_ret = passata.get_last_data(**kwargs, port=port, name=cmp)
             ds = ds_ret.data if ds_ret.success else None
-        except Exception:
+        except Exception as e:
+            logger.warning("Exception during passata.get_last_data:", exc_info=e)
             ds = None
 
         if ds is None:
@@ -638,9 +653,7 @@ def components_periodic_update_data_store(_, cmps, data, port, name):
         for k, v in dd["data_vars"].items():
             newdata[cmp][k] = clean_value(v["data"][-1])
 
-    if newdata == {}:
-        return dash.no_update
-    elif newdata == data:
+    if newdata == {} or newdata == data:
         return dash.no_update
     else:
         return newdata
@@ -662,7 +675,8 @@ def components_periodic_update_params_store(_, cmps, params, port):
         try:
             ret = passata.status(**kwargs, port=port, name=cname).data
             newparams[cname] = ret["running"]
-        except Exception:
+        except Exception as e:
+            logger.warning("Exception during passata.status:", exc_info=e)
             newparams[cname] = False
 
     if newparams == params:
@@ -687,7 +701,8 @@ def pipeline_periodic_update_params_store(_, data, port, name):
             "sampleid": str(pip.get("sampleid")) if pip.get("sampleid") is not None else "",
             "ready": ["ready"] if pip.get("ready", False) else [],
         }
-    except Exception:
+    except Exception as e:
+        logger.warning("Exception during tomato.status:", exc_info=e)
         newdata = data
 
     if newdata == data:
@@ -719,7 +734,8 @@ def components_update_attr_display(avals, value, id, rw):
         if rw.get(cname, {}).get(key, False):
             return dash.no_update
         newval = avals[cname][key]
-    except Exception:
+    except Exception as e:
+        logger.warning("Exception during components_update_attr_display:", exc_info=e)
         return dash.no_update
     if isinstance(newval, float):
         newval = round(newval, 3)
@@ -749,7 +765,8 @@ def components_disable_attr_running(running, id, rw):
             return True
         else:
             return not rw[cname].get(key, False)
-    except Exception:
+    except Exception as e:
+        logger.warning("Exception during components_disable_attr_running:", exc_info=e)
         return dash.no_update
 
 
@@ -811,9 +828,7 @@ def components_update_param_display(data, value, id):
 )
 def components_update_data_display(data, value, id):
     cname, key = id["index"].split("/")
-    if data is None or key not in data.get(cname, {}):
-        return dash.no_update
-    elif value == data[cname][key]:
+    if data is None or key not in data.get(cname, {}) or value == data[cname][key]:
         return dash.no_update
     else:
         val = data[cname][key]
