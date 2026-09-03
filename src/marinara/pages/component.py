@@ -447,7 +447,7 @@ def component_data_update(port, name, data, n_intervals):
     Input("checkbox-align-time", "value"),
 )
 def component_data_graph(ds, theme, align_time):
-    if ds is None:
+    if ds is None or True:
         return {}
     keys = list(ds["data_vars"].keys())
 
@@ -604,9 +604,7 @@ def render_graphs_list(active_ids, titles_dict, ds):
 
     titles_dict = titles_dict or {}
     vars_list = sorted(ds.get("data_vars", {}).keys()) if ds else []
-    # options = [{"label": "Time (uts)", "value": "uts"}] + [
-    #     {"label": v, "value": v} for v in vars_list
-    # ]
+    coords_list = [{"label": "Time (uts)", "value": "uts"}]
 
     graphs_layouts = []
     for idx, i in enumerate(active_ids):
@@ -681,10 +679,8 @@ def render_graphs_list(active_ids, titles_dict, ds):
                                 ),
                                 dcc.Dropdown(
                                     id={"type": "custom-graph-x-selector", "index": i},
-                                    options=[{"label": "Time (uts)", "value": "uts"}],
-                                    value="uts",
-                                    disabled=True,
-                                    clearable=False,
+                                    options=coords_list,
+                                    placeholder="Select variable",
                                     style={"width": "100%"},
                                 ),
                             ],
@@ -802,8 +798,12 @@ def populate_dynamic_selectors(ds):
     if ds is None:
         return [], []
     vars_list = sorted(ds.get("data_vars", {}).keys())
-    x_options = [{"label": "Time (uts)", "value": "uts"}]
     y_options = [{"label": v, "value": v} for v in vars_list]
+    coords_list = sorted(ds.get("coords", {}).keys())
+    x_options = [{"label": "Time (uts)", "value": "uts"}]
+    for coord in coords_list:
+        if coord != "uts":
+            x_options.append({"label": coord, "value": coord})
     return x_options, y_options
 
 
@@ -817,7 +817,8 @@ def populate_dynamic_selectors(ds):
     Input("app-theme-store", "data"),
 )
 def render_custom_graph(x_var, y_var, options_val, ds, theme):
-    if ds is None or not x_var or not y_var:
+    y_vars = [y_var] if isinstance(y_var, str) else y_var
+    if ds is None or not x_var or not y_vars:
         return {
             "layout": {
                 "xaxis": {"visible": False},
@@ -838,8 +839,8 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
         }
 
     # Fetch X data
+    raw_x = ds["coords"][x_var]["data"]
     if x_var == "uts":
-        raw_x = ds["coords"]["uts"]["data"]
         x_data = []
         for t in raw_x:
             try:
@@ -853,11 +854,8 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
                 x_data.append(t)
         x_title = "Time (Local)"
     else:
-        if x_var in ds.get("data_vars", {}):
-            x_data = ds["data_vars"][x_var]["data"]
-            x_title = x_var
-        else:
-            return {}
+        x_data = raw_x
+        x_title = x_var
 
     # Process selected Y variables
     if isinstance(y_var, str):
@@ -865,25 +863,30 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
     else:
         y_vars = y_var
 
-    if not y_vars:
-        return {
-            "layout": {
-                "xaxis": {"visible": False},
-                "yaxis": {"visible": False},
-                "annotations": [
-                    {
-                        "text": "Select variables above to view custom plot",
-                        "xref": "paper",
-                        "yref": "paper",
-                        "showarrow": False,
-                        "font": {"size": 16, "color": "gray"},
-                    }
-                ],
-                "paper_bgcolor": "rgba(0,0,0,0)",
-                "plot_bgcolor": "rgba(0,0,0,0)",
-                "template": "plotly_dark" if theme == "dark" else "plotly",
+    # Consistency check
+    for y_name in y_vars:
+        y_dims = ds["data_vars"][y_name]["dims"]
+        if x_var not in y_dims:
+            return {
+                "layout": {
+                    "xaxis": {"visible": False},
+                    "yaxis": {"visible": False},
+                    "annotations": [
+                        {
+                            "text": f"The selected X axis variable {x_var!r} "
+                            f"is not a coordinate of the Y axis variable {y_name!r}. "
+                            f"Select an X axis variable out of: {y_dims!r}.",
+                            "xref": "paper",
+                            "yref": "paper",
+                            "showarrow": False,
+                            "font": {"size": 16, "color": "gray"},
+                        }
+                    ],
+                    "paper_bgcolor": "rgba(0,0,0,0)",
+                    "plot_bgcolor": "rgba(0,0,0,0)",
+                    "template": "plotly_dark" if theme == "dark" else "plotly",
+                }
             }
-        }
 
     # Format timestamps for hover text
     raw_uts = ds.get("coords", {}).get("uts", {}).get("data", [])
@@ -909,94 +912,66 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
     y_titles = []
 
     for y_name in y_vars:
-        if y_name in ds.get("data_vars", {}):
-            y_raw = ds["data_vars"][y_name]["data"]
-            y_titles.append(y_name)
-        else:
-            continue
+        y_raw = ds["data_vars"][y_name]["data"]
+        y_dims = ds["data_vars"][y_name]["dims"]
+        y_titles.append(y_name)
 
-        # Handle multidimensional variables
-        is_multidimensional = False
-        if len(y_raw) > 0 and isinstance(y_raw[0], (list, tuple)):
-            is_multidimensional = True
-
-        if is_multidimensional:
-            max_len = max(
-                len(item) for item in y_raw if isinstance(item, (list, tuple))
-            )
-            for i in range(max_len):
-                sub_y = []
-                for item in y_raw:
-                    if isinstance(item, (list, tuple)) and i < len(item):
-                        sub_y.append(item[i])
-                    else:
-                        sub_y.append(None)
-
-                min_len = min(len(x_data), len(sub_y), len(formatted_times))
-                sub_x = x_data[:min_len]
-                sub_y_trimmed = sub_y[:min_len]
-                sub_hover = formatted_times[:min_len]
-
-                if sort_x:
-                    paired = list(zip(sub_x, sub_y_trimmed, sub_hover))
-                    try:
-                        paired.sort(key=lambda item: item[0])
-                    except Exception as e:
-                        logger.warning("Exception during sorting:", exc_info=e)
-                    if paired:
-                        sub_x_t, sub_y_t, sub_hover_t = zip(*paired)
-                        sub_x = list(sub_x_t)
-                        sub_y_trimmed = list(sub_y_t)
-                        sub_hover = list(sub_hover_t)
-                    else:
-                        sub_x, sub_y_trimmed, sub_hover = [], [], []
-
-                fig_data.append(
-                    {
-                        "x": sub_x,
-                        "y": sub_y_trimmed,
-                        "mode": mode,
-                        "type": "scatter",
-                        "marker": {"size": 8, "opacity": 0.8},
-                        "hovertext": sub_hover,
-                        "hovertemplate": "<b>Time: %{hovertext}</b><br>"
-                        + f"{x_title}: %{{x}}<br>{y_name}[{i}]: %{{y}}<extra></extra>",
-                        "name": f"{y_name}[{i}]",
-                    }
-                )
-        else:
-            min_len = min(len(x_data), len(y_raw), len(formatted_times))
-            sub_x = x_data[:min_len]
-            sub_y_trimmed = y_raw[:min_len]
-            sub_hover = formatted_times[:min_len]
-
-            if sort_x:
-                paired = list(zip(sub_x, sub_y_trimmed, sub_hover))
-                try:
-                    paired.sort(key=lambda item: item[0])
-                except Exception as e:
-                    logger.warning("Exception during sorting:", exc_info=e)
-                if paired:
-                    sub_x_t, sub_y_t, sub_hover_t = zip(*paired)
-                    sub_x = list(sub_x_t)
-                    sub_y_trimmed = list(sub_y_t)
-                    sub_hover = list(sub_hover_t)
-                else:
-                    sub_x, sub_y_trimmed, sub_hover = [], [], []
-
+        # Simple 1-D plot
+        if len(y_dims) == 1:
             fig_data.append(
                 {
-                    "x": sub_x,
-                    "y": sub_y_trimmed,
+                    "x": x_data,
+                    "y": y_raw,
                     "mode": mode,
                     "type": "scatter",
                     "marker": {"size": 8, "opacity": 0.8},
-                    "hovertext": sub_hover,
+                    "hovertext": formatted_times,
                     "hovertemplate": "<b>Time: %{hovertext}</b><br>"
                     + f"{x_title}: %{{x}}<br>{y_name}: %{{y}}<extra></extra>",
                     "name": y_name,
                 }
             )
+        # Simple 1-D plot of the last datapoint
+        elif len(y_dims) == 2 and x_var != "uts":
+            print(f"{y_dims=}")
+            fig_data.append(
+                {
+                    "x": x_data,
+                    "y": y_raw[-1],
+                    "mode": mode,
+                    "type": "scatter",
+                    "marker": {"size": 8, "opacity": 0.8},
+                    "hovertext": formatted_times,
+                    "hovertemplate": "<b>Time: %{hovertext}</b><br>"
+                    + f"{x_title}: %{{x}}<br>{y_name}: %{{y}}<extra></extra>",
+                    "name": y_name,
+                }
+            )
+        elif len(y_dims) == 2:
+            # figure out axis order
+            if y_dims.index("uts") == 0:
+                x_d = x_data
+                y_d = ds["coords"][y_dims[1]]["data"]
+                z_d = [i for i in zip(*y_raw)]
+            else:
+                x_d = ds["coords"][y_dims[0]]["data"]
+                y_d = x_data
+                z_d = y_raw
+
+            fig_data.append(
+                {
+                    "x": x_d,
+                    "y": y_d,
+                    "z": z_d,
+                    "type": "heatmap",
+                    "hovertext": formatted_times,
+                    "hovertemplate": "<b>Time: %{hovertext}</b><br>"
+                    + f"{x_title}: %{{x}}<br>{y_name}: %{{y}}<extra></extra>",
+                    "name": y_name,
+                }
+            )
+        else:
+            continue
 
     if len(y_titles) == 1:
         y_title = y_titles[0]
