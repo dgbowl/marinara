@@ -62,7 +62,12 @@ def get_unit_str(units: str | Any | None) -> str:
     try:
         q = pint.Quantity(1, units)
         return f"{q.units:~H}"
-    except pint.errors.UndefinedUnitError:
+    except (pint.errors.PintError, AssertionError):
+        # Some unit strings (e.g. "#", "$") make pint raise a bare AssertionError
+        return str(units)
+    except TypeError as e:
+        # A non-string units value (e.g. malformed driver metadata) raises TypeError
+        logger.warning("Exception during get_unit_str:", exc_info=e)
         return str(units)
 
 
@@ -90,6 +95,21 @@ def format_constraint(val: Any, base_unit: str) -> str:
         mag = clean_value(val)
         u_str = get_unit_str(base_unit)
         return f"{mag} {u_str}" if u_str else str(mag)
+
+
+def theme_plot_colors(theme):
+    """Shared Plotly template/background/font settings driven by the light/dark theme."""
+    is_dark = theme == "dark"
+    return {
+        "template": "plotly_dark" if is_dark else "plotly",
+        "paper_bgcolor": "rgba(0,0,0,0)",
+        "plot_bgcolor": "rgba(0,0,0,0)",
+        "font": {"color": "#ffffff" if is_dark else "#212529"},
+    }
+
+
+def theme_gridcolor(theme):
+    return "rgba(255,255,255,0.08)" if theme == "dark" else "rgba(0,0,0,0.08)"
 
 
 def format_obj(obj, headers, attrs, otype, port):
