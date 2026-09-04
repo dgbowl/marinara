@@ -178,6 +178,14 @@ def create_content_div(port, name):
                 className="top-card-input",
                 style={"width": "100%", "height": "36px"},
             ),
+            html.Span(
+                id="pipeline-sampleid-error",
+                style={
+                    "font-size": "12px",
+                    "margin-left": "10px",
+                    "color": "var(--danger-color)",
+                },
+            ),
         ],
         style={
             "display": "flex",
@@ -208,6 +216,14 @@ def create_content_div(port, name):
                     "font-size": "14px",
                     "font-weight": "500",
                     "flex-shrink": "0",
+                },
+            ),
+            html.Span(
+                id="pipeline-ready-error",
+                style={
+                    "font-size": "12px",
+                    "margin-left": "10px",
+                    "color": "var(--danger-color)",
                 },
             ),
         ],
@@ -511,11 +527,25 @@ def pipeline_param_interaction_ready(values, data, port, name):
     if values == data["ready"]:
         return dash.no_update
 
-    try:
-        if len(values) > 0 and all(values):
-            tomato.pipeline_ready(**kwargs, port=port, pipeline=name)
-    except Exception as e:
-        logger.warning("Exception during tomato.pipeline_ready:", exc_info=e)
+    if len(values) > 0 and all(values):
+        try:
+            ret = tomato.pipeline_ready(**kwargs, port=port, pipeline=name)
+            if ret.success:
+                set_props("pipeline-ready-error", {"children": ""})
+            else:
+                logger.warning("tomato.pipeline_ready returned failure: %s", ret.msg)
+                set_props(
+                    "pipeline-ready-error",
+                    {"children": f"Failed to set ready: {ret.msg}"},
+                )
+        except Exception as e:
+            logger.warning("Exception during tomato.pipeline_ready:", exc_info=e)
+            set_props(
+                "pipeline-ready-error",
+                {"children": "Failed to set ready: could not reach pipeline daemon."},
+            )
+    else:
+        set_props("pipeline-ready-error", {"children": ""})
     return ["ready"]
 
 
@@ -528,11 +558,22 @@ def pipeline_param_interaction_ready(values, data, port, name):
 def pipeline_param_interaction_sampleid(sampleid, port, name):
     try:
         if sampleid == "":
-            tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
+            ret = tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
         else:
-            tomato.pipeline_load(**kwargs, port=port, pipeline=name, sampleid=sampleid)
+            ret = tomato.pipeline_load(
+                **kwargs, port=port, pipeline=name, sampleid=sampleid
+            )
+        if ret.success:
+            set_props("pipeline-sampleid-error", {"children": ""})
+        else:
+            logger.warning("tomato.pipeline_eject/load returned failure: %s", ret.msg)
+            set_props("pipeline-sampleid-error", {"children": f"Failed: {ret.msg}"})
     except Exception as e:
         logger.warning("Exception during tomato.pipeline_eject:", exc_info=e)
+        set_props(
+            "pipeline-sampleid-error",
+            {"children": "Failed to update sample: could not reach pipeline daemon."},
+        )
 
 
 # Periodic updates for attributes store values
