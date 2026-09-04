@@ -624,6 +624,7 @@ input.Select__input,
 /* Attribute Alignment System */
 .attr-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 12px;
     margin-bottom: 12px;
@@ -645,9 +646,12 @@ input.Select__input,
 }
 
 .attr-unit {
+    flex: 1 1 auto;
+    min-width: 0;
     color: var(--text-secondary);
     font-size: 13px;
     margin-left: 4px;
+    overflow-wrap: break-word;
 }
 
 /* Chrome, Safari, Edge, Opera - Hide Spin Buttons */
