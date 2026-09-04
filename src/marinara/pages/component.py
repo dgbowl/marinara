@@ -81,7 +81,7 @@ def layout(port: int, name: str, **_):
     status_badge_class = (
         "badge badge-success" if running_bool else "badge badge-secondary"
     )
-    status_text = (
+    status_badge_text = (
         f"RUNNING ({task_name})"
         if task_name
         else ("RUNNING" if running_bool else "STOPPED")
@@ -110,7 +110,7 @@ def layout(port: int, name: str, **_):
                         style={"margin": 0, "font-size": "22px"},
                     ),
                     html.Span(
-                        status_text,
+                        status_badge_text,
                         id="component-status-badge",
                         className=status_badge_class,
                         style={"margin-left": "15px"},
@@ -318,7 +318,6 @@ def layout(port: int, name: str, **_):
         dcc.Store(id="component-graph-tab-store", data=["all"]),
         dcc.Store(id="component-graph-units-store", data=None),
         dcc.Store(id="custom-graphs-list-store", data=[]),
-        dcc.Store(id="custom-graphs-counter-store", data=1),
         dcc.Store(id="custom-graphs-titles-store", data={}),
         dcc.Interval(id="component-interval", interval=2000),
         header,
@@ -383,13 +382,13 @@ def periodic_attrs_update(_, port, name, current_vals, units_dict):
     status_badge_class = (
         "badge badge-success" if running_bool else "badge badge-secondary"
     )
-    status_text = (
+    status_badge_text = (
         f"RUNNING ({task_name})"
         if task_name
         else ("RUNNING" if running_bool else "STOPPED")
     )
 
-    return new_vals, status_text, status_badge_class
+    return new_vals, status_badge_text, status_badge_class
 
 
 # UI displays updates from Stores
@@ -424,16 +423,14 @@ def set_component_attribute(n_clicks, value, id, port, name):
         if ret.success:
             return clean_value(ret.data)
         # If set_attr returned success=False, fetch current value to revert
-        current = passata.get_attrs(**kwargs, port=port, name=name, attrs=[k]).data.get(
-            k
-        )
+        ret = passata.get_attrs(**kwargs, port=port, name=name, attrs=[k])
+        current = ret.data.get(k)
         return clean_value(current)
     except Exception as e:
         logger.warning("Exception during passata.get_attrs:", exc_info=e)
         try:
-            current = passata.get_attrs(
-                **kwargs, port=port, name=name, attrs=[k]
-            ).data.get(k)
+            ret = passata.get_attrs(**kwargs, port=port, name=name, attrs=[k])
+            current = ret.data.get(k)
             return clean_value(current)
         except Exception as e:
             logger.warning("Exception during passata.get_attrs:", exc_info=e)
@@ -562,10 +559,10 @@ def update_available_units(ds, current_labels):
 def render_graph_tabs(group_labels):
     if group_labels is None:
         return []
-    return [{"label": "All", "value": "all"}] + [
-        {"label": label or "Unitless", "value": unit_tab_id(label)}
-        for label in group_labels
-    ]
+    ret = [{"label": "All", "value": "all"}]
+    for label in group_labels:
+        ret.append({"label": label or "Unitless", "value": unit_tab_id(label)})
+    return ret
 
 
 # Tracks which tabs (All, or one-or-more units) are currently selected.
@@ -581,9 +578,6 @@ def render_graph_tabs(group_labels):
     prevent_initial_call=True,
 )
 def update_active_graph_tab(checked, group_labels, previous_tabs):
-    previous_tabs = previous_tabs or ["all"]
-    checked = checked or []
-
     if "all" in checked and "all" not in previous_tabs:
         active_tabs = ["all"]
     elif "all" in checked and len(checked) > 1:
@@ -601,7 +595,7 @@ def update_active_graph_tab(checked, group_labels, previous_tabs):
     return store_update, checklist_update
 
 
-# Plotly Graph Constructor with Local Time and Theme support
+# Renders the Data Graph widget: one Plotly graph per active unit tab
 @callback(
     Output("component-data-graph-container", "children"),
     Input("component-data-store", "data"),
@@ -609,7 +603,7 @@ def update_active_graph_tab(checked, group_labels, previous_tabs):
     Input("checkbox-align-time", "value"),
     Input("component-graph-tab-store", "data"),
 )
-def component_data_graph(ds, theme, align_time, active_tabs):
+def render_component_data_graphs(ds, theme, align_time, active_tabs):
     if ds is None:
         return []
 
@@ -708,31 +702,28 @@ def component_data_graph(ds, theme, align_time, active_tabs):
 # Manages adding and removing custom graphs
 @callback(
     Output("custom-graphs-list-store", "data"),
-    Output("custom-graphs-counter-store", "data"),
     Input("add-graph-btn", "n_clicks"),
     Input({"type": "custom-graph-remove-btn", "index": ALL}, "n_clicks"),
     State("custom-graphs-list-store", "data"),
-    State("custom-graphs-counter-store", "data"),
     prevent_initial_call=True,
 )
-def manage_graphs(add_clicks, remove_clicks, active_ids, next_id):
+def manage_graphs(add_clicks, remove_clicks, active_ids):
     ctx = dash.callback_context
     if not ctx.triggered:
-        return active_ids, next_id
+        return active_ids
 
     trigger_id = ctx.triggered[0]["prop_id"]
 
     if "add-graph-btn" in trigger_id:
-        new_ids = active_ids + [next_id]
-        return new_ids, next_id + 1
+        next_id = max(active_ids, default=0) + 1
+        return active_ids + [next_id]
     else:
         try:
             remove_idx = triggered_pattern_index(ctx)
-            new_ids = [i for i in active_ids if i != remove_idx]
-            return new_ids, next_id
+            return [i for i in active_ids if i != remove_idx]
         except Exception as e:
             logger.warning("Exception during manage_graphs:", exc_info=e)
-            return active_ids, next_id
+            return active_ids
 
 
 # Renders the dynamic custom graphs container children
@@ -763,12 +754,11 @@ def render_graphs_list(active_ids, titles_dict, ds):
     # ]
 
     graphs_layouts = []
-    for idx, i in enumerate(active_ids):
-        display_number = idx + 1
+    for i in active_ids:
         graph_id_str = str(i)
 
         # Stored title or dynamic fallback based on display position
-        title_val = titles_dict.get(graph_id_str, f"Custom Graph #{display_number}")
+        title_val = titles_dict.get(graph_id_str, f"Custom Graph #{i}")
 
         card = html.Div(
             id={"type": "custom-graph-card", "index": i},
@@ -779,7 +769,7 @@ def render_graphs_list(active_ids, titles_dict, ds):
                             id={"type": "custom-graph-title-input", "index": i},
                             value=title_val,
                             type="text",
-                            placeholder=f"Custom Graph #{display_number}",
+                            placeholder=f"Custom Graph #{i}",
                             className="custom-graph-title-input",
                             style={
                                 "font-size": "16px",
@@ -923,21 +913,26 @@ def render_graphs_list(active_ids, titles_dict, ds):
     return graphs_layouts
 
 
-# Persists custom titles to the custom-graphs-titles-store when changed
+# Persists custom titles, and prunes any whose graph was removed.
 @callback(
     Output("custom-graphs-titles-store", "data"),
     Input({"type": "custom-graph-title-input", "index": ALL}, "value"),
+    Input("custom-graphs-list-store", "data"),
     State("custom-graphs-titles-store", "data"),
     prevent_initial_call=True,
 )
-def update_graph_titles(title_values, current_titles):
+def update_graph_titles(title_values, active_ids, current_titles):
     ctx = dash.callback_context
     if not ctx.triggered:
         return current_titles
 
-    new_titles = current_titles if current_titles else {}
-    inputs_list = ctx.inputs_list[0]
+    new_titles = dict(current_titles)
 
+    if "custom-graphs-list-store" in ctx.triggered[0]["prop_id"]:
+        active_id_strs = {str(i) for i in active_ids}
+        return {k: v for k, v in new_titles.items() if k in active_id_strs}
+
+    inputs_list = ctx.inputs_list[0]
     for inp, val in zip(inputs_list, title_values):
         graph_id = str(inp["id"]["index"])
         if val is not None:
