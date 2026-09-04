@@ -1181,3 +1181,30 @@ div.attr-control input:disabled {
 .card-grid .card {
     margin-bottom: 0 !important;
 }
+
+/* Pill-style tabs for the Data Graph unit picker; labelClassName can't reach
+   the outer <label>, so we target Dash's own .dash-options-list-option/.selected */
+#component-graph-tab-checklist .dash-options-list-option {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 14px;
+    margin-right: 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--text-color);
+    background-color: transparent;
+    user-select: none;
+}
+
+#component-graph-tab-checklist .dash-options-list-option.selected {
+    background-color: var(--accent-color);
+    color: #fff !important; /* overrides the global label{...!important} rule above */
+    border-color: var(--accent-color);
+}
+
+#component-graph-tab-checklist .graph-tab-input {
+    display: none;
+}
