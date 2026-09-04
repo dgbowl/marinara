@@ -112,7 +112,11 @@ def create_content_div(port, name):
     try:
         pip_ret = tomato.status(**kwargs, port=port, stgrp="pipelines")
         cfg_ret = tomato.status(**kwargs, port=port, stgrp="tomato")
-        pip_components = cfg_ret.data.devicefile.pipelines[name].components if cfg_ret.success and name in cfg_ret.data.devicefile.pipelines else []
+        pip_components = (
+            cfg_ret.data.devicefile.pipelines[name].components
+            if cfg_ret.success and name in cfg_ret.data.devicefile.pipelines
+            else []
+        )
         pip = pip_ret.data[name] if pip_ret.success else None
     except Exception as e:
         logger.warning("Exception during tomato.status:", exc_info=e)
@@ -126,7 +130,9 @@ def create_content_div(port, name):
         {
             "data": {
                 "jobid": pip.get("jobid"),
-                "sampleid": str(pip.get("sampleid")) if pip.get("sampleid") is not None else "",
+                "sampleid": str(pip.get("sampleid"))
+                if pip.get("sampleid") is not None
+                else "",
                 "ready": ["ready"] if pip.get("ready", False) else [],
             }
         },
@@ -175,7 +181,9 @@ def create_content_div(port, name):
             dcc.Input(
                 id="pipeline-input-sampleid",
                 type="text",
-                value=str(pip.get("sampleid")) if pip.get("sampleid") is not None else "",
+                value=str(pip.get("sampleid"))
+                if pip.get("sampleid") is not None
+                else "",
                 debounce=True,
                 className="top-card-input",
                 style={"width": "100%", "height": "36px"},
@@ -698,7 +706,9 @@ def pipeline_periodic_update_params_store(_, data, port, name):
         pip = tomato.status(**kwargs, port=port, stgrp="pipelines").data[name]
         newdata = {
             "jobid": pip.get("jobid"),
-            "sampleid": str(pip.get("sampleid")) if pip.get("sampleid") is not None else "",
+            "sampleid": str(pip.get("sampleid"))
+            if pip.get("sampleid") is not None
+            else "",
             "ready": ["ready"] if pip.get("ready", False) else [],
         }
     except Exception as e:

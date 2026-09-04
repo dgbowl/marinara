@@ -60,8 +60,11 @@ def update_jobs_list(n_clicks, port):
     try:
         import zmq
         from tomato import ketchup, tomato
+
         CTXT = zmq.Context()
-        daemon_ret = tomato.status(stgrp="tomato", port=port, timeout=1000, context=CTXT)
+        daemon_ret = tomato.status(
+            stgrp="tomato", port=port, timeout=1000, context=CTXT
+        )
         ret = ketchup.status(daemon=daemon_ret.data, jobids=[])
         if not ret.success:
             if ret.msg == "job queue is empty":

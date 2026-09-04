@@ -51,6 +51,7 @@ def update_pipelines(n_clicks, port):
     try:
         import zmq
         from tomato import tomato
+
         CTXT = zmq.Context()
         ret = tomato.status(stgrp="tomato", port=port, timeout=1000, context=CTXT)
         pipret = tomato.status(stgrp="pipelines", port=port, timeout=1000, context=CTXT)
@@ -62,7 +63,9 @@ def update_pipelines(n_clicks, port):
                 style={"text-align": "center", "padding": "20px"},
             )
         pips = ret.data.devicefile.pipelines
-        cmps_ret = tomato.status(stgrp="components", port=port, timeout=1000, context=CTXT)
+        cmps_ret = tomato.status(
+            stgrp="components", port=port, timeout=1000, context=CTXT
+        )
         cmps = cmps_ret.data if cmps_ret.success else {}
         if not pips:
             return html.Div(
@@ -106,11 +109,17 @@ def update_pipelines(n_clicks, port):
                                 style={"margin-right": "25px"},
                             ),
                             html.Div(
-                                [html.Strong("Address: "), html.Span(cmp.get("address"))],
+                                [
+                                    html.Strong("Address: "),
+                                    html.Span(cmp.get("address")),
+                                ],
                                 style={"margin-right": "25px"},
                             ),
                             html.Div(
-                                [html.Strong("Channel: "), html.Span(str(cmp.get("channel")))],
+                                [
+                                    html.Strong("Channel: "),
+                                    html.Span(str(cmp.get("channel"))),
+                                ],
                                 style={"margin-right": "25px"},
                             ),
                             html.Div(
@@ -188,7 +197,9 @@ def update_pipelines(n_clicks, port):
                                     },
                                 ),
                                 html.Span(
-                                    "Executing" if pip_jobid else ("Ready" if pip_ready else "Not Ready"),
+                                    "Executing"
+                                    if pip_jobid
+                                    else ("Ready" if pip_ready else "Not Ready"),
                                     className="badge badge-primary"
                                     if pip_jobid
                                     else (
@@ -257,6 +268,6 @@ def update_pipelines(n_clicks, port):
             f"Error loading pipelines: {e!s}",
             className="text-secondary",
             style={"padding": "20px"},
-    # pip_components maps role name -> real component name (e.g. "counter" -> "example_counter:(addr,1)").
-    # We need the real component names (the values) to look components up below, not the role names (the keys).
+            # pip_components maps role name -> real component name (e.g. "counter" -> "example_counter:(addr,1)").
+            # We need the real component names (the values) to look components up below, not the role names (the keys).
         )
