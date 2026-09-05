@@ -9,8 +9,6 @@ from tomato import passata, tomato
 
 from marinara.icons import get_icon
 from marinara.utils import (
-    clean_data,
-    clean_value,
     get_attrs_vals,
     get_field,
     kwargs,
@@ -501,8 +499,6 @@ def update_dashboard_live_view(
                 uts_list = ds["coords"]["uts"]["data"]
 
                 for idx, t in enumerate(uts_list):
-                    cleaned_t = clean_value(t)
-
                     for var_name, var_info in ds["data_vars"].items():
                         raw_val = var_info["data"][idx]
 
@@ -517,9 +513,9 @@ def update_dashboard_live_view(
                                     }
 
                                 trace = historical_data["traces"][trace_key]
-                                if cleaned_t not in trace["x"]:
-                                    trace["x"].append(cleaned_t)
-                                    trace["y"].append(clean_value(sub_val))
+                                if t not in trace["x"]:
+                                    trace["x"].append(t)
+                                    trace["y"].append(sub_val)
                                     if len(trace["x"]) > 50:
                                         trace["x"].pop(0)
                                         trace["y"].pop(0)
@@ -532,9 +528,9 @@ def update_dashboard_live_view(
                                 }
 
                             trace = historical_data["traces"][trace_key]
-                            if cleaned_t not in trace["x"]:
-                                trace["x"].append(cleaned_t)
-                                trace["y"].append(clean_value(raw_val))
+                            if t not in trace["x"]:
+                                trace["x"].append(t)
+                                trace["y"].append(raw_val)
                                 if len(trace["x"]) > 50:
                                     trace["x"].pop(0)
                                     trace["y"].pop(0)
@@ -567,7 +563,7 @@ def update_dashboard_live_view(
         )
 
     figure = {
-        "data": [],  # traces,
+        "data": traces,
         "layout": {
             "autosize": True,
             **theme_plot_colors(theme),
@@ -585,7 +581,7 @@ def update_dashboard_live_view(
         },
     }
 
-    return params_list, figure, clean_data(historical_data)
+    return params_list, figure, historical_data
 
 
 def layout(**_) -> list[html.Div]:
