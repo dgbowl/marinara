@@ -254,3 +254,14 @@ def get_attrs_vals(port: int, name: str, attrs: list[str]) -> dict[str, Any]:
     else:
         vals = {}
     return vals
+
+
+def pretty(val: Any) -> str:
+    if isinstance(val, list):
+        ret = f"[{pretty(val[0])},··· {pretty(val[-1])}] n={len(val)}"
+    else:
+        try:
+            ret = f"{pint.Quantity(val):,.3~gP}"
+        except pint.UndefinedUnitError:
+            ret = str(val)
+    return ret

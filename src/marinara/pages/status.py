@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import dash
+import pint
 from dash import Input, Output, State, callback, dcc, html
 from dash_svg.Svg import Svg
 from tomato import passata, tomato
@@ -12,6 +13,7 @@ from marinara.utils import (
     get_attrs_vals,
     get_field,
     kwargs,
+    pretty,
     theme_gridcolor,
     theme_plot_colors,
 )
@@ -473,7 +475,7 @@ def update_dashboard_live_view(
                             children=[
                                 html.Span(f"{k}:", className="param-item-name"),
                                 html.Span(
-                                    f"{v}{unit_str}",
+                                    pretty(v),
                                     className="param-item-val",
                                 ),
                             ],

@@ -5,13 +5,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 import dash
+import pint
 import xarray as xr
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
 from tomato import passata
 
 from marinara.utils import (
-    clean_data,
-    clean_value,
     format_constraint,
     get_attrs_vals,
     get_field,
@@ -59,7 +58,7 @@ def layout(port: int, name: str, **_) -> list:
     for k, v in attrs_dict.items():
         val = avals_dict.get(k)
         unit = get_field(v, "units")
-        init_attrs_vals[k] = clean_value(val)
+        init_attrs_vals[k] = val.m if isinstance(val, pint.Quantity) else str(val)
         init_attrs_units[k] = unit
         init_attrs_rw[k] = get_field(v, "rw", False)
 
@@ -361,8 +360,7 @@ def periodic_attrs_update(
 
     new_vals = {}
     for k in current_vals:
-        val = avals_dict.get(k)
-        new_vals[k] = clean_value(val)
+        new_vals[k] = avals_dict.get(k)
 
     if isinstance(running, bool):
         running_bool = running
@@ -417,7 +415,7 @@ def set_component_attribute(
     k = id["index"]
     ret = passata.set_attr(**kwargs, port=port, name=name, attr=k, val=value)
     if ret.success:
-        return clean_value(ret.data)
+        return ret.data
     # If set_attr returned success=False, fetch current value to revert
     current = get_attrs_vals(port=port, name=name, attrs=[k]).get(k)
     return current
@@ -450,7 +448,7 @@ def component_data_update(
         # Cap dataset size to prevent JSON serialization and memory bottlenecks
         if ndata.sizes["uts"] > 500:
             ndata = ndata.isel(uts=slice(-500, None))
-        return clean_data(ndata.to_dict())
+        return ndata.to_dict()
     except Exception as e:
         logger.warning("Exception during component_data_update:", exc_info=e)
         return data
