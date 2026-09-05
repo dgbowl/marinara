@@ -112,7 +112,7 @@ def theme_gridcolor(theme):
     return "rgba(255,255,255,0.08)" if theme == "dark" else "rgba(0,0,0,0.08)"
 
 
-def format_obj(obj, headers, attrs, otype, port):
+def format_obj(obj, headers, attrs, otype, port) -> html.Div:
     if not obj:
         return html.Div(
             "No registered elements found.",
