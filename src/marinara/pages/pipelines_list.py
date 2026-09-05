@@ -2,10 +2,8 @@ import logging
 
 import dash
 from dash import Input, Output, State, callback, dcc, html
-from tomato import tomato
 
 from marinara.icons import get_icon
-from marinara.utils import kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +49,12 @@ layout = html.Div(
 )
 def update_pipelines(n_clicks: int, port: int) -> html.Div:
     try:
-        ret = tomato.status(stgrp="tomato", port=port, **kwargs)
+        import zmq
+        from tomato import tomato
+
+        CTXT = zmq.Context()
+        ret = tomato.status(stgrp="tomato", port=port, timeout=1000, context=CTXT)
+        pipret = tomato.status(stgrp="pipelines", port=port, timeout=1000, context=CTXT)
         if not ret.success:
             logger.warning("tomato.status returned failure: %s", ret.msg)
             return html.Div(
@@ -59,24 +62,32 @@ def update_pipelines(n_clicks: int, port: int) -> html.Div:
                 className="text-secondary",
                 style={"text-align": "center", "padding": "20px"},
             )
-        pips = ret.data.pips
-        cmps = ret.data.cmps
+        pips = ret.data.devicefile.pipelines
+        cmps_ret = tomato.status(
+            stgrp="components", port=port, timeout=1000, context=CTXT
+        )
+        cmps = cmps_ret.data if cmps_ret.success else {}
         if not pips:
             return html.Div(
                 "No pipelines registered in system.",
                 className="text-secondary",
                 style={"text-align": "center", "padding": "20px"},
             )
-
         pipeline_cards = []
         for name, pip in pips.items():
+            pstate = pipret.data.get(name, {}) if pipret.success else {}
+            pip_jobid = pstate.get("jobid")
+            pip_ready = pstate.get("ready", False)
+            pip_sampleid = pstate.get("sampleid")
             comp_details = []
-            for cname in pip.components:
+            # pip.components maps role name -> real component name (e.g. "counter" -> "example_counter:(addr,1)").
+            # We need the real component names (the values) to look components up below, not the role names (the keys).
+            for role, cname in pip.components.items():
                 cmp = cmps.get(cname)
                 if cmp:
                     capabilities_str = (
-                        ", ".join(str(x) for x in cmp.capabilities)
-                        if cmp.capabilities
+                        ", ".join(str(x) for x in cmp.get("capabilities"))
+                        if cmp.get("capabilities")
                         else "None"
                     )
 
@@ -94,19 +105,25 @@ def update_pipelines(n_clicks: int, port: int) -> html.Div:
                     metadata_row = html.Div(
                         children=[
                             html.Div(
-                                [html.Strong("Driver: "), html.Span(cmp.driver)],
+                                [html.Strong("Driver: "), html.Span(cmp.get("driver"))],
                                 style={"margin-right": "25px"},
                             ),
                             html.Div(
-                                [html.Strong("Address: "), html.Span(cmp.address)],
+                                [
+                                    html.Strong("Address: "),
+                                    html.Span(cmp.get("address")),
+                                ],
                                 style={"margin-right": "25px"},
                             ),
                             html.Div(
-                                [html.Strong("Channel: "), html.Span(str(cmp.channel))],
+                                [
+                                    html.Strong("Channel: "),
+                                    html.Span(str(cmp.get("channel"))),
+                                ],
                                 style={"margin-right": "25px"},
                             ),
                             html.Div(
-                                [html.Strong("Role: "), html.Span(cmp.role)],
+                                [html.Strong("Role: "), html.Span(role)],
                                 style={"margin-right": "25px"},
                             ),
                         ],
@@ -181,13 +198,13 @@ def update_pipelines(n_clicks: int, port: int) -> html.Div:
                                 ),
                                 html.Span(
                                     "Executing"
-                                    if pip.jobid
-                                    else ("Ready" if pip.ready else "Not Ready"),
+                                    if pip_jobid
+                                    else ("Ready" if pip_ready else "Not Ready"),
                                     className="badge badge-primary"
-                                    if pip.jobid
+                                    if pip_jobid
                                     else (
                                         "badge badge-success"
-                                        if pip.ready
+                                        if pip_ready
                                         else "badge badge-warning"
                                     ),
                                     style={"margin-left": "15px"},
@@ -205,7 +222,7 @@ def update_pipelines(n_clicks: int, port: int) -> html.Div:
                                     [
                                         html.Strong("Active Job ID: "),
                                         str(
-                                            pip.jobid if pip.jobid is not None else "-"
+                                            pip_jobid if pip_jobid is not None else "-"
                                         ),
                                     ],
                                     style={"margin-right": "30px"},
@@ -214,8 +231,8 @@ def update_pipelines(n_clicks: int, port: int) -> html.Div:
                                     [
                                         html.Strong("Sample ID: "),
                                         str(
-                                            pip.sampleid
-                                            if pip.sampleid is not None
+                                            pip_sampleid
+                                            if pip_sampleid is not None
                                             else "-"
                                         ),
                                     ]
@@ -251,4 +268,6 @@ def update_pipelines(n_clicks: int, port: int) -> html.Div:
             f"Error loading pipelines: {e!s}",
             className="text-secondary",
             style={"padding": "20px"},
+            # pip_components maps role name -> real component name (e.g. "counter" -> "example_counter:(addr,1)").
+            # We need the real component names (the values) to look components up below, not the role names (the keys).
         )
