@@ -5,12 +5,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 import dash
-import xarray as xr
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
 from tomato import passata
 
 from marinara.utils import (
-    clean_data,
     clean_value,
     format_constraint,
     get_field,
@@ -457,27 +455,34 @@ def set_component_attribute(
 )
 def component_data_update(
     port: int, name: str, data: dict | None, n_intervals: int
-) -> dict | None:
+) -> dict | dash.NoUpdate | None:
     try:
         ret = passata.get_last_data(**kwargs, port=port, name=name)
         if not ret.success:
-            return data
+            return dash.no_update
+        if data is None and ret.data is None:
+            return dash.no_update
+        elif ret.data is None:
+            logger.warning("passata.get_last_data returned no data, erasing data store")
+            return None
+
+        ndata = ret.data.to_dict()
+        # Simply return data if first load.
         if data is None:
-            ndata = ret.data
-        else:
-            odata = xr.Dataset.from_dict(data)
-            # Pin explicitly: xarray's defaults for these are changing in a
-            # future release (join outer->exact, compat no_conflicts->override),
-            # and this merge relies on the current outer/no_conflicts behavior
-            # to combine datasets whose "uts" coordinate keeps growing.
-            ndata = xr.merge([odata, ret.data], join="outer", compat="no_conflicts")
-        # Cap dataset size to prevent JSON serialization and memory bottlenecks
-        if ndata.sizes["uts"] > 500:
-            ndata = ndata.isel(uts=slice(-500, None))
-        return clean_data(ndata.to_dict())
+            return ndata
+        # Do not update if timestamp is already present.
+        uts = ndata["coords"]["uts"]["data"][0]
+        if uts in data["coords"]["uts"]["data"]:
+            return dash.no_update
+        # Go through data_vars and append last datapoint.
+        data["coords"]["uts"]["data"].append(uts)
+        for k, v in ndata["data_vars"].items():
+            data["data_vars"][k]["data"].append(v["data"][0])
+        data["dims"]["uts"] = len(data["coords"]["uts"]["data"])
+        return data
     except Exception as e:
         logger.warning("Exception during component_data_update:", exc_info=e)
-        return data
+        return dash.no_update
 
 
 def group_by_unit(ds: dict) -> dict[str, list[str]]:
