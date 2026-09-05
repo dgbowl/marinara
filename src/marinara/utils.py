@@ -262,6 +262,6 @@ def pretty(val: Any) -> str:
     else:
         try:
             ret = f"{pint.Quantity(val):,.3~gP}"
-        except TypeError:
+        except (TypeError, pint.UndefinedUnitError):
             ret = str(val)
     return ret
