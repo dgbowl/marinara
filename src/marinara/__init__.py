@@ -15,7 +15,7 @@ logging.captureWarnings(True)
 logger = logging.getLogger()
 
 
-def parse_args():
+def parse_args() -> tuple[argparse.Namespace, list[str]]:
     parser = argparse.ArgumentParser(add_help=True)
     parser.add_argument(
         "--version",
@@ -59,7 +59,7 @@ def parse_args():
     return parser.parse_known_args()
 
 
-def run_marinara():
+def run_marinara() -> None:
     args, _ = parse_args()
     loglevel = min(max((3 + args.quiet - args.verbose) * 10, 10), 50)
     sh = logging.StreamHandler()

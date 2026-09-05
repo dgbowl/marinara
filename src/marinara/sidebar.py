@@ -1,4 +1,5 @@
 from dash import Input, Output, State, callback, dcc, html
+from dash_svg.Svg import Svg
 
 from marinara.icons import get_icon
 
@@ -218,7 +219,7 @@ def create_sidebar(version: str = "0.0.1") -> html.Div:
     Output("app-container", "className"),
     Input("app-theme-store", "data"),
 )
-def update_theme_class(theme):
+def update_theme_class(theme: str) -> str:
     if theme == "dark":
         return "dark-theme"
     return "light-theme"
@@ -231,7 +232,7 @@ def update_theme_class(theme):
     Input("theme-toggle-btn", "n_clicks"),
     State("app-theme-store", "data"),
 )
-def toggle_theme(n_clicks, current_theme):
+def toggle_theme(n_clicks: int, current_theme: str) -> tuple[str, Svg, str]:
     if n_clicks is None:
         theme = current_theme or "light"
         icon = (
@@ -248,8 +249,11 @@ def toggle_theme(n_clicks, current_theme):
     return new_theme, icon, tooltip
 
 
-@callback(Output("tomato-port", "data"), Input("tomato-port-setter", "value"))
-def store_tomato_port(value):
+@callback(
+    Output("tomato-port", "data"),
+    Input("tomato-port-setter", "value"),
+)
+def store_tomato_port(value: int | None) -> int:
     if value is None:
         return 1234
     try:
@@ -263,7 +267,7 @@ def store_tomato_port(value):
     Input("tomato-port", "data"),
     prevent_initial_call=True,
 )
-def update_sidebar_port(port):
+def update_sidebar_port(port: int) -> str:
     if port is None:
         return "Tomato Port: 1234"
     return f"Tomato Port: {port}"
@@ -278,7 +282,7 @@ def update_sidebar_port(port):
     Output("link-jobs", "className"),
     Input("url", "pathname"),
 )
-def update_sidebar_active_classes(pathname):
+def update_sidebar_active_classes(pathname: str) -> tuple[str, ...]:
     classes = ["sidebar-link"] * 6
     if pathname == "/":
         classes[0] = "sidebar-link active"
@@ -300,7 +304,7 @@ def update_sidebar_active_classes(pathname):
     Input("sidebar-toggle-btn", "n_clicks"),
     State("sidebar-state-store", "data"),
 )
-def toggle_sidebar_state(n_clicks, current_state):
+def toggle_sidebar_state(n_clicks: int, current_state: str) -> str:
     if n_clicks is None or n_clicks == 0:
         return current_state or "expanded"
     return "collapsed" if current_state == "expanded" else "expanded"
@@ -312,7 +316,7 @@ def toggle_sidebar_state(n_clicks, current_state):
     Output("sidebar-toggle-btn", "title"),
     Input("sidebar-state-store", "data"),
 )
-def apply_sidebar_state(state):
+def apply_sidebar_state(state: str) -> tuple[str, Svg, str]:
     if state == "collapsed":
         return (
             "sidebar collapsed",
