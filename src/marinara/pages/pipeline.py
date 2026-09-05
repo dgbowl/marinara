@@ -856,8 +856,8 @@ def components_update_data_display(
     cid: dict,
     vals: Any,
     vids: dict,
-) -> Any | dash.NoUpdate:
-
+) -> list[Any | dash.NoUpdate]:
+    nvals: list[Any | dash.NoUpdate] = [dash.no_update for v in vals]
     cname = cid["index"]
     for vi, vid in enumerate(vids):
         vcname, vattr = vid["index"].split("/")
@@ -868,9 +868,9 @@ def components_update_data_display(
             val = f"{val:,.5g}"
         elif isinstance(val, list):
             try:
-                val = f"[{val[0]:.5g}, ··· {val[-1]:.5g}]"
+                val = f"[{val[0]:.3g}, ··· {val[-1]:.3g}] n={len(val)}"
             except ValueError:
-                val = f"[{val[0]}, ··· {val[-1]}]"
+                val = f"[{val[0]:5s}, ··· {val[-1]:5s}] n={len(val)}"
         if val != vals[vi]:
-            vals[vi] = val
-    return vals
+            nvals[vi] = val
+    return nvals
