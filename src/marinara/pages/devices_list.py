@@ -48,7 +48,7 @@ layout = html.Div(
     Input("tomato-status", "n_clicks"),
     State("tomato-port", "data"),
 )
-def update_devices(n_clicks, port):
+def update_devices(n_clicks: int, port: int) -> html.Div:
     try:
         ret = tomato.status(stgrp="tomato", port=port, **kwargs)
         if not ret.success:

@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 import dash
 from dash import MATCH, Input, Output, State, callback, dcc, html, set_props
@@ -15,7 +16,7 @@ from marinara.utils import (
 logger = logging.getLogger(__name__)
 
 
-def create_header_div(port: int, name: str):
+def create_header_div(port: int, name: str) -> html.Div:
     stores = html.Div(
         children=[
             dcc.Store(id="store-tomato-port", data=port),
@@ -67,7 +68,7 @@ def create_header_div(port: int, name: str):
     )
 
 
-def object_from_attrs(cname, attr, params, value):
+def object_from_attrs(cname, attr, params, value) -> dcc.Dropdown | dcc.Input:
     options = get_field(params, "options")
     is_rw = get_field(params, "rw", False)
 
@@ -108,7 +109,7 @@ def object_from_attrs(cname, attr, params, value):
     Input("store-tomato-port", "data"),
     Input("store-pipeline-name", "data"),
 )
-def create_content_div(port, name):
+def create_content_div(port: int, name: str) -> html.Div:
     try:
         pip_ret = tomato.status(**kwargs, port=port, stgrp="pipelines")
         pip = pip_ret.data[name] if pip_ret.success else None
@@ -487,7 +488,15 @@ def create_content_div(port, name):
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
-def component_attr_interaction(n_clicks, value, id, disabled, arw, port, name):
+def component_attr_interaction(
+    n_clicks: int,
+    value: Any,
+    id: dict[str, str],
+    disabled: bool,
+    arw: dict[str, dict[str, bool]] | None,
+    port: int,
+    name: str,
+) -> Any | dash.NoUpdate:
     if n_clicks is None:
         return dash.no_update
     cname, attr = id["index"].split("/")
@@ -523,7 +532,12 @@ def component_attr_interaction(n_clicks, value, id, disabled, arw, port, name):
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
-def pipeline_param_interaction_ready(values, data, port, name):
+def pipeline_param_interaction_ready(
+    values: list[str],
+    data: dict | None,
+    port: int,
+    name: str,
+) -> list[str] | dash.NoUpdate:
     if values == data["ready"]:
         return dash.no_update
 
@@ -555,7 +569,7 @@ def pipeline_param_interaction_ready(values, data, port, name):
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
-def pipeline_param_interaction_sampleid(sampleid, port, name):
+def pipeline_param_interaction_sampleid(sampleid: str, port: int, name: str) -> None:
     try:
         if sampleid == "":
             ret = tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
@@ -587,7 +601,14 @@ def pipeline_param_interaction_sampleid(sampleid, port, name):
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
-def components_periodic_update_attrs_vals_store(_, cmps, avals, aunits, port, name):
+def components_periodic_update_attrs_vals_store(
+    _: int,
+    cmps: list[str],
+    avals: dict[str, dict[str, Any]] | None,
+    aunits: dict[str, dict[str, str]] | None,
+    port: int,
+    name: str,
+) -> dict[str, dict[str, Any]] | dash.NoUpdate:
     if not cmps or not avals or not aunits:
         return dash.no_update
     newdata = {}
@@ -628,7 +649,9 @@ def components_periodic_update_attrs_vals_store(_, cmps, avals, aunits, port, na
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
-def components_periodic_update_data_store(_, cmps, data, port, name):
+def components_periodic_update_data_store(
+    _: int, cmps: list[str] | None, data: dict[str, dict] | None, port: int, name: str
+) -> dict[str, dict] | dash.NoUpdate:
     if not cmps:
         return dash.no_update
     newdata = {}
@@ -663,7 +686,9 @@ def components_periodic_update_data_store(_, cmps, data, port, name):
     State("store-tomato-port", "data"),
     prevent_initial_call=True,
 )
-def components_periodic_update_params_store(_, cmps, params, port):
+def components_periodic_update_params_store(
+    _: int, cmps: list[str] | None, params: dict[str, Any] | None, port: int
+) -> dict[str, Any] | dash.NoUpdate:
     if not cmps:
         return dash.no_update
     newparams = {}
@@ -689,7 +714,9 @@ def components_periodic_update_params_store(_, cmps, params, port):
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
-def pipeline_periodic_update_params_store(_, data, port, name):
+def pipeline_periodic_update_params_store(
+    _: int, data: dict | None, port: int, name: str
+) -> dict | dash.NoUpdate:
     try:
         pip = tomato.status(**kwargs, port=port, stgrp="pipelines").data[name]
         newdata = {
@@ -720,7 +747,12 @@ def pipeline_periodic_update_params_store(_, data, port, name):
     State("store-pipeline-component-attrs-rw", "data"),
     prevent_initial_call=True,
 )
-def components_update_attr_display(avals, value, id, rw):
+def components_update_attr_display(
+    avals: dict[str, dict[str, Any]] | None,
+    value: Any,
+    id: dict[str, str],
+    rw: dict[str, dict[str, bool]] | None,
+) -> Any | dash.NoUpdate:
     if not avals or not id or "index" not in id or not rw:
         return dash.no_update
     try:
@@ -750,7 +782,9 @@ def components_update_attr_display(avals, value, id, rw):
     State("store-pipeline-component-attrs-rw", "data"),
     prevent_initial_call=True,
 )
-def components_disable_attr_running(running, id, rw):
+def components_disable_attr_running(
+    running, id: dict[str, str], rw: dict[str, dict[str, bool]] | None
+) -> bool | dash.NoUpdate:
     if not running or not id or "index" not in id or not rw:
         return dash.no_update
     try:
@@ -776,7 +810,9 @@ def components_disable_attr_running(running, id, rw):
     State("pipeline-input-jobid", "value"),
     prevent_initial_call=True,
 )
-def pipeline_update_param_display(data, ready, sampleid, jobid):
+def pipeline_update_param_display(
+    data: dict | None, ready: list[str], sampleid: str | None, jobid: int
+) -> tuple[Any | dash.NoUpdate, Any | dash.NoUpdate, Any | dash.NoUpdate]:
     r_val = data["ready"] if data["ready"] != ready else dash.no_update
     s_val = data["sampleid"] if data["sampleid"] != sampleid else dash.no_update
     j_val = data["jobid"] if data["jobid"] != jobid else dash.no_update
@@ -799,7 +835,9 @@ def pipeline_update_param_display(data, ready, sampleid, jobid):
     State({"type": "component-params", "index": MATCH}, "id"),
     prevent_initial_call=True,
 )
-def components_update_param_display(data, value, id):
+def components_update_param_display(
+    data: dict | None, value: str, id: dict[str, str]
+) -> tuple[str | dash.NoUpdate, str | dash.NoUpdate]:
     if not data or not id or "index" not in id:
         return dash.no_update, dash.no_update
     running_state = data.get(id["index"], False)
@@ -822,7 +860,9 @@ def components_update_param_display(data, value, id):
     State({"type": "component-data-val", "index": MATCH}, "id"),
     prevent_initial_call=True,
 )
-def components_update_data_display(data, value, id):
+def components_update_data_display(
+    data: dict | None, value: Any, id: dict[str, str]
+) -> Any | dash.NoUpdate:
     cname, key = id["index"].split("/")
     if data is None or key not in data.get(cname, {}) or value == data[cname][key]:
         return dash.no_update
@@ -836,9 +876,7 @@ def components_update_data_display(data, value, id):
 dash.register_page(__name__, path_template="/pipelines/<port>/<name>")
 
 
-def layout(port=None, name=None, **_):
-    port = int(port)
-
+def layout(port: int, name: str, **_) -> list[html.Div]:
     return [
         create_header_div(port, name),
         html.Div(children=[], id="content-wrapper", className="content-wrapper"),
