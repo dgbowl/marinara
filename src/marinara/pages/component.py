@@ -371,7 +371,7 @@ def periodic_attrs_update(
             **kwargs, port=port, name=name, attrs=list(current_vals.keys())
         )
         if avals_ret.success and avals_ret.data is not None:
-            avals_dict = avals_ret.data.model_dump()
+            avals_dict = avals_ret.model_dump()["data"]
         else:
             avals_dict = {}
     except Exception as e:
