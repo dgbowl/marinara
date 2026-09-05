@@ -358,7 +358,7 @@ def update_dashboard_live_view(
     historical_data: dict,
     theme: str,
 ) -> tuple[html.Div, dict, dict]:
-    if not selected_pip:
+    if not selected_pip or True:
         empty_fig = {
             "layout": {
                 "autosize": True,
