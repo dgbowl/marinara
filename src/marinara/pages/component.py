@@ -52,7 +52,10 @@ def layout(port: int, name: str, **_) -> list:
         avals_ret = passata.get_attrs(
             **kwargs, port=port, name=name, attrs=list(attrs_dict.keys())
         )
-        avals_dict = avals_ret.data if avals_ret.success else {}
+        if avals_ret.success and avals_ret.data is not None:
+            avals_dict = avals_ret.data.model_dump()
+        else:
+            avals_dict = {}
     except Exception as e:
         logger.warning("Exception during passata.get_attrs:", exc_info=e)
         avals_dict = {}
