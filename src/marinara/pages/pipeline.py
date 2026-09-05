@@ -816,16 +816,6 @@ def components_update_param_display(
         return new_text, new_class
 
 
-dash.register_page(__name__, path_template="/pipelines/<port>/<name>")
-
-
-def layout(port: int, name: str, **_) -> list[html.Div]:
-    return [
-        create_header_div(port, name),
-        html.Div(children=[], id="content-wrapper", className="content-wrapper"),
-    ]
-
-
 @callback(
     Output({"type": "component-data-store", "index": MATCH}, "data"),
     Input("interval-pipeline-content", "n_intervals"),
@@ -874,3 +864,13 @@ def components_update_data_display(
         if val != vals[vi]:
             nvals[vi] = val
     return nvals
+
+
+dash.register_page(__name__, path_template="/pipelines/<port>/<name>")
+
+
+def layout(port: int, name: str, **_) -> list[html.Div]:
+    return [
+        create_header_div(port, name),
+        html.Div(children=[], id="content-wrapper", className="content-wrapper"),
+    ]
