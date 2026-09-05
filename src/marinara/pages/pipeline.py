@@ -2,7 +2,7 @@ import logging
 from typing import Any
 
 import dash
-from dash import ALL, MATCH, Input, Output, Patch, State, callback, dcc, html, set_props
+from dash import ALL, MATCH, Input, Output, State, callback, dcc, html, set_props
 from tomato import passata, tomato
 
 from marinara.utils import (
