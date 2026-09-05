@@ -2,7 +2,7 @@ import logging
 from typing import Any
 
 import dash
-from dash import MATCH, Input, Output, State, callback, dcc, html, set_props
+from dash import ALL, MATCH, Input, Output, Patch, State, callback, dcc, html, set_props
 from tomato import passata, tomato
 
 from marinara.utils import (
@@ -11,6 +11,7 @@ from marinara.utils import (
     get_field,
     get_unit_str,
     kwargs,
+    update_datastore,
 )
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,6 @@ def create_header_div(port: int, name: str) -> html.Div:
             dcc.Store(id="store-pipeline-component-attrs-vals", data=None),
             dcc.Store(id="store-pipeline-component-attrs-units", data=None),
             dcc.Store(id="store-pipeline-component-attrs-rw", data=None),
-            dcc.Store(id="store-pipeline-component-data", data=None),
             dcc.Interval(id="interval-pipeline-content", interval=2000),
         ],
         className="header-store",
@@ -396,11 +396,8 @@ def create_content_div(port: int, name: str) -> html.Div:
         ]
         if data is not None:
             for key in data.data_vars:
-                value = clean_value(data[key].values[-1])
                 units = data[key].attrs.get("units", "")
 
-                if isinstance(value, float):
-                    value = round(value, 3)
                 units_str = get_unit_str(units)
 
                 div_data_ch.append(
@@ -413,7 +410,7 @@ def create_content_div(port: int, name: str) -> html.Div:
                                     "index": f"{cname}/{key}",
                                 },
                                 disabled=True,
-                                value=value,
+                                value=None,
                                 className="attr-control",
                                 style={"width": "200px"},
                             ),
@@ -451,6 +448,13 @@ def create_content_div(port: int, name: str) -> html.Div:
     set_props("store-pipeline-component-attrs-units", {"data": attrs_units_store})
     set_props("store-pipeline-component-attrs-rw", {"data": attrs_rw_store})
 
+    # Create component stores
+    stores = []
+    for cname in pip.components:
+        stores.append(
+            dcc.Store(id={"type": "component-data-store", "index": cname}, data=None)
+        )
+
     children = [
         html.Div(
             children=[ready, jobid, sampleid],
@@ -470,6 +474,7 @@ def create_content_div(port: int, name: str) -> html.Div:
             },
         ),
         html.Div(children=components, className="pipeline-component-grid"),
+        html.Div(children=stores),
     ]
     return children
 
@@ -635,44 +640,6 @@ def components_periodic_update_attrs_vals_store(
             newdata[cmp][key] = clean_value(val)
 
     if newdata == avals:
-        return dash.no_update
-    else:
-        return newdata
-
-
-@callback(
-    Output("store-pipeline-component-data", "data"),
-    Input("interval-pipeline-content", "n_intervals"),
-    State("store-pipeline-component-names", "data"),
-    State("store-pipeline-component-data", "data"),
-    State("store-tomato-port", "data"),
-    State("store-pipeline-name", "data"),
-    prevent_initial_call=True,
-)
-def components_periodic_update_data_store(
-    _: int, cmps: list[str] | None, data: dict[str, dict] | None, port: int, name: str
-) -> dict[str, dict] | dash.NoUpdate:
-    if not cmps:
-        return dash.no_update
-    newdata = {}
-    for cmp in cmps:
-        newdata[cmp] = {}
-        try:
-            ds_ret = passata.get_last_data(**kwargs, port=port, name=cmp)
-            ds = ds_ret.data if ds_ret.success else None
-        except Exception as e:
-            logger.warning("Exception during passata.get_last_data:", exc_info=e)
-            ds = None
-
-        if ds is None:
-            continue
-        dd = ds.to_dict()
-        for k, v in dd["coords"].items():
-            newdata[cmp][k] = clean_value(v["data"][-1])
-        for k, v in dd["data_vars"].items():
-            newdata[cmp][k] = clean_value(v["data"][-1])
-
-    if newdata == {} or newdata == data:
         return dash.no_update
     else:
         return newdata
@@ -849,30 +816,6 @@ def components_update_param_display(
         return new_text, new_class
 
 
-@callback(
-    Output(
-        {"type": "component-data-val", "index": MATCH},
-        "value",
-        allow_duplicate=True,
-    ),
-    Input("store-pipeline-component-data", "data"),
-    State({"type": "component-data-val", "index": MATCH}, "value"),
-    State({"type": "component-data-val", "index": MATCH}, "id"),
-    prevent_initial_call=True,
-)
-def components_update_data_display(
-    data: dict | None, value: Any, id: dict[str, str]
-) -> Any | dash.NoUpdate:
-    cname, key = id["index"].split("/")
-    if data is None or key not in data.get(cname, {}) or value == data[cname][key]:
-        return dash.no_update
-    else:
-        val = data[cname][key]
-        if isinstance(val, float):
-            val = round(val, 3)
-        return val
-
-
 dash.register_page(__name__, path_template="/pipelines/<port>/<name>")
 
 
@@ -881,3 +824,53 @@ def layout(port: int, name: str, **_) -> list[html.Div]:
         create_header_div(port, name),
         html.Div(children=[], id="content-wrapper", className="content-wrapper"),
     ]
+
+
+@callback(
+    Output({"type": "component-data-store", "index": MATCH}, "data"),
+    Input("interval-pipeline-content", "n_intervals"),
+    State("store-tomato-port", "data"),
+    State({"type": "component-data-store", "index": MATCH}, "id"),
+    State({"type": "component-data-store", "index": MATCH}, "data"),
+)
+def update_component_stores(n_intervals: int, port: int, id: dict, data: dict | None):
+    logger.debug("updating store '%s'", id["index"])
+    return update_datastore(port=port, name=id["index"], datastore=data)
+
+
+@callback(
+    Output(
+        {"type": "component-data-val", "index": ALL},
+        "value",
+        allow_duplicate=True,
+    ),
+    Input({"type": "component-data-store", "index": MATCH}, "data"),
+    Input({"type": "component-data-store", "index": MATCH}, "id"),
+    State({"type": "component-data-val", "index": ALL}, "value"),
+    State({"type": "component-data-val", "index": ALL}, "id"),
+    prevent_initial_call=True,
+    allow_duplicate=True,
+)
+def components_update_data_display(
+    cdata: dict,
+    cid: dict,
+    vals: Any,
+    vids: dict,
+) -> Any | dash.NoUpdate:
+
+    cname = cid["index"]
+    for vi, vid in enumerate(vids):
+        vcname, vattr = vid["index"].split("/")
+        if vcname != cname:
+            continue
+        val = cdata["data_vars"][vattr]["data"][-1]
+        if isinstance(val, float):
+            val = f"{val:,.5g}"
+        elif isinstance(val, list):
+            try:
+                val = f"[{val[0]:.5g}, ··· {val[-1]:.5g}]"
+            except ValueError:
+                val = f"[{val[0]}, ··· {val[-1]}]"
+        if val != vals[vi]:
+            vals[vi] = val
+    return vals

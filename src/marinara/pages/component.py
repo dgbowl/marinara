@@ -16,6 +16,7 @@ from marinara.utils import (
     kwargs,
     theme_gridcolor,
     theme_plot_colors,
+    update_datastore,
 )
 
 logger = logging.getLogger(__name__)
@@ -454,35 +455,9 @@ def set_component_attribute(
     Input("component-interval", "n_intervals"),
 )
 def component_data_update(
-    port: int, name: str, data: dict | None, n_intervals: int
+    port: int, name: str, data: dict | None, _: int
 ) -> dict | dash.NoUpdate | None:
-    try:
-        ret = passata.get_last_data(**kwargs, port=port, name=name)
-        if not ret.success:
-            return dash.no_update
-        if data is None and ret.data is None:
-            return dash.no_update
-        elif ret.data is None:
-            logger.warning("passata.get_last_data returned no data, erasing data store")
-            return None
-
-        ndata = ret.data.to_dict()
-        # Simply return data if first load.
-        if data is None:
-            return ndata
-        # Do not update if timestamp is already present.
-        uts = ndata["coords"]["uts"]["data"][0]
-        if uts in data["coords"]["uts"]["data"]:
-            return dash.no_update
-        # Go through data_vars and append last datapoint.
-        data["coords"]["uts"]["data"].append(uts)
-        for k, v in ndata["data_vars"].items():
-            data["data_vars"][k]["data"].append(v["data"][0])
-        data["dims"]["uts"] = len(data["coords"]["uts"]["data"])
-        return data
-    except Exception as e:
-        logger.warning("Exception during component_data_update:", exc_info=e)
-        return dash.no_update
+    return update_datastore(port=port, name=name, datastore=data)
 
 
 def group_by_unit(ds: dict) -> dict[str, list[str]]:
