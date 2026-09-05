@@ -475,7 +475,7 @@ def update_dashboard_live_view(
                             children=[
                                 html.Span(f"{k}:", className="param-item-name"),
                                 html.Span(
-                                    f"{clean_value(v)}{unit_str}",
+                                    f"{v}{unit_str}",
                                     className="param-item-val",
                                 ),
                             ],
@@ -493,7 +493,7 @@ def update_dashboard_live_view(
     if "traces" not in historical_data:
         historical_data["traces"] = {}
 
-    for cname in pip.components:
+    for cname in []:  # pip.components:
         try:
             data_ret = passata.get_last_data(**kwargs, port=port, name=cname)
             if data_ret.success and data_ret.data:
