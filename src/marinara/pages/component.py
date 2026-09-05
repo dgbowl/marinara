@@ -53,7 +53,7 @@ def layout(port: int, name: str, **_) -> list:
             **kwargs, port=port, name=name, attrs=list(attrs_dict.keys())
         )
         if avals_ret.success and avals_ret.data is not None:
-            avals_dict = avals_ret.data.model_dump()
+            avals_dict = avals_ret.model_dump()["data"]
         else:
             avals_dict = {}
     except Exception as e:
