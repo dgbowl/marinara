@@ -1,8 +1,10 @@
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 import dash
 from dash import Input, Output, State, callback, dcc, html
+from dash_svg.Svg import Svg
 from tomato import passata, tomato
 
 from marinara.icons import get_icon
@@ -43,7 +45,7 @@ header = html.Div(
 )
 
 
-def create_kpi_card(title, id, value, icon):
+def create_kpi_card(title: str, id: str, value: str, icon: Svg) -> html.Div:
     return html.Div(
         className="kpi-card",
         children=[
@@ -204,7 +206,11 @@ dashboard_layout = html.Div(
     State("tomato-port", "data"),
     State("dash-plot-device-selector", "value"),
 )
-def update_dashboard_stats(n_clicks, port, current_selector_value):
+def update_dashboard_stats(
+    n_clicks: int,
+    port: int,
+    current_selector_value: str | None,
+) -> tuple[str, str, str, str, list[dict[str, Any]], str | None, html.Div]:
     try:
         from tomato import ketchup
 
@@ -344,7 +350,13 @@ def update_dashboard_stats(n_clicks, port, current_selector_value):
     State("dash-plot-data-store", "data"),
     State("app-theme-store", "data"),
 )
-def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data, theme):
+def update_dashboard_live_view(
+    n_intervals: int,
+    selected_pip: list,
+    port: int,
+    historical_data: dict,
+    theme: str,
+) -> tuple[html.Div, dict, dict]:
     if not selected_pip:
         empty_fig = {
             "layout": {
@@ -579,5 +591,5 @@ def update_dashboard_live_view(n_intervals, selected_pip, port, historical_data,
     return params_list, figure, clean_data(historical_data)
 
 
-def layout(**_):
+def layout(**_) -> list[html.Div]:
     return [dashboard_layout]
