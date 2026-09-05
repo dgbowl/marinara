@@ -5,12 +5,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 import dash
-import xarray as xr
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
 from tomato import passata
 
 from marinara.utils import (
-    clean_data,
     clean_value,
     format_constraint,
     get_field,
@@ -18,6 +16,7 @@ from marinara.utils import (
     kwargs,
     theme_gridcolor,
     theme_plot_colors,
+    update_datastore,
 )
 
 logger = logging.getLogger(__name__)
@@ -456,28 +455,9 @@ def set_component_attribute(
     Input("component-interval", "n_intervals"),
 )
 def component_data_update(
-    port: int, name: str, data: dict | None, n_intervals: int
-) -> dict | None:
-    try:
-        ret = passata.get_last_data(**kwargs, port=port, name=name)
-        if not ret.success:
-            return data
-        if data is None:
-            ndata = ret.data
-        else:
-            odata = xr.Dataset.from_dict(data)
-            # Pin explicitly: xarray's defaults for these are changing in a
-            # future release (join outer->exact, compat no_conflicts->override),
-            # and this merge relies on the current outer/no_conflicts behavior
-            # to combine datasets whose "uts" coordinate keeps growing.
-            ndata = xr.merge([odata, ret.data], join="outer", compat="no_conflicts")
-        # Cap dataset size to prevent JSON serialization and memory bottlenecks
-        if ndata.sizes["uts"] > 500:
-            ndata = ndata.isel(uts=slice(-500, None))
-        return clean_data(ndata.to_dict())
-    except Exception as e:
-        logger.warning("Exception during component_data_update:", exc_info=e)
-        return data
+    port: int, name: str, data: dict | None, _: int
+) -> dict | dash.NoUpdate | None:
+    return update_datastore(port=port, name=name, datastore=data)
 
 
 def group_by_unit(ds: dict) -> dict[str, list[str]]:
