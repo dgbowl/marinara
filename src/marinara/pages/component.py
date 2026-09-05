@@ -13,6 +13,7 @@ from marinara.utils import (
     clean_data,
     clean_value,
     format_constraint,
+    get_attrs_vals,
     get_field,
     get_unit_str,
     kwargs,
@@ -48,17 +49,7 @@ def layout(port: int, name: str, **_) -> list:
         logger.warning("Exception during passata.attrs:", exc_info=e)
         attrs_dict = {}
 
-    try:
-        avals_ret = passata.get_attrs(
-            **kwargs, port=port, name=name, attrs=list(attrs_dict.keys())
-        )
-        if avals_ret.success and avals_ret.data is not None:
-            avals_dict = avals_ret.model_dump()["data"]
-        else:
-            avals_dict = {}
-    except Exception as e:
-        logger.warning("Exception during passata.get_attrs:", exc_info=e)
-        avals_dict = {}
+    avals_dict = get_attrs_vals(port=port, name=name, attrs=list(attrs_dict))
 
     # Initialize store datasets
     init_attrs_vals = {}
@@ -366,17 +357,7 @@ def periodic_attrs_update(
         logger.warning("Exception during passata.status:", exc_info=e)
         running = False
 
-    try:
-        avals_ret = passata.get_attrs(
-            **kwargs, port=port, name=name, attrs=list(current_vals.keys())
-        )
-        if avals_ret.success and avals_ret.data is not None:
-            avals_dict = avals_ret.model_dump()["data"]
-        else:
-            avals_dict = {}
-    except Exception as e:
-        logger.warning("Exception during passata.get_attrs:", exc_info=e)
-        avals_dict = {}
+    avals_dict = get_attrs_vals(port=port, name=name, attrs=list(current_vals))
 
     new_vals = {}
     for k in current_vals:
@@ -434,23 +415,12 @@ def set_component_attribute(
     if n_clicks is None:
         return dash.no_update
     k = id["index"]
-    try:
-        ret = passata.set_attr(**kwargs, port=port, name=name, attr=k, val=value)
-        if ret.success:
-            return clean_value(ret.data)
-        # If set_attr returned success=False, fetch current value to revert
-        ret = passata.get_attrs(**kwargs, port=port, name=name, attrs=[k])
-        current = ret.data.get(k)
-        return clean_value(current)
-    except Exception as e:
-        logger.warning("Exception during passata.get_attrs:", exc_info=e)
-        try:
-            ret = passata.get_attrs(**kwargs, port=port, name=name, attrs=[k])
-            current = ret.data.get(k)
-            return clean_value(current)
-        except Exception as e:
-            logger.warning("Exception during passata.get_attrs:", exc_info=e)
-            return dash.no_update
+    ret = passata.set_attr(**kwargs, port=port, name=name, attr=k, val=value)
+    if ret.success:
+        return clean_value(ret.data)
+    # If set_attr returned success=False, fetch current value to revert
+    current = get_attrs_vals(port=port, name=name, attrs=[k]).get(k)
+    return current
 
 
 # Data Store Updater

@@ -11,6 +11,7 @@ from marinara.icons import get_icon
 from marinara.utils import (
     clean_data,
     clean_value,
+    get_attrs_vals,
     get_field,
     kwargs,
     theme_gridcolor,
@@ -447,11 +448,7 @@ def update_dashboard_live_view(
         try:
             attrs_ret = passata.attrs(**kwargs, port=port, name=cname)
             attrs_meta = attrs_ret.data if attrs_ret.success else {}
-
-            vals_ret = passata.get_attrs(
-                **kwargs, port=port, name=cname, attrs=list(attrs_meta.keys())
-            )
-            vals = vals_ret.data if vals_ret.success else {}
+            vals = get_attrs_vals(port=port, name=cname, attrs=list(attrs_meta))
 
             if vals:
                 param_items.append(

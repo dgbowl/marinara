@@ -4,6 +4,7 @@ from typing import Any
 import pint
 import zmq
 from dash import dcc, html
+from tomato import passata
 
 PORT = 1234
 TOUT = 1000
@@ -244,3 +245,12 @@ def format_obj(obj, headers, attrs, otype, port) -> html.Div:
 
     container_class = "card-grid" if otype == "components" else None
     return html.Div(cards, className=container_class)
+
+
+def get_attrs_vals(port: int, name: str, attrs: list[str]) -> dict[str, Any]:
+    ret = passata.get_attrs(**kwargs, port=port, name=name, attrs=attrs)  # ty: ignore[invalid-argument-type]
+    if ret.success and ret.data is not None:
+        vals: dict = ret.model_dump()["data"]
+    else:
+        vals = {}
+    return vals

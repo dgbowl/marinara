@@ -4,10 +4,12 @@ from typing import Any
 import dash
 from dash import MATCH, Input, Output, State, callback, dcc, html, set_props
 from tomato import passata, tomato
+from tomato.passata import get_attrs
 
 from marinara.utils import (
     clean_value,
     format_constraint,
+    get_attrs_vals,
     get_field,
     get_unit_str,
     kwargs,
@@ -296,15 +298,7 @@ def create_content_div(port: int, name: str) -> html.Div:
             logger.warning("caught Exception during passata.attrs:", exc_info=e)
             attrs = {}
 
-        try:
-            avals_ret = passata.get_attrs(
-                **kwargs, port=port, name=cname, attrs=list(attrs.keys())
-            )
-            avals = avals_ret.data if avals_ret.success else {}
-        except Exception as e:
-            logger.warning("Exception during passata.geT_attrs:", exc_info=e)
-            avals = {}
-
+        avals = get_attrs_vals(port=port, name=cname, attrs=list(attrs))
         attrs_vals_store[cname] = {k: clean_value(v) for k, v in avals.items()}
         attrs_units_store[cname] = {k: get_field(attrs[k], "units") for k in attrs}
         attrs_rw_store[cname] = {k: get_field(attrs[k], "rw", False) for k in attrs}
@@ -501,26 +495,12 @@ def component_attr_interaction(
         return dash.no_update
     cname, attr = id["index"].split("/")
     if arw[cname][attr] and not disabled:
-        try:
-            ret = passata.set_attr(
-                **kwargs, port=port, name=cname, attr=attr, val=value
-            )
-            if ret.success:
-                return clean_value(ret.data)
-            current = passata.get_attrs(
-                **kwargs, port=port, name=cname, attrs=[attr]
-            ).data.get(attr)
-            return clean_value(current)
-        except Exception as e:
-            logger.warning("Exception during passata.get_attrs:", exc_info=e)
-            try:
-                current = passata.get_attrs(
-                    **kwargs, port=port, name=cname, attrs=[attr]
-                ).data.get(attr)
-                return clean_value(current)
-            except Exception as e:
-                logger.warning("Exception during passata.get_attrs:", exc_info=e)
-                return dash.no_update
+        ret = passata.set_attr(**kwargs, port=port, name=cname, attr=attr, val=value)
+        if ret.success:
+            return clean_value(ret.data)
+        current = get_attrs_vals(port=port, name=cname, attrs=[attr]).get(attr)
+        return current
+
     return dash.no_update
 
 
@@ -616,14 +596,7 @@ def components_periodic_update_attrs_vals_store(
         if cmp not in avals or cmp not in aunits:
             continue
         newdata[cmp] = {}
-        try:
-            nvals_ret = passata.get_attrs(
-                **kwargs, port=port, name=cmp, attrs=list(avals[cmp].keys())
-            )
-            nvals = nvals_ret.data if nvals_ret.success else {}
-        except Exception as e:
-            logger.warning("Exception during passata.get_attrs:", exc_info=e)
-            nvals = {}
+        nvals = get_attrs_vals(port=port, name=cmp, attrs=list(avals[cmp]))
 
         for key in avals[cmp]:
             val = nvals.get(key)
