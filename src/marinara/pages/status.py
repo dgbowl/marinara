@@ -1,5 +1,4 @@
 import logging
-from datetime import UTC, datetime
 from typing import Any
 
 import dash
@@ -7,15 +6,9 @@ from dash import Input, Output, State, callback, dcc, html
 from dash_svg.Svg import Svg
 from tomato import passata, tomato
 
+from marinara import plotting
 from marinara.icons import get_icon
-from marinara.utils import (
-    clean_data,
-    clean_value,
-    get_field,
-    kwargs,
-    theme_gridcolor,
-    theme_plot_colors,
-)
+from marinara.utils import clean_value, get_field, kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -346,40 +339,25 @@ def update_dashboard_stats(
     Output("dash-plot-data-store", "data"),
     Input("dash-graph-interval", "n_intervals"),
     Input("dash-plot-device-selector", "value"),
+    Input("app-theme-store", "data"),
     State("tomato-port", "data"),
     State("dash-plot-data-store", "data"),
-    State("app-theme-store", "data"),
+    State("dash-live-graph", "figure"),
 )
 def update_dashboard_live_view(
     n_intervals: int,
-    selected_pip: list,
+    selected_pip: str | None,
+    theme: str,
     port: int,
     historical_data: dict,
-    theme: str,
-) -> tuple[html.Div, dict, dict]:
+    prev_figure: dict | None,
+) -> tuple[html.Div, dict | dash.Patch, dict]:
     if not selected_pip:
-        empty_fig = {
-            "layout": {
-                "autosize": True,
-                "xaxis": {"visible": False},
-                "yaxis": {"visible": False},
-                "annotations": [
-                    {
-                        "text": "Select a pipeline above to view live plot",
-                        "xref": "paper",
-                        "yref": "paper",
-                        "showarrow": False,
-                        "font": {"size": 16, "color": "gray"},
-                    }
-                ],
-                **theme_plot_colors(theme),
-            }
-        }
         return (
             html.Div(
                 "Select a pipeline to view parameters.", className="text-secondary"
             ),
-            empty_fig,
+            plotting.empty_figure("Select a pipeline above to view live plot", theme),
             {},
         )
 
@@ -391,55 +369,22 @@ def update_dashboard_live_view(
         pip = pips.get(selected_pip)
     except Exception as e:
         logger.warning("Exception during update_dashboard_live_view:", exc_info=e)
-        empty_fig = {
-            "layout": {
-                "autosize": True,
-                "xaxis": {"visible": False},
-                "yaxis": {"visible": False},
-                "annotations": [
-                    {
-                        "text": "Offline or loading...",
-                        "xref": "paper",
-                        "yref": "paper",
-                        "showarrow": False,
-                        "font": {"size": 14, "color": "gray"},
-                    }
-                ],
-                **theme_plot_colors(theme),
-            }
-        }
         return (
             html.Div("Parameters temporarily unavailable.", className="text-secondary"),
-            empty_fig,
+            plotting.empty_figure("Offline or loading...", theme),
             {},
         )
 
     if not pip:
-        empty_fig = {
-            "layout": {
-                "autosize": True,
-                "xaxis": {"visible": False},
-                "yaxis": {"visible": False},
-                "annotations": [
-                    {
-                        "text": "Pipeline not found",
-                        "xref": "paper",
-                        "yref": "paper",
-                        "showarrow": False,
-                        "font": {"size": 14, "color": "gray"},
-                    }
-                ],
-                **theme_plot_colors(theme),
-            }
-        }
         return (
             html.Div("Pipeline parameters not found.", className="text-secondary"),
-            empty_fig,
+            plotting.empty_figure("Pipeline not found", theme),
             {},
         )
 
     if not historical_data or historical_data.get("pip") != selected_pip:
-        historical_data = {"pip": selected_pip, "traces": {}}
+        historical_data = {"pip": selected_pip, "components": {}}
+    historical_data.setdefault("components", {})
 
     # 1. Fetch attributes/parameters for each component in the pipeline
     param_items = []
@@ -492,103 +437,48 @@ def update_dashboard_live_view(
 
     params_list = html.Div(param_items, className="params-list-container")
 
-    # 2. Fetch live data for plotting for each component in the pipeline
-    if "traces" not in historical_data:
-        historical_data["traces"] = {}
-
+    # 2. Fetch live data for plotting for each component in the pipeline, kept
+    # in the same per-component "component store" shape as component.py's
+    # component-data-store (capped at 50 rows rather than 500, since this is a
+    # compact multi-component overview rather than a detailed single-component
+    # page).
+    traces = []
     for cname in pip.components:
         try:
             data_ret = passata.get_last_data(**kwargs, port=port, name=cname)
             if data_ret.success and data_ret.data:
-                ds = data_ret.data.to_dict()
-                uts_list = ds["coords"]["uts"]["data"]
-
-                for idx, t in enumerate(uts_list):
-                    cleaned_t = clean_value(t)
-
-                    for var_name, var_info in ds["data_vars"].items():
-                        raw_val = var_info["data"][idx]
-
-                        # Handle multi-dimensional variables
-                        if isinstance(raw_val, (list, tuple)):
-                            for i, sub_val in enumerate(raw_val):
-                                trace_key = f"{cname}/{var_name}[{i}]"
-                                if trace_key not in historical_data["traces"]:
-                                    historical_data["traces"][trace_key] = {
-                                        "x": [],
-                                        "y": [],
-                                    }
-
-                                trace = historical_data["traces"][trace_key]
-                                if cleaned_t not in trace["x"]:
-                                    trace["x"].append(cleaned_t)
-                                    trace["y"].append(clean_value(sub_val))
-                                    if len(trace["x"]) > 50:
-                                        trace["x"].pop(0)
-                                        trace["y"].pop(0)
-                        else:
-                            trace_key = f"{cname}/{var_name}"
-                            if trace_key not in historical_data["traces"]:
-                                historical_data["traces"][trace_key] = {
-                                    "x": [],
-                                    "y": [],
-                                }
-
-                            trace = historical_data["traces"][trace_key]
-                            if cleaned_t not in trace["x"]:
-                                trace["x"].append(cleaned_t)
-                                trace["y"].append(clean_value(raw_val))
-                                if len(trace["x"]) > 50:
-                                    trace["x"].pop(0)
-                                    trace["y"].pop(0)
+                comp_ds = plotting.merge_and_cap(
+                    historical_data["components"].get(cname), data_ret.data, cap=50
+                )
+                historical_data["components"][cname] = comp_ds
+            else:
+                # Transient fetch failure: keep plotting this component's last
+                # known data instead of dropping its trace for the tick, same
+                # as pipeline.py's components_update_data_display does for
+                # its own per-component polling.
+                comp_ds = historical_data["components"].get(cname)
+            if not comp_ds:
+                continue
+            formatted_x, _ = plotting.format_timeseries_x(
+                comp_ds["coords"]["uts"]["data"], compact=True
+            )
+            keys = list(comp_ds["data_vars"].keys())
+            traces.extend(
+                plotting.build_traces(comp_ds, keys, formatted_x, prefix=cname)
+            )
         except Exception as e:
             logger.warning(
                 f"Failed to fetch live data for component {cname} of pipeline {selected_pip}: {e}",
                 exc_info=e,
             )
 
-    traces = []
-    for trace_key, trace_data in historical_data["traces"].items():
-        formatted_x = []
-        for t in trace_data["x"]:
-            try:
-                formatted_x.append(
-                    datetime.fromtimestamp(t, UTC).astimezone().strftime("%H:%M:%S")
-                )
-            except Exception as e:
-                logger.warning("Exception during time formatting:", exc_info=e)
-                formatted_x.append(str(t))
+    layout = plotting.build_layout(theme, margin={"t": 15, "b": 90, "l": 50, "r": 15})
+    figure = plotting.patch_or_redraw(prev_figure, traces, layout)
 
-        traces.append(
-            {
-                "x": formatted_x,
-                "y": trace_data["y"],
-                "name": trace_key,
-                "type": "scatter",
-                "mode": "lines+markers",
-            }
-        )
-
-    figure = {
-        "data": traces,
-        "layout": {
-            "autosize": True,
-            **theme_plot_colors(theme),
-            "margin": {"t": 15, "b": 90, "l": 50, "r": 15},
-            "xaxis": {"gridcolor": theme_gridcolor(theme)},
-            "yaxis": {"gridcolor": theme_gridcolor(theme)},
-            "legend": {
-                "orientation": "h",
-                "x": 0.5,
-                "y": -0.18,
-                "xanchor": "center",
-                "yanchor": "top",
-            },
-            "uirevision": True,
-        },
-    }
-
-    return params_list, figure, clean_data(historical_data)
+    # historical_data's per-component datasets already come out of
+    # merge_and_cap clean (JSON-safe) - no need to walk the whole structure
+    # again here.
+    return params_list, figure, historical_data
 
 
 def layout(**_) -> list[html.Div]:

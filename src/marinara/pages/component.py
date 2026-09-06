@@ -1,23 +1,18 @@
 import json
 import logging
-from collections.abc import Generator
-from datetime import UTC, datetime
 from typing import Any
 
 import dash
-import xarray as xr
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
 from tomato import passata
 
+from marinara import plotting
 from marinara.utils import (
-    clean_data,
     clean_value,
     format_constraint,
     get_field,
     get_unit_str,
     kwargs,
-    theme_gridcolor,
-    theme_plot_colors,
 )
 
 logger = logging.getLogger(__name__)
@@ -462,19 +457,8 @@ def component_data_update(
         ret = passata.get_last_data(**kwargs, port=port, name=name)
         if not ret.success:
             return data
-        if data is None:
-            ndata = ret.data
-        else:
-            odata = xr.Dataset.from_dict(data)
-            # Pin explicitly: xarray's defaults for these are changing in a
-            # future release (join outer->exact, compat no_conflicts->override),
-            # and this merge relies on the current outer/no_conflicts behavior
-            # to combine datasets whose "uts" coordinate keeps growing.
-            ndata = xr.merge([odata, ret.data], join="outer", compat="no_conflicts")
         # Cap dataset size to prevent JSON serialization and memory bottlenecks
-        if ndata.sizes["uts"] > 500:
-            ndata = ndata.isel(uts=slice(-500, None))
-        return clean_data(ndata.to_dict())
+        return plotting.merge_and_cap(data, ret.data, cap=500)
     except Exception as e:
         logger.warning("Exception during component_data_update:", exc_info=e)
         return data
@@ -500,41 +484,6 @@ def unit_tab_id(label: str) -> str:
 def unit_tab_label(tab: str) -> str:
     """Decodes a unit-tab token (as produced by unit_tab_id) back to its label."""
     return tab.removeprefix("unit:")
-
-
-def iter_series(key: str, y_raw: list) -> Generator[tuple[str, list]]:
-    """Yields (name, y_values) pairs for a data_var, exploding multidimensional
-    variables into one named sub-series per index (key[0], key[1], ...)."""
-    if not (len(y_raw) > 0 and isinstance(y_raw[0], (list, tuple))):
-        yield key, y_raw
-        return
-
-    max_len = max(len(item) for item in y_raw if isinstance(item, (list, tuple)))
-    for i in range(max_len):
-        sub_y = [
-            item[i] if isinstance(item, (list, tuple)) and i < len(item) else None
-            for item in y_raw
-        ]
-        yield f"{key}[{i}]", sub_y
-
-
-def build_traces(ds: dict, keys: list[str], formatted_x: str) -> list[dict]:
-    """Builds Plotly scatter traces for the given data_var keys, exploding
-    multidimensional variables into one named sub-trace per index."""
-    data = []
-    for key in keys:
-        y_raw: list = ds["data_vars"][key]["data"]
-        for name, y_vals in iter_series(key, y_raw):
-            data.append(
-                {
-                    "x": formatted_x,
-                    "y": y_vals,
-                    "name": name,
-                    "type": "scatter",
-                    "mode": "lines+markers",
-                }
-            )
-    return data
 
 
 # Tracks the set of distinct unit labels present in the data. Only changes
@@ -611,110 +560,99 @@ def update_active_graph_tab(
     return store_update, checklist_update
 
 
-# Renders the Data Graph widget: one Plotly graph per active unit tab
+# Renders the Data Graph widget's shells: one dcc.Graph per active unit tab.
+# Only rebuilds when the *set* of active tabs changes (adding/removing a
+# unit-tab), not on every ~2s data poll - the figure data itself is filled in
+# separately by render_component_data_graph below, which can patch existing
+# traces in place instead of losing zoom/pan on every tick.
 @callback(
     Output("component-data-graph-container", "children"),
+    Input("component-graph-tab-store", "data"),
+)
+def render_component_data_graph_shells(
+    active_tabs: list[str] | None,
+) -> list[dcc.Graph]:
+    active_tabs = active_tabs or ["all"]
+    # Shrink each graph when several are stacked so more fit on screen at once,
+    # and give stacked graphs extra breathing room so one graph's legend
+    # doesn't crowd against the next graph's title.
+    graph_height = "400px" if len(active_tabs) <= 1 else "280px"
+    graph_gap = "15px" if len(active_tabs) <= 1 else "40px"
+    return [
+        dcc.Graph(
+            id={"type": "component-data-graph", "index": tab},
+            style={"height": graph_height, "margin-bottom": graph_gap},
+            responsive=True,
+        )
+        for tab in active_tabs
+    ]
+
+
+# Fills in one tab's figure. Patches existing traces in place when the tab's
+# variable set hasn't changed (see plotting.patch_or_redraw), and only
+# returns a full new figure when it has - the "read from a component store,
+# patch if possible, redraw if necessary" behavior asked for in issue #26.
+@callback(
+    Output({"type": "component-data-graph", "index": MATCH}, "figure"),
     Input("component-data-store", "data"),
     Input("app-theme-store", "data"),
     Input("checkbox-align-time", "value"),
     Input("component-graph-tab-store", "data"),
+    State({"type": "component-data-graph", "index": MATCH}, "id"),
+    State({"type": "component-data-graph", "index": MATCH}, "figure"),
 )
-def render_component_data_graphs(
-    ds: dict | None, theme: dict, align_time: list[str], active_tabs: list[str]
-) -> list[dcc.Graph]:
+def render_component_data_graph(
+    ds: dict | None,
+    theme: dict,
+    align_time: list[str],
+    active_tabs: list[str],
+    graph_id: dict[str, str],
+    prev_figure: dict | None,
+) -> dict | dash.Patch:
     if ds is None:
-        return []
+        return plotting.empty_figure("Waiting for data...", theme)
 
     active_tabs = active_tabs or ["all"]
+    tab = graph_id["index"]
 
-    # Formatting Unix timestamp (uts) to local timezone or relative time
-    raw_x: list = ds["coords"]["uts"]["data"]
+    relative = bool(align_time and "relative" in align_time)
+    formatted_x, x_title = plotting.format_timeseries_x(
+        ds["coords"]["uts"]["data"], relative=relative
+    )
 
-    if align_time and "relative" in align_time:
-        start_t = raw_x[0] if len(raw_x) > 0 else 0
-        formatted_x = []
-        for t in raw_x:
-            try:
-                formatted_x.append(f"+{round(t - start_t, 1)}s")
-            except Exception as e:
-                logger.warning("Exception during time formatting:", exc_info=e)
-                formatted_x.append(t)
-        x_title = "Relative Time (Seconds)"
+    if tab == "all":
+        # Default view: every variable overlaid on a single graph
+        keys_to_plot = list(ds["data_vars"].keys())
+        y_title = "Value"
     else:
-        formatted_x = []
-        for t in raw_x:
-            try:
-                formatted_x.append(
-                    datetime.fromtimestamp(t, UTC)
-                    .astimezone()
-                    .strftime("%Y-%m-%d %H:%M:%S")
-                )
-            except Exception as e:
-                logger.warning("Exception during time formatting:", exc_info=e)
-                formatted_x.append(t)
-        x_title = "Time (Local)"
+        label = unit_tab_label(tab)
+        keys_to_plot = group_by_unit(ds).get(label, [])
+        y_title = label or "Value"
 
-    # Only needed for unit-scoped tabs; skip the pass over all data_vars
-    # entirely when every selected tab is "All".
-    groups = group_by_unit(ds) if any(t != "all" for t in active_tabs) else {}
+    if not keys_to_plot:
+        return plotting.empty_figure("No data for this tab", theme)
 
-    # Shared across every selected tab's figure; only yaxis.title varies below.
-    base_layout = {
-        "autosize": True,
-        "uirevision": True,
-        **theme_plot_colors(theme),
-        "xaxis": {
-            "gridcolor": theme_gridcolor(theme),
-            "title": x_title,
-            "tickangle": -30,
-        },
+    traces = plotting.build_traces(ds, keys_to_plot, formatted_x)
+    layout = plotting.build_layout(
+        theme,
+        x_title=x_title,
+        y_title=y_title,
+        xaxis_extra={"tickangle": -30},
         # Legend sits above the plot rather than below: with rotated x-axis
         # tick labels, a bottom-anchored legend collides with the axis title
         # (Plotly positions the title right after the tick labels, so a
         # fixed y-fraction legend can land on the same line as the title).
-        "showlegend": True,
-        "legend": {
+        showlegend=True,
+        legend={
             "orientation": "h",
             "x": 0.5,
             "y": 1.18,
             "xanchor": "center",
             "yanchor": "bottom",
         },
-        "margin": {"t": 60 if len(active_tabs) <= 1 else 90, "b": 90, "l": 50, "r": 20},
-    }
-    # Shrink each graph when several are stacked so more fit on screen at once,
-    # and give stacked graphs extra breathing room so one graph's legend
-    # doesn't crowd against the next graph's title.
-    graph_height = "400px" if len(active_tabs) <= 1 else "280px"
-    graph_gap = "15px" if len(active_tabs) <= 1 else "40px"
-
-    graphs = []
-    for tab in active_tabs:
-        if tab == "all":
-            # Default view: every variable overlaid on a single graph
-            keys_to_plot = list(ds["data_vars"].keys())
-            y_title = "Value"
-        else:
-            label = unit_tab_label(tab)
-            keys_to_plot = groups.get(label, [])
-            if not keys_to_plot:
-                continue
-            y_title = label or "Value"
-
-        data = build_traces(ds, keys_to_plot, formatted_x)
-        layout = {
-            **base_layout,
-            "yaxis": {"gridcolor": theme_gridcolor(theme), "title": y_title},
-        }
-        graphs.append(
-            dcc.Graph(
-                id={"type": "component-data-graph", "index": tab},
-                figure={"data": data, "layout": layout},
-                style={"height": graph_height, "margin-bottom": graph_gap},
-                responsive=True,
-            )
-        )
-    return graphs
+        margin={"t": 60 if len(active_tabs) <= 1 else 90, "b": 90, "l": 50, "r": 20},
+    )
+    return plotting.patch_or_redraw(prev_figure, traces, layout)
 
 
 # Manages adding and removing custom graphs
@@ -992,6 +930,7 @@ def populate_dynamic_selectors(ds: dict) -> tuple[list[dict], list[dict]]:
     Input({"type": "custom-graph-options", "index": MATCH}, "value"),
     Input("component-data-store", "data"),
     Input("app-theme-store", "data"),
+    State({"type": "custom-graph", "index": MATCH}, "figure"),
 )
 def render_custom_graph(
     x_var: str,
@@ -999,56 +938,16 @@ def render_custom_graph(
     options_val: list[str],
     ds: dict | None,
     theme: dict,
-) -> dict:
+    prev_figure: dict | None,
+) -> dict | dash.Patch:
     y_vars = [y_var] if isinstance(y_var, str) else y_var
     if ds is None or not x_var or len(y_vars) == 0:
-        return {
-            "layout": {
-                "xaxis": {"visible": False},
-                "yaxis": {"visible": False},
-                "annotations": [
-                    {
-                        "text": "Select variables above to view custom plot",
-                        "xref": "paper",
-                        "yref": "paper",
-                        "showarrow": False,
-                        "font": {"size": 16, "color": "gray"},
-                    }
-                ],
-                "paper_bgcolor": "rgba(0,0,0,0)",
-                "plot_bgcolor": "rgba(0,0,0,0)",
-                "template": "plotly_dark" if theme == "dark" else "plotly",
-            }
-        }
+        return plotting.empty_figure(
+            "Select variables above to view custom plot", theme
+        )
 
     # X axis is always uts (the X-selector dropdown is locked to it)
-    raw_x: list = ds["coords"]["uts"]["data"]
-    x_data = []
-    for t in raw_x:
-        try:
-            x_data.append(
-                datetime.fromtimestamp(t, UTC)
-                .astimezone()
-                .strftime("%Y-%m-%d %H:%M:%S")
-            )
-        except Exception as e:
-            logger.warning("Exception during time formatting:", exc_info=e)
-            x_data.append(t)
-    x_title = "Time (Local)"
-
-    # Format timestamps for hover text
-    raw_uts = ds.get("coords", {}).get("uts", {}).get("data", [])
-    formatted_times = []
-    for t in raw_uts:
-        try:
-            formatted_times.append(
-                datetime.fromtimestamp(t, UTC)
-                .astimezone()
-                .strftime("%Y-%m-%d %H:%M:%S")
-            )
-        except Exception as e:
-            logger.warning("Exception during time formatting:", exc_info=e)
-            formatted_times.append(str(t))
+    x_data, x_title = plotting.format_timeseries_x(ds["coords"]["uts"]["data"])
 
     # Handle sorting and lines connection options
     connect_lines = "lines" in options_val
@@ -1064,25 +963,23 @@ def render_custom_graph(
         y_raw = ds["data_vars"][y_name]["data"]
         y_titles.append(y_name)
 
-        for name, y_vals in iter_series(y_name, y_raw):
-            min_len = min(len(x_data), len(y_vals), len(formatted_times))
+        for name, y_vals in plotting.iter_series(y_name, y_raw):
+            min_len = min(len(x_data), len(y_vals))
             sub_x = x_data[:min_len]
             sub_y_trimmed = y_vals[:min_len]
-            sub_hover = formatted_times[:min_len]
 
             if sort_x:
-                paired = list(zip(sub_x, sub_y_trimmed, sub_hover))
+                paired = list(zip(sub_x, sub_y_trimmed))
                 try:
                     paired.sort(key=lambda item: item[0])
                 except Exception as e:
                     logger.warning("Exception during sorting:", exc_info=e)
                 if paired:
-                    sub_x_t, sub_y_t, sub_hover_t = zip(*paired)
+                    sub_x_t, sub_y_t = zip(*paired)
                     sub_x = list(sub_x_t)
                     sub_y_trimmed = list(sub_y_t)
-                    sub_hover = list(sub_hover_t)
                 else:
-                    sub_x, sub_y_trimmed, sub_hover = [], [], []
+                    sub_x, sub_y_trimmed = [], []
 
             fig_data.append(
                 {
@@ -1091,9 +988,10 @@ def render_custom_graph(
                     "mode": mode,
                     "type": "scatter",
                     "marker": {"size": 8, "opacity": 0.8},
-                    "hovertext": sub_hover,
-                    "hovertemplate": "<b>Time: %{hovertext}</b><br>"
-                    + f"{x_title}: %{{x}}<br>{name}: %{{y}}<extra></extra>",
+                    # x is already the formatted local-time string, so the
+                    # bold hover line reuses %{x} directly instead of a
+                    # separately-tracked hovertext field.
+                    "hovertemplate": f"<b>{x_title}: %{{x}}</b><br>{name}: %{{y}}<extra></extra>",
                     "name": name,
                 }
             )
@@ -1105,23 +1003,11 @@ def render_custom_graph(
     else:
         y_title = "Value"
 
-    layout = {
-        "autosize": True,
-        "uirevision": f"{x_var}-{y_var}",
-        **theme_plot_colors(theme),
-        "xaxis": {"gridcolor": theme_gridcolor(theme), "title": x_title},
-        "yaxis": {"gridcolor": theme_gridcolor(theme), "title": y_title},
-        "legend": {
-            "orientation": "h",
-            "x": 0.5,
-            "y": -0.18,
-            "xanchor": "center",
-            "yanchor": "top",
-        },
-        "margin": {"t": 30, "b": 80, "l": 50, "r": 20},
-    }
+    layout = plotting.build_layout(
+        theme, x_title=x_title, y_title=y_title, uirevision=f"{x_var}-{y_var}"
+    )
 
-    return {"data": fig_data, "layout": layout}
+    return plotting.patch_or_redraw(prev_figure, fig_data, layout)
 
 
 # Auto-configures custom graph options dynamically based on selected axes

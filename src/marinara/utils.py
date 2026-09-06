@@ -97,21 +97,6 @@ def format_constraint(val: Any, base_unit: str) -> str:
         return f"{mag} {u_str}" if u_str else str(mag)
 
 
-def theme_plot_colors(theme: str) -> dict:
-    """Shared Plotly template/background/font settings driven by the light/dark theme."""
-    is_dark = theme == "dark"
-    return {
-        "template": "plotly_dark" if is_dark else "plotly",
-        "paper_bgcolor": "rgba(0,0,0,0)",
-        "plot_bgcolor": "rgba(0,0,0,0)",
-        "font": {"color": "#ffffff" if is_dark else "#212529"},
-    }
-
-
-def theme_gridcolor(theme: str) -> str:
-    return "rgba(255,255,255,0.08)" if theme == "dark" else "rgba(0,0,0,0.08)"
-
-
 def format_obj(obj, headers, attrs, otype, port) -> html.Div:
     if not obj:
         return html.Div(
