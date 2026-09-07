@@ -8,11 +8,11 @@ from tomato import passata
 
 from marinara import plotting
 from marinara.utils import (
+    TOUT,
     clean_value,
     format_constraint,
     get_field,
     get_unit_str,
-    kwargs,
     update_datastore,
 )
 
@@ -31,14 +31,14 @@ def layout(port: int, name: str, **_) -> list:
 
     # Safely fetch initial state of the component
     try:
-        status_ret = passata.status(**kwargs, port=port, name=name)
+        status_ret = passata.status(port=port, name=name, timeout=TOUT)
         running = status_ret.data["running"] if status_ret.success else False
     except Exception as e:
         logger.warning("Exception during passata.status:", exc_info=e)
         running = False
 
     try:
-        attrs_ret = passata.attrs(**kwargs, port=port, name=name)
+        attrs_ret = passata.attrs(port=port, name=name, timeout=TOUT)
         attrs_dict = attrs_ret.data if attrs_ret.success else {}
     except Exception as e:
         logger.warning("Exception during passata.attrs:", exc_info=e)
@@ -46,7 +46,7 @@ def layout(port: int, name: str, **_) -> list:
 
     try:
         avals_ret = passata.get_attrs(
-            **kwargs, port=port, name=name, attrs=list(attrs_dict.keys())
+            port=port, name=name, attrs=list(attrs_dict), timeout=TOUT
         )
         avals_dict = avals_ret.data if avals_ret.success else {}
     except Exception as e:
@@ -353,7 +353,7 @@ def periodic_attrs_update(
     units_dict: dict[str, Any],
 ) -> tuple[dict[str, Any], str, str]:
     try:
-        status_ret = passata.status(**kwargs, port=port, name=name)
+        status_ret = passata.status(port=port, name=name, timeout=TOUT)
         running = status_ret.data["running"] if status_ret.success else False
     except Exception as e:
         logger.warning("Exception during passata.status:", exc_info=e)
@@ -361,7 +361,7 @@ def periodic_attrs_update(
 
     try:
         avals_ret = passata.get_attrs(
-            **kwargs, port=port, name=name, attrs=list(current_vals.keys())
+            port=port, name=name, attrs=list(current_vals), timeout=TOUT
         )
         avals_dict = avals_ret.data if avals_ret.success else {}
     except Exception as e:
@@ -425,17 +425,17 @@ def set_component_attribute(
         return dash.no_update
     k = id["index"]
     try:
-        ret = passata.set_attr(**kwargs, port=port, name=name, attr=k, val=value)
+        ret = passata.set_attr(port=port, name=name, attr=k, val=value, timeout=TOUT)
         if ret.success:
             return clean_value(ret.data)
         # If set_attr returned success=False, fetch current value to revert
-        ret = passata.get_attrs(**kwargs, port=port, name=name, attrs=[k])
+        ret = passata.get_attrs(port=port, name=name, attrs=[k], timeout=TOUT)
         current = ret.data.get(k)
         return clean_value(current)
     except Exception as e:
         logger.warning("Exception during passata.get_attrs:", exc_info=e)
         try:
-            ret = passata.get_attrs(**kwargs, port=port, name=name, attrs=[k])
+            ret = passata.get_attrs(port=port, name=name, attrs=[k], timeout=TOUT)
             current = ret.data.get(k)
             return clean_value(current)
         except Exception as e:
