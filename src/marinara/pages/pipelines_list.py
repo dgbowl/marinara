@@ -61,9 +61,7 @@ def update_pipelines(n_clicks: int, port: int) -> html.Div:
                 style={"text-align": "center", "padding": "20px"},
             )
         pips = ret.data.devicefile.pipelines
-        cmps_ret = tomato.status(
-            stgrp="components", port=port, timeout=1000
-        )
+        cmps_ret = tomato.status(stgrp="components", port=port, timeout=1000)
         cmps = cmps_ret.data if cmps_ret.success else {}
         if not pips:
             return html.Div(
@@ -83,7 +81,10 @@ def update_pipelines(n_clicks: int, port: int) -> html.Div:
             for role, cname in pip.components.items():
                 cmp = cmps.get(cname)
                 if cmp:
-                    capabilities_str = ", ".join(str(x) for x in (cmp.get("capabilities") or [])) or "None"
+                    capabilities_str = (
+                        ", ".join(str(x) for x in (cmp.get("capabilities") or []))
+                        or "None"
+                    )
 
                     comp_title = dcc.Link(
                         cname,
