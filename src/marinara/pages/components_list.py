@@ -67,13 +67,13 @@ def update_components(n_clicks, port):
         role_lookup = {}
         for pipn in ret.data.devicefile.pipelines.values():
             for role, cname in pipn.components.items():
-                role_lookup[cname] = role
+                role_lookup.setdefault(cname, []).append(role)
         for cname, cval in cmps.items():
             static = static_cmps.get(cname)
             if static:
                 cval["address"] = static.address
                 cval["channel"] = static.channel
-            cval["role"] = role_lookup.get(cname, "")
+            cval["role"] = ", ".join(role_lookup.get(cname, []))
         return format_obj(
             obj=cmps,
             headers=[

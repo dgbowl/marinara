@@ -130,9 +130,7 @@ def create_content_div(port, name):
         {
             "data": {
                 "jobid": pip.get("jobid"),
-                "sampleid": str(pip.get("sampleid"))
-                if pip.get("sampleid") is not None
-                else "",
+                "sampleid": pip.get("sampleid", ""),
                 "ready": ["ready"] if pip.get("ready", False) else [],
             }
         },
@@ -181,9 +179,7 @@ def create_content_div(port, name):
             dcc.Input(
                 id="pipeline-input-sampleid",
                 type="text",
-                value=str(pip.get("sampleid"))
-                if pip.get("sampleid") is not None
-                else "",
+                value=pip.get("sampleid", ""),
                 debounce=True,
                 className="top-card-input",
                 style={"width": "100%", "height": "36px"},
@@ -706,9 +702,7 @@ def pipeline_periodic_update_params_store(_, data, port, name):
         pip = tomato.status(**kwargs, port=port, stgrp="pipelines").data[name]
         newdata = {
             "jobid": pip.get("jobid"),
-            "sampleid": str(pip.get("sampleid"))
-            if pip.get("sampleid") is not None
-            else "",
+            "sampleid": pip.get("sampleid", ""),
             "ready": ["ready"] if pip.get("ready", False) else [],
         }
     except Exception as e:
