@@ -457,7 +457,7 @@ def create_content_div(port: int, name: str) -> html.Div:
 
     # Create component stores
     stores = []
-    for cname in pip.components:
+    for cname in pip_components.values():
         stores.append(
             dcc.Store(id={"type": "component-data-store", "index": cname}, data=None)
         )
@@ -836,17 +836,12 @@ def update_component_stores(n_intervals: int, port: int, id: dict, data: dict | 
 
 
 @callback(
-    Output(
-        {"type": "component-data-val", "index": ALL},
-        "value",
-        allow_duplicate=True,
-    ),
+    Output({"type": "component-data-val", "index": ALL}, "value"),
     Input({"type": "component-data-store", "index": MATCH}, "data"),
     Input({"type": "component-data-store", "index": MATCH}, "id"),
     State({"type": "component-data-val", "index": ALL}, "value"),
     State({"type": "component-data-val", "index": ALL}, "id"),
     prevent_initial_call=True,
-    allow_duplicate=True,
 )
 def components_update_data_display(
     cdata: dict,

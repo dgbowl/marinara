@@ -254,6 +254,7 @@ def update_datastore(
     datastore: dict | None,
 ) -> dict | dash.NoUpdate | None:
     ret = passata.get_last_data(**kwargs, port=port, name=name)  # ty: ignore[invalid-argument-type]
+    logger.debug("ret=%s", str(ret))
     if not ret.success:
         return dash.no_update
     if datastore is None and ret.data is None:
@@ -275,4 +276,5 @@ def update_datastore(
     for k, v in ndata["data_vars"].items():
         datastore["data_vars"][k]["data"].append(v["data"][0])
     datastore["dims"]["uts"] = len(datastore["coords"]["uts"]["data"])
+    logger.debug("datastore=%s", str(datastore))
     return datastore
