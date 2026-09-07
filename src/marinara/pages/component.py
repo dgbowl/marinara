@@ -317,6 +317,7 @@ def layout(port: int, name: str, **_) -> list:
         dcc.Store(id="component-graph-units-store", data=None),
         dcc.Store(id="custom-graphs-list-store", data=[]),
         dcc.Store(id="custom-graphs-titles-store", data={}),
+        dcc.Store(id="custom-graphs-yvars-store", data={}),
         dcc.Interval(id="component-interval", interval=2000),
         header,
         # Row 1: Attributes & Controls (Left) and Data Graph (Right)
@@ -454,7 +455,7 @@ def set_component_attribute(
 def component_data_update(
     port: int, name: str, data: dict | None, _: int
 ) -> dict | dash.NoUpdate | None:
-    return update_datastore(port=port, name=name, datastore=data, cap=500)
+    return update_datastore(port=port, name=name, datastore=data)
 
 
 def group_by_unit(ds: dict) -> dict[str, list[str]]:
@@ -682,11 +683,13 @@ def manage_graphs(
     Output("custom-graphs-container", "children"),
     Input("custom-graphs-list-store", "data"),
     State("custom-graphs-titles-store", "data"),
+    State("custom-graphs-yvars-store", "data"),
     State("component-data-store", "data"),
 )
 def render_graphs_list(
     active_ids: list[int],
     titles_dict: dict[str, str],
+    yvars_dict: dict[str, list[str]],
     ds: dict | None,
 ) -> html.Div | list[html.Div]:
     if len(active_ids) == 0:
@@ -714,6 +717,7 @@ def render_graphs_list(
 
         # Stored title or dynamic fallback based on display position
         title_val = titles_dict.get(graph_id_str, f"Custom Graph #{i}")
+        yvar_val = yvars_dict.get(graph_id_str, [])
 
         card = html.Div(
             id={"type": "custom-graph-card", "index": i},
@@ -806,6 +810,7 @@ def render_graphs_list(
                                     options=[
                                         {"label": v, "value": v} for v in vars_list
                                     ],
+                                    value=yvar_val,
                                     multi=True,
                                     placeholder="Select variables",
                                     style={"width": "100%"},
@@ -898,6 +903,41 @@ def update_graph_titles(
             new_titles[graph_id] = val
 
     return new_titles
+
+
+# Persists custom Y-axis selections, and prunes any whose graph was removed.
+# Without this, render_graphs_list would rebuild every card's Y-selector with
+# no value= whenever a graph is added/removed, wiping out already-configured
+# graphs' selections back to empty.
+@callback(
+    Output("custom-graphs-yvars-store", "data"),
+    Input({"type": "custom-graph-y-selector", "index": ALL}, "value"),
+    Input("custom-graphs-list-store", "data"),
+    State("custom-graphs-yvars-store", "data"),
+    prevent_initial_call=True,
+)
+def update_graph_yvars(
+    yvar_values: list[list[str] | None],
+    active_ids: list[int],
+    current_yvars: dict[str, list[str]],
+) -> dict[str, list[str]]:
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return current_yvars
+
+    new_yvars = dict(current_yvars)
+
+    if "custom-graphs-list-store" in ctx.triggered[0]["prop_id"]:
+        active_id_strs = {str(i) for i in active_ids}
+        return {k: v for k, v in new_yvars.items() if k in active_id_strs}
+
+    inputs_list = ctx.inputs_list[0]
+    for inp, val in zip(inputs_list, yvar_values):
+        graph_id = str(inp["id"]["index"])
+        if val is not None:
+            new_yvars[graph_id] = val
+
+    return new_yvars
 
 
 # Updates options of dynamic selectors as data streams in

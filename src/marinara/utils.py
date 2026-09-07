@@ -234,7 +234,6 @@ def update_datastore(
     port: int,
     name: str,
     datastore: dict | None,
-    cap: int | None = None,
 ) -> dict | dash.NoUpdate | None:
     ret = passata.get_last_data(port=port, name=name, timeout=TOUT)
     logger.debug("ret=%s", str(ret))
@@ -259,11 +258,5 @@ def update_datastore(
     for k, v in ndata["data_vars"].items():
         datastore["data_vars"][k]["data"].append(v["data"][0])
     datastore["dims"]["uts"] = len(datastore["coords"]["uts"]["data"])
-    # Cap dataset size to prevent JSON serialization and memory bottlenecks.
-    if cap is not None and datastore["dims"]["uts"] > cap:
-        datastore["coords"]["uts"]["data"] = datastore["coords"]["uts"]["data"][-cap:]
-        for k in datastore["data_vars"]:
-            datastore["data_vars"][k]["data"] = datastore["data_vars"][k]["data"][-cap:]
-        datastore["dims"]["uts"] = cap
     logger.debug("datastore=%s", str(datastore))
     return datastore
