@@ -3,14 +3,11 @@ from typing import Any
 
 import dash
 import pint
-import zmq
 from dash import dcc, html
 from tomato import passata
 
 PORT = 1234
 TOUT = 1000
-CTXT = zmq.Context()
-kwargs = {"timeout": TOUT, "context": CTXT}
 logger = logging.getLogger(__name__)
 
 
@@ -253,7 +250,7 @@ def update_datastore(
     name: str,
     datastore: dict | None,
 ) -> dict | dash.NoUpdate | None:
-    ret = passata.get_last_data(**kwargs, port=port, name=name)  # ty: ignore[invalid-argument-type]
+    ret = passata.get_last_data(port=port, name=name, timeout=TOUT)
     logger.debug("ret=%s", str(ret))
     if not ret.success:
         return dash.no_update

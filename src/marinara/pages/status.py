@@ -9,10 +9,10 @@ from tomato import passata, tomato
 
 from marinara.icons import get_icon
 from marinara.utils import (
+    TOUT,
     clean_data,
     clean_value,
     get_field,
-    kwargs,
     theme_gridcolor,
     theme_plot_colors,
 )
@@ -214,7 +214,7 @@ def update_dashboard_stats(
     try:
         from tomato import ketchup
 
-        ret = tomato.status(stgrp="tomato", port=port, **kwargs)
+        ret = tomato.status(stgrp="tomato", port=port, timeout=TOUT)
         if not ret.success:
             return (
                 "0",
@@ -227,7 +227,7 @@ def update_dashboard_stats(
             )
 
         pips = ret.data.devicefile.pipelines
-        pipret = tomato.status(stgrp="pipelines", port=port, **kwargs)
+        pipret = tomato.status(stgrp="pipelines", port=port, timeout=TOUT)
         pips_count = len(pips)
         devs_count = len(ret.data.devicefile.devices)
         drvs_count = len(ret.data.devicefile.drivers)
@@ -389,7 +389,7 @@ def update_dashboard_live_view(
         )
 
     try:
-        ret = tomato.status(stgrp="tomato", port=port, **kwargs)
+        ret = tomato.status(stgrp="tomato", port=port, timeout=TOUT)
         if not ret.success or not ret.data:
             raise RuntimeError("Daemon offline")
         pips = ret.data.devicefile.pipelines
@@ -452,11 +452,11 @@ def update_dashboard_live_view(
     # We need the real component names (the values), not the role names (the keys). Used again further below.
     for cname in pip.components.values():
         try:
-            attrs_ret = passata.attrs(**kwargs, port=port, name=cname)
+            attrs_ret = passata.attrs(port=port, name=cname, timeout=TOUT)
             attrs_meta = attrs_ret.data if attrs_ret.success else {}
 
             vals_ret = passata.get_attrs(
-                **kwargs, port=port, name=cname, attrs=list(attrs_meta.keys())
+                port=port, name=cname, attrs=list(attrs_meta), timeout=TOUT
             )
             vals = vals_ret.data if vals_ret.success else {}
 
@@ -505,7 +505,7 @@ def update_dashboard_live_view(
 
     for cname in pip.components.values():
         try:
-            data_ret = passata.get_last_data(**kwargs, port=port, name=cname)
+            data_ret = passata.get_last_data(port=port, name=cname, timeout=TOUT)
             if data_ret.success and data_ret.data:
                 ds = data_ret.data.to_dict()
                 uts_list = ds["coords"]["uts"]["data"]
