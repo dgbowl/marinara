@@ -79,15 +79,11 @@ def update_pipelines(n_clicks, port):
             pip_sampleid = pstate.get("sampleid")
             comp_details = []
             # pip.components maps role name -> real component name (e.g. "counter" -> "example_counter:(addr,1)").
-            # We need the real component names (the values) to look components up below, not the role names (the keys).
+            # We need both: the component name (value) to look it up below, and the role (key) to display it.
             for role, cname in pip.components.items():
                 cmp = cmps.get(cname)
                 if cmp:
-                    capabilities_str = (
-                        ", ".join(str(x) for x in cmp.get("capabilities"))
-                        if cmp.get("capabilities")
-                        else "None"
-                    )
+                    capabilities_str = ", ".join(str(x) for x in (cmp.get("capabilities") or [])) or "None"
 
                     comp_title = dcc.Link(
                         cname,
@@ -266,6 +262,4 @@ def update_pipelines(n_clicks, port):
             f"Error loading pipelines: {e!s}",
             className="text-secondary",
             style={"padding": "20px"},
-            # pip_components maps role name -> real component name (e.g. "counter" -> "example_counter:(addr,1)").
-            # We need the real component names (the values) to look components up below, not the role names (the keys).
         )
