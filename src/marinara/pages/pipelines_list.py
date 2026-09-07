@@ -49,12 +49,10 @@ layout = html.Div(
 )
 def update_pipelines(n_clicks, port):
     try:
-        import zmq
         from tomato import tomato
 
-        CTXT = zmq.Context()
-        ret = tomato.status(stgrp="tomato", port=port, timeout=1000, context=CTXT)
-        pipret = tomato.status(stgrp="pipelines", port=port, timeout=1000, context=CTXT)
+        ret = tomato.status(stgrp="tomato", port=port, timeout=1000)
+        pipret = tomato.status(stgrp="pipelines", port=port, timeout=1000)
         if not ret.success:
             logger.warning("tomato.status returned failure: %s", ret.msg)
             return html.Div(
@@ -64,7 +62,7 @@ def update_pipelines(n_clicks, port):
             )
         pips = ret.data.devicefile.pipelines
         cmps_ret = tomato.status(
-            stgrp="components", port=port, timeout=1000, context=CTXT
+            stgrp="components", port=port, timeout=1000
         )
         cmps = cmps_ret.data if cmps_ret.success else {}
         if not pips:
