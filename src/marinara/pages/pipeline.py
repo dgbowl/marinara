@@ -111,13 +111,12 @@ def object_from_attrs(cname, attr, params, value) -> dcc.Dropdown | dcc.Input:
 )
 def create_content_div(port: int, name: str) -> html.Div:
     try:
-        pip_ret = tomato.status(**kwargs, port=port, stgrp="pipelines")
         cfg_ret = tomato.status(**kwargs, port=port, stgrp="tomato")
-        pip_components = (
-            cfg_ret.data.devicefile.pipelines[name].components
-            if cfg_ret.success and name in cfg_ret.data.devicefile.pipelines
-            else []
-        )
+        pip_ret = tomato.status(**kwargs, port=port, stgrp="pipelines")
+        if cfg_ret.success and name in cfg_ret.data.devicefile.pipelines:
+            pip_components = cfg_ret.data.devicefile.pipelines[name].components
+        else:
+            pip_components = []
         pip = pip_ret.data[name] if pip_ret.success else None
     except Exception as e:
         logger.warning("Exception during tomato.status:", exc_info=e)
