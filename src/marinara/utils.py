@@ -1,9 +1,11 @@
 import logging
 from typing import Any
 
+import dash
 import pint
 import zmq
 from dash import dcc, html
+from tomato import passata
 
 PORT = 1234
 TOUT = 1000
@@ -244,3 +246,33 @@ def format_obj(obj, headers, attrs, otype, port) -> html.Div:
 
     container_class = "card-grid" if otype == "components" else None
     return html.Div(cards, className=container_class)
+
+
+def update_datastore(
+    port: int,
+    name: str,
+    datastore: dict | None,
+) -> dict | dash.NoUpdate | None:
+    ret = passata.get_last_data(**kwargs, port=port, name=name)  # ty: ignore[invalid-argument-type]
+    if not ret.success:
+        return dash.no_update
+    if datastore is None and ret.data is None:
+        return dash.no_update
+    elif ret.data is None:
+        logger.warning("passata.get_last_data returned no data, erasing data store")
+        return None
+
+    ndata = ret.data.to_dict()
+    # Simply return data if first load.
+    if datastore is None:
+        return ndata
+    # Do not update if timestamp is already present.
+    uts = ndata["coords"]["uts"]["data"][0]
+    if uts in datastore["coords"]["uts"]["data"]:
+        return dash.no_update
+    # Go through data_vars and append last datapoint.
+    datastore["coords"]["uts"]["data"].append(uts)
+    for k, v in ndata["data_vars"].items():
+        datastore["data_vars"][k]["data"].append(v["data"][0])
+    datastore["dims"]["uts"] = len(datastore["coords"]["uts"]["data"])
+    return datastore
