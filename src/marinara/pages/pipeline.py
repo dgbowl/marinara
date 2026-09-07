@@ -6,11 +6,11 @@ from dash import ALL, MATCH, Input, Output, State, callback, dcc, html, set_prop
 from tomato import passata, tomato
 
 from marinara.utils import (
+    TOUT,
     clean_value,
     format_constraint,
     get_field,
     get_unit_str,
-    kwargs,
     update_datastore,
 )
 
@@ -111,8 +111,8 @@ def object_from_attrs(cname, attr, params, value) -> dcc.Dropdown | dcc.Input:
 )
 def create_content_div(port: int, name: str) -> html.Div:
     try:
-        cfg_ret = tomato.status(**kwargs, port=port, stgrp="tomato")
-        pip_ret = tomato.status(**kwargs, port=port, stgrp="pipelines")
+        cfg_ret = tomato.status(port=port, stgrp="tomato", timeout=TOUT)
+        pip_ret = tomato.status(port=port, stgrp="pipelines", timeout=TOUT)
         if cfg_ret.success and name in cfg_ret.data.devicefile.pipelines:
             pip_components = cfg_ret.data.devicefile.pipelines[name].components
         else:
@@ -246,7 +246,7 @@ def create_content_div(port: int, name: str) -> html.Div:
     # We need the real component names (the values) to look components up below, not the role names (the keys).
     for role, cname in pip_components.items():
         try:
-            cmp = tomato.status(**kwargs, port=port, stgrp="components").data[cname]
+            cmp = tomato.status(port=port, stgrp="components", timeout=TOUT).data[cname]
         except Exception as e:
             logger.warning("Exception during tomato.status:", exc_info=e)
             continue
@@ -269,7 +269,7 @@ def create_content_div(port: int, name: str) -> html.Div:
         )
 
         try:
-            status_ret = passata.status(**kwargs, port=port, name=cname)
+            status_ret = passata.status(port=port, name=cname, timeout=TOUT)
             status = status_ret.data if status_ret.success else {"running": False}
         except Exception as e:
             logger.warning("Exception during passata.status:", exc_info=e)
@@ -297,7 +297,7 @@ def create_content_div(port: int, name: str) -> html.Div:
         )
         running_store[cname] = status["running"]
         try:
-            attrs_ret = passata.attrs(**kwargs, port=port, name=cname)
+            attrs_ret = passata.attrs(port=port, name=cname, timeout=TOUT)
             attrs = attrs_ret.data if attrs_ret.success else {}
         except Exception as e:
             logger.warning("caught Exception during passata.attrs:", exc_info=e)
@@ -305,7 +305,7 @@ def create_content_div(port: int, name: str) -> html.Div:
 
         try:
             avals_ret = passata.get_attrs(
-                **kwargs, port=port, name=cname, attrs=list(attrs.keys())
+                port=port, name=cname, attrs=list(attrs), timeout=TOUT
             )
             avals = avals_ret.data if avals_ret.success else {}
         except Exception as e:
@@ -385,7 +385,7 @@ def create_content_div(port: int, name: str) -> html.Div:
         )
 
         try:
-            data_ret = passata.get_last_data(**kwargs, port=port, name=cname)
+            data_ret = passata.get_last_data(port=port, name=cname, timeout=TOUT)
             data = data_ret.data if data_ret.success else None
         except Exception as e:
             logger.warning("Exception during passata.get_last_data:", exc_info=e)
@@ -457,7 +457,7 @@ def create_content_div(port: int, name: str) -> html.Div:
 
     # Create component stores
     stores = []
-    for cname in pip.components:
+    for cname in pip_components.values():
         stores.append(
             dcc.Store(id={"type": "component-data-store", "index": cname}, data=None)
         )
@@ -515,20 +515,20 @@ def component_attr_interaction(
     if arw[cname][attr] and not disabled:
         try:
             ret = passata.set_attr(
-                **kwargs, port=port, name=cname, attr=attr, val=value
+                port=port, name=cname, attr=attr, val=value, timeout=TOUT
             )
             if ret.success:
                 return clean_value(ret.data)
-            current = passata.get_attrs(
-                **kwargs, port=port, name=cname, attrs=[attr]
-            ).data.get(attr)
+            ret = passata.get_attrs(port=port, name=cname, attrs=[attr], timeout=TOUT)
+            current = ret.data.get(attr)
             return clean_value(current)
         except Exception as e:
             logger.warning("Exception during passata.get_attrs:", exc_info=e)
             try:
-                current = passata.get_attrs(
-                    **kwargs, port=port, name=cname, attrs=[attr]
-                ).data.get(attr)
+                ret = passata.get_attrs(
+                    port=port, name=cname, attrs=[attr], timeout=TOUT
+                )
+                current = ret.data.get(attr)
                 return clean_value(current)
             except Exception as e:
                 logger.warning("Exception during passata.get_attrs:", exc_info=e)
@@ -555,7 +555,7 @@ def pipeline_param_interaction_ready(
 
     if len(values) > 0 and all(values):
         try:
-            ret = tomato.pipeline_ready(**kwargs, port=port, pipeline=name)
+            ret = tomato.pipeline_ready(port=port, pipeline=name, timeout=TOUT)
             if ret.success:
                 set_props("pipeline-ready-error", {"children": ""})
             else:
@@ -584,10 +584,10 @@ def pipeline_param_interaction_ready(
 def pipeline_param_interaction_sampleid(sampleid: str, port: int, name: str) -> None:
     try:
         if sampleid == "":
-            ret = tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
+            ret = tomato.pipeline_eject(port=port, pipeline=name, timeout=TOUT)
         else:
             ret = tomato.pipeline_load(
-                **kwargs, port=port, pipeline=name, sampleid=sampleid
+                port=port, pipeline=name, sampleid=sampleid, timeout=TOUT
             )
         if ret.success:
             set_props("pipeline-sampleid-error", {"children": ""})
@@ -630,7 +630,7 @@ def components_periodic_update_attrs_vals_store(
         newdata[cmp] = {}
         try:
             nvals_ret = passata.get_attrs(
-                **kwargs, port=port, name=cmp, attrs=list(avals[cmp].keys())
+                port=port, name=cmp, attrs=list(avals[cmp]), timeout=TOUT
             )
             nvals = nvals_ret.data if nvals_ret.success else {}
         except Exception as e:
@@ -668,7 +668,7 @@ def components_periodic_update_params_store(
     newparams = {}
     for cname in cmps:
         try:
-            ret = passata.status(**kwargs, port=port, name=cname).data
+            ret = passata.status(port=port, name=cname, timeout=TOUT).data
             newparams[cname] = ret["running"]
         except Exception as e:
             logger.warning("Exception during passata.status:", exc_info=e)
@@ -692,7 +692,7 @@ def pipeline_periodic_update_params_store(
     _: int, data: dict | None, port: int, name: str
 ) -> dict | dash.NoUpdate:
     try:
-        pip = tomato.status(**kwargs, port=port, stgrp="pipelines").data[name]
+        pip = tomato.status(port=port, stgrp="pipelines", timeout=TOUT).data[name]
         newdata = {
             "jobid": pip.get("jobid"),
             "sampleid": pip.get("sampleid", ""),
@@ -836,17 +836,12 @@ def update_component_stores(n_intervals: int, port: int, id: dict, data: dict | 
 
 
 @callback(
-    Output(
-        {"type": "component-data-val", "index": ALL},
-        "value",
-        allow_duplicate=True,
-    ),
+    Output({"type": "component-data-val", "index": ALL}, "value"),
     Input({"type": "component-data-store", "index": MATCH}, "data"),
     Input({"type": "component-data-store", "index": MATCH}, "id"),
     State({"type": "component-data-val", "index": ALL}, "value"),
     State({"type": "component-data-val", "index": ALL}, "id"),
     prevent_initial_call=True,
-    allow_duplicate=True,
 )
 def components_update_data_display(
     cdata: dict,
