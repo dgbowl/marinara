@@ -8,6 +8,7 @@ name = "marinara"
 authors = [
     {name = "Peter Kraus"},
     {name = "Şevval Nur Savci"},
+    {name = "Gül Akbulut"},
 ]
 maintainers = [
     {name = "Peter Kraus", email = "peter.kraus@tu-berlin.de"},
@@ -21,7 +22,7 @@ classifiers = [
 ]
 requires-python = ">= 3.11"
 dependencies = [
-    "tomato >= 2.1rc1, < 3.0rc1",
+    "tomato >= 3.0rc2",
     "dash >= 2.18",
     "dash_svg",
 ]

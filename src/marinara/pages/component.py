@@ -13,6 +13,7 @@ from marinara.utils import (
     get_field,
     get_unit_str,
     kwargs,
+    update_datastore,
 )
 
 logger = logging.getLogger(__name__)
@@ -451,17 +452,9 @@ def set_component_attribute(
     Input("component-interval", "n_intervals"),
 )
 def component_data_update(
-    port: int, name: str, data: dict | None, n_intervals: int
-) -> dict | None:
-    try:
-        ret = passata.get_last_data(**kwargs, port=port, name=name)
-        if not ret.success:
-            return data
-        # Cap dataset size to prevent JSON serialization and memory bottlenecks
-        return plotting.merge_and_cap(data, ret.data, cap=500)
-    except Exception as e:
-        logger.warning("Exception during component_data_update:", exc_info=e)
-        return data
+    port: int, name: str, data: dict | None, _: int
+) -> dict | dash.NoUpdate | None:
+    return update_datastore(port=port, name=name, datastore=data, cap=500)
 
 
 def group_by_unit(ds: dict) -> dict[str, list[str]]:
@@ -940,7 +933,7 @@ def render_custom_graph(
     theme: dict,
     prev_figure: dict | None,
 ) -> dict | dash.Patch:
-    y_vars = [y_var] if isinstance(y_var, str) else y_var
+    y_vars = [y_var] if isinstance(y_var, str) else y_var or []
     if ds is None or not x_var or len(y_vars) == 0:
         return plotting.empty_figure(
             "Select variables above to view custom plot", theme
@@ -1021,7 +1014,7 @@ def render_custom_graph(
 def auto_configure_graph_options(
     x_var: str, y_var: str | list[str], current_options: list[str]
 ) -> list[str]:
-    y_vars = [y_var] if isinstance(y_var, str) else y_var
+    y_vars = [y_var] if isinstance(y_var, str) else y_var or []
     if x_var == "uts" or "uts" in y_vars:
         return ["lines"]
     return []
