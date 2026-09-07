@@ -1,6 +1,8 @@
 import json
 import logging
+from collections.abc import Generator
 from datetime import UTC, datetime
+from typing import Any
 
 import dash
 import xarray as xr
@@ -28,7 +30,7 @@ def triggered_pattern_index(ctx):
     return json.loads(trigger_id)["index"]
 
 
-def layout(port: int, name: str, **_):
+def layout(port: int, name: str, **_) -> list:
     port = int(port)
 
     # Safely fetch initial state of the component
@@ -347,7 +349,13 @@ def layout(port: int, name: str, **_):
     State("component-attrs-units-store", "data"),
     prevent_initial_call=True,
 )
-def periodic_attrs_update(_, port, name, current_vals, units_dict):
+def periodic_attrs_update(
+    _: int,
+    port: int,
+    name: str,
+    current_vals: dict[str, Any],
+    units_dict: dict[str, Any],
+) -> tuple[dict[str, Any], str, str]:
     try:
         status_ret = passata.status(**kwargs, port=port, name=name)
         running = status_ret.data["running"] if status_ret.success else False
@@ -398,7 +406,7 @@ def periodic_attrs_update(_, port, name, current_vals, units_dict):
     State({"type": "component-attr-readonly", "index": MATCH}, "id"),
     prevent_initial_call=True,
 )
-def update_readonly_attr(vals, id):
+def update_readonly_attr(vals: dict[str, Any], id: dict[str, str]) -> str:
     k = id["index"]
     val = vals.get(k)
     return str(val) if val is not None else "N/A"
@@ -414,7 +422,9 @@ def update_readonly_attr(vals, id):
     State("component-name-store", "data"),
     prevent_initial_call=True,
 )
-def set_component_attribute(n_clicks, value, id, port, name):
+def set_component_attribute(
+    n_clicks: int, value: str, id: dict[str, str], port: int, name: str
+) -> Any | dash.NoUpdate:
     if n_clicks is None:
         return dash.no_update
     k = id["index"]
@@ -445,7 +455,9 @@ def set_component_attribute(n_clicks, value, id, port, name):
     State("component-data-store", "data"),
     Input("component-interval", "n_intervals"),
 )
-def component_data_update(port, name, data, n_intervals):
+def component_data_update(
+    port: int, name: str, data: dict | None, n_intervals: int
+) -> dict | None:
     try:
         ret = passata.get_last_data(**kwargs, port=port, name=name)
         if not ret.success:
@@ -468,29 +480,29 @@ def component_data_update(port, name, data, n_intervals):
         return data
 
 
-def group_by_unit(ds):
+def group_by_unit(ds: dict) -> dict[str, list[str]]:
     """Groups data_var keys by their pint-normalized unit label ("" bucket for
     unitless vars), so equivalent units (e.g. "s" and "sec") share one tab."""
     groups = {}
     for key in ds["data_vars"]:
-        raw_unit = ds["data_vars"][key].get("attrs", {}).get("units", "")
+        raw_unit: str = ds["data_vars"][key].get("attrs", {}).get("units", "")
         label = get_unit_str(raw_unit)
         groups.setdefault(label, []).append(key)
     return groups
 
 
-def unit_tab_id(label):
+def unit_tab_id(label: str) -> str:
     """Encodes a unit label as a graph-tab token, namespaced so it can never
     collide with the "all" sentinel."""
     return f"unit:{label}"
 
 
-def unit_tab_label(tab):
+def unit_tab_label(tab: str) -> str:
     """Decodes a unit-tab token (as produced by unit_tab_id) back to its label."""
     return tab.removeprefix("unit:")
 
 
-def iter_series(key, y_raw):
+def iter_series(key: str, y_raw: list) -> Generator[tuple[str, list]]:
     """Yields (name, y_values) pairs for a data_var, exploding multidimensional
     variables into one named sub-series per index (key[0], key[1], ...)."""
     if not (len(y_raw) > 0 and isinstance(y_raw[0], (list, tuple))):
@@ -506,12 +518,12 @@ def iter_series(key, y_raw):
         yield f"{key}[{i}]", sub_y
 
 
-def build_traces(ds, keys, formatted_x):
+def build_traces(ds: dict, keys: list[str], formatted_x: str) -> list[dict]:
     """Builds Plotly scatter traces for the given data_var keys, exploding
     multidimensional variables into one named sub-trace per index."""
     data = []
     for key in keys:
-        y_raw = ds["data_vars"][key]["data"]
+        y_raw: list = ds["data_vars"][key]["data"]
         for name, y_vals in iter_series(key, y_raw):
             data.append(
                 {
@@ -534,7 +546,9 @@ def build_traces(ds, keys, formatted_x):
     Input("component-data-store", "data"),
     State("component-graph-units-store", "data"),
 )
-def update_available_units(ds, current_labels):
+def update_available_units(
+    ds: dict | None, current_labels: list[str] | None
+) -> list[str] | None | dash.NoUpdate:
     if ds is None:
         return dash.no_update if current_labels is None else None
     # Deterministic order: units alphabetically, unitless variables last
@@ -556,7 +570,7 @@ def update_available_units(ds, current_labels):
     Output("component-graph-tab-checklist", "options"),
     Input("component-graph-units-store", "data"),
 )
-def render_graph_tabs(group_labels):
+def render_graph_tabs(group_labels: list[str] | None) -> list[dict[str, str]]:
     if group_labels is None:
         return []
     ret = [{"label": "All", "value": "all"}]
@@ -577,7 +591,9 @@ def render_graph_tabs(group_labels):
     State("component-graph-tab-store", "data"),
     prevent_initial_call=True,
 )
-def update_active_graph_tab(checked, group_labels, previous_tabs):
+def update_active_graph_tab(
+    checked: list[str], group_labels: list[str] | None, previous_tabs: list[str]
+) -> tuple[list[str] | dash.NoUpdate, list[str] | dash.NoUpdate]:
     if "all" in checked and "all" not in previous_tabs:
         active_tabs = ["all"]
     elif "all" in checked and len(checked) > 1:
@@ -603,14 +619,16 @@ def update_active_graph_tab(checked, group_labels, previous_tabs):
     Input("checkbox-align-time", "value"),
     Input("component-graph-tab-store", "data"),
 )
-def render_component_data_graphs(ds, theme, align_time, active_tabs):
+def render_component_data_graphs(
+    ds: dict | None, theme: dict, align_time: list[str], active_tabs: list[str]
+) -> list[dcc.Graph]:
     if ds is None:
         return []
 
     active_tabs = active_tabs or ["all"]
 
     # Formatting Unix timestamp (uts) to local timezone or relative time
-    raw_x = ds["coords"]["uts"]["data"]
+    raw_x: list = ds["coords"]["uts"]["data"]
 
     if align_time and "relative" in align_time:
         start_t = raw_x[0] if len(raw_x) > 0 else 0
@@ -707,7 +725,9 @@ def render_component_data_graphs(ds, theme, align_time, active_tabs):
     State("custom-graphs-list-store", "data"),
     prevent_initial_call=True,
 )
-def manage_graphs(add_clicks, remove_clicks, active_ids):
+def manage_graphs(
+    add_clicks: int, remove_clicks: int, active_ids: list[int]
+) -> list[int]:
     ctx = dash.callback_context
     if not ctx.triggered:
         return active_ids
@@ -733,7 +753,11 @@ def manage_graphs(add_clicks, remove_clicks, active_ids):
     State("custom-graphs-titles-store", "data"),
     State("component-data-store", "data"),
 )
-def render_graphs_list(active_ids, titles_dict, ds):
+def render_graphs_list(
+    active_ids: list[int],
+    titles_dict: dict[str, str],
+    ds: dict | None,
+) -> html.Div | list[html.Div]:
     if len(active_ids) == 0:
         return html.Div(
             "No custom graphs added. Click '+ Add Graph' above to create one.",
@@ -921,7 +945,11 @@ def render_graphs_list(active_ids, titles_dict, ds):
     State("custom-graphs-titles-store", "data"),
     prevent_initial_call=True,
 )
-def update_graph_titles(title_values, active_ids, current_titles):
+def update_graph_titles(
+    title_values: list[str],
+    active_ids: list[int],
+    current_titles: dict[str, str],
+) -> dict[str, str]:
     ctx = dash.callback_context
     if not ctx.triggered:
         return current_titles
@@ -947,7 +975,7 @@ def update_graph_titles(title_values, active_ids, current_titles):
     Output({"type": "custom-graph-y-selector", "index": MATCH}, "options"),
     Input("component-data-store", "data"),
 )
-def populate_dynamic_selectors(ds):
+def populate_dynamic_selectors(ds: dict) -> tuple[list[dict], list[dict]]:
     if ds is None:
         return [], []
     vars_list = sorted(ds.get("data_vars", {}).keys())
@@ -965,8 +993,15 @@ def populate_dynamic_selectors(ds):
     Input("component-data-store", "data"),
     Input("app-theme-store", "data"),
 )
-def render_custom_graph(x_var, y_var, options_val, ds, theme):
-    if ds is None or not x_var or not y_var:
+def render_custom_graph(
+    x_var: str,
+    y_var: str | list[str],
+    options_val: list[str],
+    ds: dict | None,
+    theme: dict,
+) -> dict:
+    y_vars = [y_var] if isinstance(y_var, str) else y_var
+    if ds is None or not x_var or len(y_vars) == 0:
         return {
             "layout": {
                 "xaxis": {"visible": False},
@@ -987,7 +1022,7 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
         }
 
     # X axis is always uts (the X-selector dropdown is locked to it)
-    raw_x = ds["coords"]["uts"]["data"]
+    raw_x: list = ds["coords"]["uts"]["data"]
     x_data = []
     for t in raw_x:
         try:
@@ -1000,32 +1035,6 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
             logger.warning("Exception during time formatting:", exc_info=e)
             x_data.append(t)
     x_title = "Time (Local)"
-
-    # Process selected Y variables
-    if isinstance(y_var, str):
-        y_vars = [y_var]
-    else:
-        y_vars = y_var
-
-    if not y_vars:
-        return {
-            "layout": {
-                "xaxis": {"visible": False},
-                "yaxis": {"visible": False},
-                "annotations": [
-                    {
-                        "text": "Select variables above to view custom plot",
-                        "xref": "paper",
-                        "yref": "paper",
-                        "showarrow": False,
-                        "font": {"size": 16, "color": "gray"},
-                    }
-                ],
-                "paper_bgcolor": "rgba(0,0,0,0)",
-                "plot_bgcolor": "rgba(0,0,0,0)",
-                "template": "plotly_dark" if theme == "dark" else "plotly",
-            }
-        }
 
     # Format timestamps for hover text
     raw_uts = ds.get("coords", {}).get("uts", {}).get("data", [])
@@ -1042,7 +1051,6 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
             formatted_times.append(str(t))
 
     # Handle sorting and lines connection options
-    options_val = options_val or []
     connect_lines = "lines" in options_val
     sort_x = "sort" in options_val
     mode = "lines+markers" if connect_lines else "markers"
@@ -1124,7 +1132,10 @@ def render_custom_graph(x_var, y_var, options_val, ds, theme):
     State({"type": "custom-graph-options", "index": MATCH}, "value"),
     prevent_initial_call=True,
 )
-def auto_configure_graph_options(x_var, y_var, current_options):
-    if x_var == "uts" or (isinstance(y_var, list) and "uts" in y_var) or y_var == "uts":
+def auto_configure_graph_options(
+    x_var: str, y_var: str | list[str], current_options: list[str]
+) -> list[str]:
+    y_vars = [y_var] if isinstance(y_var, str) else y_var
+    if x_var == "uts" or "uts" in y_vars:
         return ["lines"]
     return []

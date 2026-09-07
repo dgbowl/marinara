@@ -10,7 +10,7 @@ def get_icon(
     fill="none",
     stroke="currentColor",
     stroke_width=2,
-):
+) -> Svg:
     default_style = {
         "width": f"{size}px",
         "height": f"{size}px",
