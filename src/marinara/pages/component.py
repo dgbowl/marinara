@@ -10,7 +10,6 @@ from tomato import passata
 
 from marinara.utils import (
     TOUT,
-    clean_value,
     format_constraint,
     get_field,
     get_unit_str,
@@ -64,7 +63,7 @@ def layout(port: int, name: str, **_) -> list:
     for k, v in attrs_dict.items():
         val = avals_dict.get(k)
         unit = get_field(v, "units")
-        init_attrs_vals[k] = clean_value(val)
+        init_attrs_vals[k] = val
         init_attrs_units[k] = unit
         init_attrs_rw[k] = get_field(v, "rw", False)
 
@@ -374,7 +373,7 @@ def periodic_attrs_update(
     new_vals = {}
     for k in current_vals:
         val = avals_dict.get(k)
-        new_vals[k] = clean_value(val)
+        new_vals[k] = val
 
     if isinstance(running, bool):
         running_bool = running
@@ -430,17 +429,17 @@ def set_component_attribute(
     try:
         ret = passata.set_attr(port=port, name=name, attr=k, val=value, timeout=TOUT)
         if ret.success:
-            return clean_value(ret.data)
+            return ret.data
         # If set_attr returned success=False, fetch current value to revert
         ret = passata.get_attrs(port=port, name=name, attrs=[k], timeout=TOUT)
         current = ret.data.get(k)
-        return clean_value(current)
+        return current
     except Exception as e:
         logger.warning("Exception during passata.get_attrs:", exc_info=e)
         try:
             ret = passata.get_attrs(port=port, name=name, attrs=[k], timeout=TOUT)
             current = ret.data.get(k)
-            return clean_value(current)
+            return current
         except Exception as e:
             logger.warning("Exception during passata.get_attrs:", exc_info=e)
             return dash.no_update

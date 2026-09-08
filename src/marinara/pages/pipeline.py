@@ -7,7 +7,6 @@ from tomato import passata, tomato
 
 from marinara.utils import (
     TOUT,
-    clean_value,
     format_constraint,
     get_field,
     get_unit_str,
@@ -312,7 +311,7 @@ def create_content_div(port: int, name: str) -> html.Div:
             logger.warning("Exception during passata.geT_attrs:", exc_info=e)
             avals = {}
 
-        attrs_vals_store[cname] = {k: clean_value(v) for k, v in avals.items()}
+        attrs_vals_store[cname] = dict(avals.items())
         attrs_units_store[cname] = {k: get_field(attrs[k], "units") for k in attrs}
         attrs_rw_store[cname] = {k: get_field(attrs[k], "rw", False) for k in attrs}
 
@@ -328,7 +327,7 @@ def create_content_div(port: int, name: str) -> html.Div:
         ]
         for attr, params in attrs.items():
             is_rw = get_field(params, "rw", False)
-            value = clean_value(avals.get(attr))
+            value = avals.get(attr)
             units = get_unit_str(get_field(params, "units"))
 
             min_val = get_field(params, "minimum")
@@ -518,10 +517,10 @@ def component_attr_interaction(
                 port=port, name=cname, attr=attr, val=value, timeout=TOUT
             )
             if ret.success:
-                return clean_value(ret.data)
+                return ret.data
             ret = passata.get_attrs(port=port, name=cname, attrs=[attr], timeout=TOUT)
             current = ret.data.get(attr)
-            return clean_value(current)
+            return current
         except Exception as e:
             logger.warning("Exception during passata.get_attrs:", exc_info=e)
             try:
@@ -529,7 +528,7 @@ def component_attr_interaction(
                     port=port, name=cname, attrs=[attr], timeout=TOUT
                 )
                 current = ret.data.get(attr)
-                return clean_value(current)
+                return current
             except Exception as e:
                 logger.warning("Exception during passata.get_attrs:", exc_info=e)
                 return dash.no_update
@@ -644,7 +643,7 @@ def components_periodic_update_attrs_vals_store(
                     val = val.to(aunits[cmp][key])
                 except Exception as e:
                     logger.warning("Exception during unit conversion:", exc_info=e)
-            newdata[cmp][key] = clean_value(val)
+            newdata[cmp][key] = val
 
     if newdata == avals:
         return dash.no_update

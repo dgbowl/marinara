@@ -11,7 +11,6 @@ from marinara.icons import get_icon
 from marinara.utils import (
     TOUT,
     clean_data,
-    clean_value,
     get_field,
     theme_gridcolor,
     theme_plot_colors,
@@ -485,7 +484,7 @@ def update_dashboard_live_view(
                             children=[
                                 html.Span(f"{k}:", className="param-item-name"),
                                 html.Span(
-                                    f"{clean_value(v)}{unit_str}",
+                                    f"{v}{unit_str}",
                                     className="param-item-val",
                                 ),
                             ],
@@ -511,7 +510,7 @@ def update_dashboard_live_view(
                 uts_list = ds["coords"]["uts"]["data"]
 
                 for idx, t in enumerate(uts_list):
-                    cleaned_t = clean_value(t)
+                    cleaned_t = t
 
                     for var_name, var_info in ds["data_vars"].items():
                         raw_val = var_info["data"][idx]
@@ -529,7 +528,7 @@ def update_dashboard_live_view(
                                 trace = historical_data["traces"][trace_key]
                                 if cleaned_t not in trace["x"]:
                                     trace["x"].append(cleaned_t)
-                                    trace["y"].append(clean_value(sub_val))
+                                    trace["y"].append(sub_val)
                                     if len(trace["x"]) > 50:
                                         trace["x"].pop(0)
                                         trace["y"].pop(0)
@@ -544,7 +543,7 @@ def update_dashboard_live_view(
                             trace = historical_data["traces"][trace_key]
                             if cleaned_t not in trace["x"]:
                                 trace["x"].append(cleaned_t)
-                                trace["y"].append(clean_value(raw_val))
+                                trace["y"].append(raw_val)
                                 if len(trace["x"]) > 50:
                                     trace["x"].pop(0)
                                     trace["y"].pop(0)
