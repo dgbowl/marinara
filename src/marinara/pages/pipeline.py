@@ -311,7 +311,7 @@ def create_content_div(port: int, name: str) -> html.Div:
             logger.warning("Exception during passata.geT_attrs:", exc_info=e)
             avals = {}
 
-        attrs_vals_store[cname] = dict(avals.items())
+        attrs_vals_store[cname] = avals
         attrs_units_store[cname] = {k: get_field(attrs[k], "units") for k in attrs}
         attrs_rw_store[cname] = {k: get_field(attrs[k], "rw", False) for k in attrs}
 
