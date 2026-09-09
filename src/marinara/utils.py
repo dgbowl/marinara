@@ -22,28 +22,9 @@ def get_field(obj: Any, key: str, default: Any = None) -> Any:
     return default
 
 
-def clean_value(val: Any) -> Any:
-    """
-    Coerces Pint Quantity objects and numpy types to standard serializable types.
-
-    Sequential if/elif is avoided here because the conversions can be chained:
-    1. If the value is a Pint Quantity, we extract its magnitude using .magnitude or .m.
-    2. After this extraction, the resulting value might be a numpy type (like a numpy scalar).
-       We then check if it has the .item() method to convert it to a standard Python scalar
-       for proper JSON serialization in Dash's dcc.Store.
-    """
-    if hasattr(val, "magnitude"):
-        val = val.magnitude
-    elif hasattr(val, "m"):
-        val = val.m
-
-    if hasattr(val, "item") and callable(val.item):
-        val = val.item()
-    return val
-
-
 def clean_data(d: Any) -> Any:
-    """Recursively cleans values in dictionaries, lists, and tuples."""
+    """Recursively walks dicts, lists, and tuples (no-op at the leaves now that
+    clean_value has been removed - kept only to see what breaks without it)."""
     if isinstance(d, dict):
         return {k: clean_data(v) for k, v in d.items()}
     elif isinstance(d, list):
@@ -51,7 +32,7 @@ def clean_data(d: Any) -> Any:
     elif isinstance(d, tuple):
         return tuple(clean_data(v) for v in d)
     else:
-        return clean_value(d)
+        return d
 
 
 def get_unit_str(units: str | Any | None) -> str:
@@ -87,11 +68,11 @@ def format_constraint(val: Any, base_unit: str) -> str:
                 val = val.to(base_unit)
             except pint.errors.DimensionalityError:
                 logger.error("could not convert val '%s' to unit '%s'", val, base_unit)
-        mag = clean_value(val)
+        mag = val
         u_str = get_unit_str(val.units)
         return f"{mag} {u_str}" if u_str else str(mag)
     else:
-        mag = clean_value(val)
+        mag = val
         u_str = get_unit_str(base_unit)
         return f"{mag} {u_str}" if u_str else str(mag)
 

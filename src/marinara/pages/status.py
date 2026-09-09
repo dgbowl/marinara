@@ -8,7 +8,7 @@ from tomato import passata, tomato
 
 from marinara import plotting
 from marinara.icons import get_icon
-from marinara.utils import TOUT, clean_value, get_field
+from marinara.utils import TOUT, get_field
 
 logger = logging.getLogger(__name__)
 
@@ -430,7 +430,7 @@ def update_dashboard_live_view(
                             children=[
                                 html.Span(f"{k}:", className="param-item-name"),
                                 html.Span(
-                                    f"{clean_value(v)}{unit_str}",
+                                    f"{v}{unit_str}",
                                     className="param-item-val",
                                 ),
                             ],
