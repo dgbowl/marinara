@@ -77,21 +77,6 @@ def format_constraint(val: Any, base_unit: str) -> str:
         return f"{mag} {u_str}" if u_str else str(mag)
 
 
-def theme_plot_colors(theme: str) -> dict:
-    """Shared Plotly template/background/font settings driven by the light/dark theme."""
-    is_dark = theme == "dark"
-    return {
-        "template": "plotly_dark" if is_dark else "plotly",
-        "paper_bgcolor": "rgba(0,0,0,0)",
-        "plot_bgcolor": "rgba(0,0,0,0)",
-        "font": {"color": "#ffffff" if is_dark else "#212529"},
-    }
-
-
-def theme_gridcolor(theme: str) -> str:
-    return "rgba(255,255,255,0.08)" if theme == "dark" else "rgba(0,0,0,0.08)"
-
-
 def format_obj(obj, headers, attrs, otype, port) -> html.Div:
     if not obj:
         return html.Div(
@@ -230,6 +215,7 @@ def update_datastore(
     port: int,
     name: str,
     datastore: dict | None,
+    cap: int | None = None,
 ) -> dict | dash.NoUpdate | None:
     ret = passata.get_last_data(port=port, name=name, timeout=TOUT)
     logger.debug("ret=%s", str(ret))
@@ -254,5 +240,13 @@ def update_datastore(
     for k, v in ndata["data_vars"].items():
         datastore["data_vars"][k]["data"].append(v["data"][0])
     datastore["dims"]["uts"] = len(datastore["coords"]["uts"]["data"])
+    if cap is not None and datastore["dims"]["uts"] > cap:
+        overflow = datastore["dims"]["uts"] - cap
+        datastore["coords"]["uts"]["data"] = datastore["coords"]["uts"]["data"][
+            overflow:
+        ]
+        for v in datastore["data_vars"].values():
+            v["data"] = v["data"][overflow:]
+        datastore["dims"]["uts"] = cap
     logger.debug("datastore=%s", str(datastore))
     return datastore
