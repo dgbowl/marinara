@@ -242,7 +242,9 @@ def update_datastore(
     datastore["dims"]["uts"] = len(datastore["coords"]["uts"]["data"])
     if cap is not None and datastore["dims"]["uts"] > cap:
         overflow = datastore["dims"]["uts"] - cap
-        datastore["coords"]["uts"]["data"] = datastore["coords"]["uts"]["data"][overflow:]
+        datastore["coords"]["uts"]["data"] = datastore["coords"]["uts"]["data"][
+            overflow:
+        ]
         for v in datastore["data_vars"].values():
             v["data"] = v["data"][overflow:]
         datastore["dims"]["uts"] = cap

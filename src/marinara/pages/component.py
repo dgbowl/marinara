@@ -583,7 +583,9 @@ def render_component_data_graph_shells(
 
 # Layout only - traces are patched separately below to preserve zoom/pan
 @callback(
-    Output({"type": "component-data-graph", "index": MATCH}, "figure", allow_duplicate=True),
+    Output(
+        {"type": "component-data-graph", "index": MATCH}, "figure", allow_duplicate=True
+    ),
     Input("app-theme-store", "data"),
     Input("checkbox-align-time", "value"),
     Input("component-graph-tab-store", "data"),
@@ -643,7 +645,9 @@ def render_component_data_graph_layout(
 
 # Traces only - layout handled above
 @callback(
-    Output({"type": "component-data-graph", "index": MATCH}, "figure", allow_duplicate=True),
+    Output(
+        {"type": "component-data-graph", "index": MATCH}, "figure", allow_duplicate=True
+    ),
     Input("component-data-store", "data"),
     State("checkbox-align-time", "value"),
     State({"type": "component-data-graph", "index": MATCH}, "id"),
@@ -747,9 +751,7 @@ def render_graphs_list(
         card = html.Div(
             id={"type": "custom-graph-card", "index": i},
             children=[
-                dcc.Store(
-                    id={"type": "component-custom-graph", "index": i}, data=meta
-                ),
+                dcc.Store(id={"type": "component-custom-graph", "index": i}, data=meta),
                 html.Div(
                     children=[
                         dcc.Input(
