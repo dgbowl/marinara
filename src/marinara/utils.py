@@ -22,6 +22,20 @@ def get_field(obj: Any, key: str, default: Any = None) -> Any:
     return default
 
 
+def is_component_running(status_data: Any) -> bool:
+    """
+    Returns whether a component is actively running, supporting both the
+    driverinterface_2_1 dict-based status (with a plain "running" key) and the
+    driverinterface_3_0 Status object (with "state" and "connected" fields).
+    """
+    if isinstance(status_data, dict):
+        return bool(status_data.get("running", False))
+    state = getattr(status_data, "state", None)
+    if state is not None:
+        return state in ("meas", "task")
+    return bool(getattr(status_data, "connected", False))
+
+
 def clean_data(d: Any) -> Any:
     """Recursively walks dicts, lists, and tuples (no-op at the leaves now that
     clean_value has been removed - kept only to see what breaks without it)."""
