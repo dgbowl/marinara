@@ -2,33 +2,9 @@ import logging
 from collections.abc import Generator
 from datetime import UTC, datetime
 
-import xarray as xr
 from dash import Patch
 
-from marinara.utils import clean_data
-
 logger = logging.getLogger(__name__)
-
-
-def merge_and_cap(
-    existing_ds_dict: dict | None, new_ds: xr.Dataset, cap: int, dim: str = "uts"
-) -> dict:
-    """Merges a newly-polled xarray Dataset into the existing store dict (or
-    starts fresh if None), then trims to the last `cap` rows along `dim`.
-    Returns already-cleaned (JSON-safe) data - callers don't need to run
-    clean_data on the result again."""
-    if existing_ds_dict is None:
-        merged = new_ds
-    else:
-        odata = xr.Dataset.from_dict(existing_ds_dict)
-        # Pin explicitly: xarray's defaults for these are changing in a
-        # future release (join outer->exact, compat no_conflicts->override),
-        # and this merge relies on the current outer/no_conflicts behavior
-        # to combine datasets whose `dim` coordinate keeps growing.
-        merged = xr.merge([odata, new_ds], join="outer", compat="no_conflicts")
-    if merged.sizes[dim] > cap:
-        merged = merged.isel({dim: slice(-cap, None)})
-    return clean_data(merged.to_dict())
 
 
 def format_timeseries_x(
@@ -179,24 +155,24 @@ def build_layout(
     return layout
 
 
-def patch_or_redraw(
-    prev_figure: dict | None, traces: list[dict], layout: dict
-) -> dict | Patch:
-    """Patches existing traces' fields (and the layout) in place when possible,
-    instead of resetting the user's zoom/pan on every live-data poll; returns
-    a full new figure only when necessary. Two cases can be patched: the
+def patch_traces(prev_figure: dict | None, traces: list[dict]) -> Patch:
+    """Patches existing traces' fields in place when possible, instead of
+    resetting the user's zoom/pan on every live-data poll; returns a full
+    replacement trace list only when necessary. Two cases can be patched: the
     trace set is unchanged, or new traces were simply appended (e.g. a new
     variable or component started reporting) while the existing ones kept
     their order and identity - anything else (a trace removed, reordered, or
-    renamed) redraws."""
+    renamed) redraws. Only ever touches the figure's `data` key - `layout` is
+    a separate concern, updated by its own callback on selector changes."""
     prev_data = (prev_figure or {}).get("data") or []
     prev_names = [trace.get("name") for trace in prev_data]
     new_names = [trace.get("name") for trace in traces]
 
-    if not prev_names or new_names[: len(prev_names)] != prev_names:
-        return {"data": traces, "layout": layout}
-
     patch = Patch()
+    if not prev_names or new_names[: len(prev_names)] != prev_names:
+        patch["data"] = traces
+        return patch
+
     for i, trace in enumerate(traces[: len(prev_names)]):
         # Patch every field, not just x/y - a same-named trace can still
         # change mode/hovertemplate/etc. between polls (e.g. the custom
@@ -205,5 +181,4 @@ def patch_or_redraw(
             patch["data"][i][key] = value
     for trace in traces[len(prev_names) :]:
         patch["data"].append(trace)
-    patch["layout"] = layout
     return patch

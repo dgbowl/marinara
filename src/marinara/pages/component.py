@@ -315,8 +315,6 @@ def layout(port: int, name: str, **_) -> list:
         dcc.Store(id="component-graph-tab-store", data=["all"]),
         dcc.Store(id="component-graph-units-store", data=None),
         dcc.Store(id="custom-graphs-list-store", data=[]),
-        dcc.Store(id="custom-graphs-titles-store", data={}),
-        dcc.Store(id="custom-graphs-yvars-store", data={}),
         dcc.Interval(id="component-interval", interval=2000),
         header,
         # Row 1: Attributes & Controls (Left) and Data Graph (Right)
@@ -574,6 +572,8 @@ def render_component_data_graph_shells(
     return [
         dcc.Graph(
             id={"type": "component-data-graph", "index": tab},
+            # Seeded so Patch() has a figure to apply onto
+            figure=plotting.empty_figure("Waiting for data...", "light"),
             style={"height": graph_height, "margin-bottom": graph_gap},
             responsive=True,
         )
@@ -581,51 +581,42 @@ def render_component_data_graph_shells(
     ]
 
 
-# Fills in one tab's figure. Patches existing traces in place when the tab's
-# variable set hasn't changed (see plotting.patch_or_redraw), and only
-# returns a full new figure when it has - the "read from a component store,
-# patch if possible, redraw if necessary" behavior asked for in issue #26.
+# Layout only - traces are patched separately below to preserve zoom/pan
 @callback(
-    Output({"type": "component-data-graph", "index": MATCH}, "figure"),
-    Input("component-data-store", "data"),
+    Output({"type": "component-data-graph", "index": MATCH}, "figure", allow_duplicate=True),
     Input("app-theme-store", "data"),
     Input("checkbox-align-time", "value"),
     Input("component-graph-tab-store", "data"),
+    State("component-data-store", "data"),
     State({"type": "component-data-graph", "index": MATCH}, "id"),
-    State({"type": "component-data-graph", "index": MATCH}, "figure"),
+    prevent_initial_call="initial_duplicate",
 )
-def render_component_data_graph(
-    ds: dict | None,
-    theme: dict,
+def render_component_data_graph_layout(
+    theme: str,
     align_time: list[str],
     active_tabs: list[str],
+    ds: dict | None,
     graph_id: dict[str, str],
-    prev_figure: dict | None,
 ) -> dict | dash.Patch:
-    if ds is None:
-        return plotting.empty_figure("Waiting for data...", theme)
-
     active_tabs = active_tabs or ["all"]
     tab = graph_id["index"]
 
-    relative = bool(align_time and "relative" in align_time)
-    formatted_x, x_title = plotting.format_timeseries_x(
-        ds["coords"]["uts"]["data"], relative=relative
-    )
+    if ds is None:
+        return plotting.empty_figure("Waiting for data...", theme)
 
     if tab == "all":
-        # Default view: every variable overlaid on a single graph
-        keys_to_plot = list(ds["data_vars"].keys())
+        has_data = bool(ds["data_vars"])
         y_title = "Value"
     else:
         label = unit_tab_label(tab)
-        keys_to_plot = group_by_unit(ds).get(label, [])
+        has_data = bool(group_by_unit(ds).get(label))
         y_title = label or "Value"
 
-    if not keys_to_plot:
+    if not has_data:
         return plotting.empty_figure("No data for this tab", theme)
 
-    traces = plotting.build_traces(ds, keys_to_plot, formatted_x)
+    relative = bool(align_time and "relative" in align_time)
+    _, x_title = plotting.format_timeseries_x([], relative=relative)
     layout = plotting.build_layout(
         theme,
         x_title=x_title,
@@ -645,7 +636,44 @@ def render_component_data_graph(
         },
         margin={"t": 60 if len(active_tabs) <= 1 else 90, "b": 90, "l": 50, "r": 20},
     )
-    return plotting.patch_or_redraw(prev_figure, traces, layout)
+    patch = dash.Patch()
+    patch["layout"] = layout
+    return patch
+
+
+# Traces only - layout handled above
+@callback(
+    Output({"type": "component-data-graph", "index": MATCH}, "figure", allow_duplicate=True),
+    Input("component-data-store", "data"),
+    State("checkbox-align-time", "value"),
+    State({"type": "component-data-graph", "index": MATCH}, "id"),
+    State({"type": "component-data-graph", "index": MATCH}, "figure"),
+    prevent_initial_call="initial_duplicate",
+)
+def render_component_data_graph_traces(
+    ds: dict | None,
+    align_time: list[str],
+    graph_id: dict[str, str],
+    prev_figure: dict | None,
+) -> dash.Patch:
+    patch = dash.Patch()
+    if ds is None:
+        patch["data"] = []
+        return patch
+
+    tab = graph_id["index"]
+    relative = bool(align_time and "relative" in align_time)
+    formatted_x, _ = plotting.format_timeseries_x(
+        ds["coords"]["uts"]["data"], relative=relative
+    )
+
+    if tab == "all":
+        keys_to_plot = list(ds["data_vars"])
+    else:
+        keys_to_plot = group_by_unit(ds).get(unit_tab_label(tab), [])
+
+    traces = plotting.build_traces(ds, keys_to_plot, formatted_x)
+    return plotting.patch_traces(prev_figure, traces)
 
 
 # Manages adding and removing custom graphs
@@ -656,7 +684,7 @@ def render_component_data_graph(
     State("custom-graphs-list-store", "data"),
     prevent_initial_call=True,
 )
-def manage_graphs(
+def manage_custom_graphs(
     add_clicks: int, remove_clicks: int, active_ids: list[int]
 ) -> list[int]:
     ctx = dash.callback_context
@@ -673,22 +701,22 @@ def manage_graphs(
             remove_idx = triggered_pattern_index(ctx)
             return [i for i in active_ids if i != remove_idx]
         except Exception as e:
-            logger.warning("Exception during manage_graphs:", exc_info=e)
+            logger.warning("Exception during manage_custom_graphs:", exc_info=e)
             return active_ids
 
 
-# Renders the dynamic custom graphs container children
+# Each card owns a {"type": "component-custom-graph", "index": i} store for its metadata
 @callback(
     Output("custom-graphs-container", "children"),
     Input("custom-graphs-list-store", "data"),
-    State("custom-graphs-titles-store", "data"),
-    State("custom-graphs-yvars-store", "data"),
+    State({"type": "component-custom-graph", "index": ALL}, "id"),
+    State({"type": "component-custom-graph", "index": ALL}, "data"),
     State("component-data-store", "data"),
 )
 def render_graphs_list(
     active_ids: list[int],
-    titles_dict: dict[str, str],
-    yvars_dict: dict[str, list[str]],
+    meta_ids: list[dict[str, int]],
+    meta_values: list[dict],
     ds: dict | None,
 ) -> html.Div | list[html.Div]:
     if len(active_ids) == 0:
@@ -706,21 +734,22 @@ def render_graphs_list(
         )
 
     vars_list = sorted(ds.get("data_vars", {}).keys()) if ds else []
-    # options = [{"label": "Time (uts)", "value": "uts"}] + [
-    #     {"label": v, "value": v} for v in vars_list
-    # ]
+    meta_by_id = {m["index"]: v for m, v in zip(meta_ids, meta_values)}
 
     graphs_layouts = []
     for i in active_ids:
-        graph_id_str = str(i)
+        meta = meta_by_id.get(i) or {}
 
-        # Stored title or dynamic fallback based on display position
-        title_val = titles_dict.get(graph_id_str, f"Custom Graph #{i}")
-        yvar_val = yvars_dict.get(graph_id_str, [])
+        title_val = meta.get("title") or f"Custom Graph #{i}"
+        yvar_val = meta.get("y_vars") or []
+        options_val = meta.get("options") or ["lines"]
 
         card = html.Div(
             id={"type": "custom-graph-card", "index": i},
             children=[
+                dcc.Store(
+                    id={"type": "component-custom-graph", "index": i}, data=meta
+                ),
                 html.Div(
                     children=[
                         dcc.Input(
@@ -836,9 +865,8 @@ def render_graphs_list(
                                             "label": " Connect points (Lines)",
                                             "value": "lines",
                                         },
-                                        {"label": " Sort by X-Axis", "value": "sort"},
                                     ],
-                                    value=["lines"],
+                                    value=options_val,
                                     labelStyle={
                                         "display": "inline-block",
                                         "margin-right": "15px",
@@ -860,6 +888,10 @@ def render_graphs_list(
                 ),
                 dcc.Graph(
                     id={"type": "custom-graph", "index": i},
+                    # Seeded so Patch() has a figure to apply onto
+                    figure=plotting.empty_figure(
+                        "Select variables above to view custom plot", "light"
+                    ),
                     style={"height": "400px"},
                     responsive=True,
                 ),
@@ -872,80 +904,37 @@ def render_graphs_list(
     return graphs_layouts
 
 
-# Persists custom titles, and prunes any whose graph was removed.
+# List-store Input only detects add/remove and bails, ignoring Dash's stale mount echo
 @callback(
-    Output("custom-graphs-titles-store", "data"),
-    Input({"type": "custom-graph-title-input", "index": ALL}, "value"),
+    Output({"type": "component-custom-graph", "index": MATCH}, "data"),
+    Input({"type": "custom-graph-title-input", "index": MATCH}, "value"),
+    Input({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
+    Input({"type": "custom-graph-options", "index": MATCH}, "value"),
     Input("custom-graphs-list-store", "data"),
-    State("custom-graphs-titles-store", "data"),
+    State({"type": "component-custom-graph", "index": MATCH}, "data"),
     prevent_initial_call=True,
 )
-def update_graph_titles(
-    title_values: list[str],
+def update_custom_graph_meta(
+    title: str | None,
+    y_vars: list[str] | None,
+    options: list[str] | None,
     active_ids: list[int],
-    current_titles: dict[str, str],
-) -> dict[str, str]:
+    current_data: dict,
+) -> dict:
     ctx = dash.callback_context
-    if not ctx.triggered:
-        return current_titles
-
-    new_titles = dict(current_titles)
-
-    if "custom-graphs-list-store" in ctx.triggered[0]["prop_id"]:
-        active_id_strs = {str(i) for i in active_ids}
-        return {k: v for k, v in new_titles.items() if k in active_id_strs}
-
-    inputs_list = ctx.inputs_list[0]
-    for inp, val in zip(inputs_list, title_values):
-        graph_id = str(inp["id"]["index"])
-        if val is not None:
-            new_titles[graph_id] = val
-
-    return new_titles
+    if not ctx.triggered or any(
+        "custom-graphs-list-store" in t["prop_id"] for t in ctx.triggered
+    ):
+        return current_data
+    return {"title": title, "y_vars": y_vars or [], "options": options or []}
 
 
-# Persists custom Y-axis selections, and prunes any whose graph was removed.
-# Without this, render_graphs_list would rebuild every card's Y-selector with
-# no value= whenever a graph is added/removed, wiping out already-configured
-# graphs' selections back to empty.
-@callback(
-    Output("custom-graphs-yvars-store", "data"),
-    Input({"type": "custom-graph-y-selector", "index": ALL}, "value"),
-    Input("custom-graphs-list-store", "data"),
-    State("custom-graphs-yvars-store", "data"),
-    prevent_initial_call=True,
-)
-def update_graph_yvars(
-    yvar_values: list[list[str] | None],
-    active_ids: list[int],
-    current_yvars: dict[str, list[str]],
-) -> dict[str, list[str]]:
-    ctx = dash.callback_context
-    if not ctx.triggered:
-        return current_yvars
-
-    new_yvars = dict(current_yvars)
-
-    if "custom-graphs-list-store" in ctx.triggered[0]["prop_id"]:
-        active_id_strs = {str(i) for i in active_ids}
-        return {k: v for k, v in new_yvars.items() if k in active_id_strs}
-
-    inputs_list = ctx.inputs_list[0]
-    for inp, val in zip(inputs_list, yvar_values):
-        graph_id = str(inp["id"]["index"])
-        if val is not None:
-            new_yvars[graph_id] = val
-
-    return new_yvars
-
-
-# Updates options of dynamic selectors as data streams in
 @callback(
     Output({"type": "custom-graph-x-selector", "index": MATCH}, "options"),
     Output({"type": "custom-graph-y-selector", "index": MATCH}, "options"),
     Input("component-data-store", "data"),
 )
-def populate_dynamic_selectors(ds: dict) -> tuple[list[dict], list[dict]]:
+def populate_dynamic_selectors(ds: dict | None) -> tuple[list[dict], list[dict]]:
     if ds is None:
         return [], []
     vars_list = sorted(ds.get("data_vars", {}).keys())
@@ -954,23 +943,20 @@ def populate_dynamic_selectors(ds: dict) -> tuple[list[dict], list[dict]]:
     return x_options, y_options
 
 
-# Renders custom graphs dynamically based on selected variables and options
+# Layout only - traces are patched separately below
 @callback(
-    Output({"type": "custom-graph", "index": MATCH}, "figure"),
+    Output({"type": "custom-graph", "index": MATCH}, "figure", allow_duplicate=True),
     Input({"type": "custom-graph-x-selector", "index": MATCH}, "value"),
     Input({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
-    Input({"type": "custom-graph-options", "index": MATCH}, "value"),
-    Input("component-data-store", "data"),
     Input("app-theme-store", "data"),
-    State({"type": "custom-graph", "index": MATCH}, "figure"),
+    State("component-data-store", "data"),
+    prevent_initial_call="initial_duplicate",
 )
-def render_custom_graph(
+def render_custom_graph_layout(
     x_var: str,
     y_var: str | list[str],
-    options_val: list[str],
+    theme: str,
     ds: dict | None,
-    theme: dict,
-    prev_figure: dict | None,
 ) -> dict | dash.Patch:
     y_vars = [y_var] if isinstance(y_var, str) else y_var or []
     if ds is None or not x_var or len(y_vars) == 0:
@@ -978,42 +964,64 @@ def render_custom_graph(
             "Select variables above to view custom plot", theme
         )
 
-    # X axis is always uts (the X-selector dropdown is locked to it)
+    # Empty list is fine - only used for the title, not actual formatting
+    _, x_title = plotting.format_timeseries_x([])
+
+    if len(y_vars) == 1:
+        y_title = y_vars[0]
+    elif len(y_vars) > 1:
+        y_title = "Selected Variables"
+    else:
+        y_title = "Value"
+
+    layout = plotting.build_layout(
+        theme, x_title=x_title, y_title=y_title, uirevision=f"{x_var}-{y_var}"
+    )
+    patch = dash.Patch()
+    patch["layout"] = layout
+    return patch
+
+
+# Traces only - layout handled above
+@callback(
+    Output({"type": "custom-graph", "index": MATCH}, "figure", allow_duplicate=True),
+    Input("component-data-store", "data"),
+    Input({"type": "custom-graph-options", "index": MATCH}, "value"),
+    State({"type": "custom-graph-x-selector", "index": MATCH}, "value"),
+    State({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
+    State({"type": "custom-graph", "index": MATCH}, "figure"),
+    prevent_initial_call="initial_duplicate",
+)
+def render_custom_graph_traces(
+    ds: dict | None,
+    options_val: list[str],
+    x_var: str,
+    y_var: str | list[str],
+    prev_figure: dict | None,
+) -> dash.Patch:
+    y_vars = [y_var] if isinstance(y_var, str) else y_var or []
+    patch = dash.Patch()
+    if ds is None or not x_var or len(y_vars) == 0:
+        patch["data"] = []
+        return patch
+
     x_data, x_title = plotting.format_timeseries_x(ds["coords"]["uts"]["data"])
 
-    # Handle sorting and lines connection options
     connect_lines = "lines" in options_val
-    sort_x = "sort" in options_val
     mode = "lines+markers" if connect_lines else "markers"
 
-    fig_data = []
-    y_titles = []
-
+    traces = []
     for y_name in y_vars:
         if y_name not in ds.get("data_vars", {}):
             continue
         y_raw = ds["data_vars"][y_name]["data"]
-        y_titles.append(y_name)
 
         for name, y_vals in plotting.iter_series(y_name, y_raw):
             min_len = min(len(x_data), len(y_vals))
             sub_x = x_data[:min_len]
             sub_y_trimmed = y_vals[:min_len]
 
-            if sort_x:
-                paired = list(zip(sub_x, sub_y_trimmed))
-                try:
-                    paired.sort(key=lambda item: item[0])
-                except Exception as e:
-                    logger.warning("Exception during sorting:", exc_info=e)
-                if paired:
-                    sub_x_t, sub_y_t = zip(*paired)
-                    sub_x = list(sub_x_t)
-                    sub_y_trimmed = list(sub_y_t)
-                else:
-                    sub_x, sub_y_trimmed = [], []
-
-            fig_data.append(
+            traces.append(
                 {
                     "x": sub_x,
                     "y": sub_y_trimmed,
@@ -1028,32 +1036,19 @@ def render_custom_graph(
                 }
             )
 
-    if len(y_titles) == 1:
-        y_title = y_titles[0]
-    elif len(y_titles) > 1:
-        y_title = "Selected Variables"
-    else:
-        y_title = "Value"
-
-    layout = plotting.build_layout(
-        theme, x_title=x_title, y_title=y_title, uirevision=f"{x_var}-{y_var}"
-    )
-
-    return plotting.patch_or_redraw(prev_figure, fig_data, layout)
+    return plotting.patch_traces(prev_figure, traces)
 
 
-# Auto-configures custom graph options dynamically based on selected axes
 @callback(
     Output({"type": "custom-graph-options", "index": MATCH}, "value"),
     Input({"type": "custom-graph-x-selector", "index": MATCH}, "value"),
     Input({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
-    State({"type": "custom-graph-options", "index": MATCH}, "value"),
     prevent_initial_call=True,
 )
 def auto_configure_graph_options(
-    x_var: str, y_var: str | list[str], current_options: list[str]
-) -> list[str]:
-    y_vars = [y_var] if isinstance(y_var, str) else y_var or []
-    if x_var == "uts" or "uts" in y_vars:
-        return ["lines"]
-    return []
+    x_var: str, y_var: str | list[str]
+) -> list[str] | dash.NoUpdate:
+    # Non-"uts" means this is Dash's stale mount echo, not a real change
+    if x_var != "uts":
+        return dash.no_update
+    return ["lines"]

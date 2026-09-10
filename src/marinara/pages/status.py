@@ -8,7 +8,7 @@ from tomato import passata, tomato
 
 from marinara import plotting
 from marinara.icons import get_icon
-from marinara.utils import TOUT, get_field
+from marinara.utils import TOUT, get_field, update_datastore
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +142,7 @@ dashboard_layout = html.Div(
                                     },
                                 ),
                                 dcc.Dropdown(
-                                    id="dash-plot-device-selector",
+                                    id="dash-plot-pipeline-selector",
                                     options=[],
                                     placeholder="Select Pipeline to Plot",
                                     clearable=False,
@@ -159,6 +159,10 @@ dashboard_layout = html.Div(
                         ),
                         dcc.Graph(
                             id="dash-live-graph",
+                            # Seeded so Patch() has a figure to apply onto
+                            figure=plotting.empty_figure(
+                                "Select a pipeline above to view live plot", "light"
+                            ),
                             style={"height": "450px"},
                             responsive=True,
                         ),
@@ -192,12 +196,12 @@ dashboard_layout = html.Div(
     Output("kpi-devices", "children"),
     Output("kpi-drivers", "children"),
     Output("kpi-components", "children"),
-    Output("dash-plot-device-selector", "options"),
-    Output("dash-plot-device-selector", "value"),
+    Output("dash-plot-pipeline-selector", "options"),
+    Output("dash-plot-pipeline-selector", "value"),
     Output("dash-pipelines-assignments-table", "children"),
     Input("tomato-status", "n_clicks"),
     State("tomato-port", "data"),
-    State("dash-plot-device-selector", "value"),
+    State("dash-plot-pipeline-selector", "value"),
 )
 def update_dashboard_stats(
     n_clicks: int,
@@ -340,29 +344,23 @@ def update_dashboard_stats(
 
 @callback(
     Output("dash-parameters-list", "children"),
-    Output("dash-live-graph", "figure"),
     Output("dash-plot-data-store", "data"),
     Input("dash-graph-interval", "n_intervals"),
-    Input("dash-plot-device-selector", "value"),
-    Input("app-theme-store", "data"),
+    Input("dash-plot-pipeline-selector", "value"),
     State("tomato-port", "data"),
     State("dash-plot-data-store", "data"),
-    State("dash-live-graph", "figure"),
 )
-def update_dashboard_live_view(
+def update_dashboard_data(
     n_intervals: int,
     selected_pip: str | None,
-    theme: str,
     port: int,
     historical_data: dict,
-    prev_figure: dict | None,
-) -> tuple[html.Div, dict | dash.Patch, dict]:
+) -> tuple[html.Div, dict]:
     if not selected_pip:
         return (
             html.Div(
                 "Select a pipeline to view parameters.", className="text-secondary"
             ),
-            plotting.empty_figure("Select a pipeline above to view live plot", theme),
             {},
         )
 
@@ -373,17 +371,15 @@ def update_dashboard_live_view(
         pips = ret.data.devicefile.pipelines
         pip = pips.get(selected_pip)
     except Exception as e:
-        logger.warning("Exception during update_dashboard_live_view:", exc_info=e)
+        logger.warning("Exception during update_dashboard_data:", exc_info=e)
         return (
             html.Div("Parameters temporarily unavailable.", className="text-secondary"),
-            plotting.empty_figure("Offline or loading...", theme),
             {},
         )
 
     if not pip:
         return (
             html.Div("Pipeline parameters not found.", className="text-secondary"),
-            plotting.empty_figure("Pipeline not found", theme),
             {},
         )
 
@@ -444,48 +440,65 @@ def update_dashboard_live_view(
 
     params_list = html.Div(param_items, className="params-list-container")
 
-    # 2. Fetch live data for plotting for each component in the pipeline, kept
-    # in the same per-component "component store" shape as component.py's
-    # component-data-store (capped at 50 rows rather than 500, since this is a
-    # compact multi-component overview rather than a detailed single-component
-    # page).
-    traces = []
+    # Capped at 50 rows (vs 500 in component.py) - compact overview, not detail view
     for cname in pip.components.values():
         try:
-            data_ret = passata.get_last_data(port=port, name=cname, timeout=TOUT)
-            if data_ret.success and data_ret.data:
-                comp_ds = plotting.merge_and_cap(
-                    historical_data["components"].get(cname), data_ret.data, cap=50
-                )
+            comp_ds = update_datastore(
+                port=port,
+                name=cname,
+                datastore=historical_data["components"].get(cname),
+                cap=50,
+            )
+            if comp_ds is None:
+                historical_data["components"].pop(cname, None)
+            elif comp_ds is not dash.no_update:
+                # dash.no_update means nothing new polled - keep last known data instead of dropping the trace
                 historical_data["components"][cname] = comp_ds
-            else:
-                # Transient fetch failure: keep plotting this component's last
-                # known data instead of dropping its trace for the tick, same
-                # as pipeline.py's components_update_data_display does for
-                # its own per-component polling.
-                comp_ds = historical_data["components"].get(cname)
-            if not comp_ds:
-                continue
-            formatted_x, _ = plotting.format_timeseries_x(
-                comp_ds["coords"]["uts"]["data"], compact=True
-            )
-            keys = list(comp_ds["data_vars"].keys())
-            traces.extend(
-                plotting.build_traces(comp_ds, keys, formatted_x, prefix=cname)
-            )
         except Exception as e:
             logger.warning(
                 f"Failed to fetch live data for component {cname} of pipeline {selected_pip}: {e}",
                 exc_info=e,
             )
 
-    layout = plotting.build_layout(theme, margin={"t": 15, "b": 90, "l": 50, "r": 15})
-    figure = plotting.patch_or_redraw(prev_figure, traces, layout)
+    return params_list, historical_data
 
-    # historical_data's per-component datasets already come out of
-    # merge_and_cap clean (JSON-safe) - no need to walk the whole structure
-    # again here.
-    return params_list, figure, historical_data
+
+# Layout only - traces are patched separately below
+@callback(
+    Output("dash-live-graph", "figure", allow_duplicate=True),
+    Input("dash-plot-pipeline-selector", "value"),
+    Input("app-theme-store", "data"),
+    prevent_initial_call="initial_duplicate",
+)
+def render_dashboard_graph_layout(
+    selected_pip: str | None, theme: str
+) -> dict | dash.Patch:
+    if not selected_pip:
+        return plotting.empty_figure("Select a pipeline above to view live plot", theme)
+    layout = plotting.build_layout(theme, margin={"t": 15, "b": 90, "l": 50, "r": 15})
+    patch = dash.Patch()
+    patch["layout"] = layout
+    return patch
+
+
+# Traces only - layout handled above
+@callback(
+    Output("dash-live-graph", "figure", allow_duplicate=True),
+    Input("dash-plot-data-store", "data"),
+    State("dash-live-graph", "figure"),
+    prevent_initial_call="initial_duplicate",
+)
+def render_dashboard_graph_traces(
+    historical_data: dict | None, prev_figure: dict | None
+) -> dash.Patch:
+    traces = []
+    for cname, comp_ds in (historical_data or {}).get("components", {}).items():
+        formatted_x, _ = plotting.format_timeseries_x(
+            comp_ds["coords"]["uts"]["data"], compact=True
+        )
+        keys = list(comp_ds["data_vars"])
+        traces.extend(plotting.build_traces(comp_ds, keys, formatted_x, prefix=cname))
+    return plotting.patch_traces(prev_figure, traces)
 
 
 def layout(**_) -> list[html.Div]:
