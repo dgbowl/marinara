@@ -532,7 +532,9 @@ def render_graph_tabs(group_labels: list[str] | None) -> list[dict[str, str]]:
     prevent_initial_call=True,
 )
 def update_active_graph_tab(
-    checked: list[str], group_labels: list[str] | None, previous_tabs: list[str]
+    checked: list[str],
+    group_labels: list[str] | None,
+    previous_tabs: list[str],
 ) -> tuple[list[str] | dash.NoUpdate, list[str] | dash.NoUpdate]:
     if "all" in checked and "all" not in previous_tabs:
         active_tabs = ["all"]
@@ -559,9 +561,11 @@ def update_active_graph_tab(
 @callback(
     Output("component-data-graph-container", "children"),
     Input("component-graph-tab-store", "data"),
+    State("app-theme-store", "data"),
 )
 def render_component_data_graph_shells(
     active_tabs: list[str] | None,
+    theme: str,
 ) -> list[dcc.Graph]:
     active_tabs = active_tabs or ["all"]
     # Shrink each graph when several are stacked so more fit on screen at once,
@@ -573,7 +577,7 @@ def render_component_data_graph_shells(
         dcc.Graph(
             id={"type": "component-data-graph", "index": tab},
             # Seeded so Patch() has a figure to apply onto
-            figure=plotting.empty_figure("Waiting for data...", "light"),
+            figure=plotting.empty_figure("Waiting for data...", theme),
             style={"height": graph_height, "margin-bottom": graph_gap},
             responsive=True,
         )
@@ -716,12 +720,14 @@ def manage_custom_graphs(
     State({"type": "component-custom-graph", "index": ALL}, "id"),
     State({"type": "component-custom-graph", "index": ALL}, "data"),
     State("component-data-store", "data"),
+    State("app-theme-store", "data"),
 )
 def render_graphs_list(
     active_ids: list[int],
     meta_ids: list[dict[str, int]],
     meta_values: list[dict],
     ds: dict | None,
+    theme: str,
 ) -> html.Div | list[html.Div]:
     if len(active_ids) == 0:
         return html.Div(
@@ -892,7 +898,7 @@ def render_graphs_list(
                     id={"type": "custom-graph", "index": i},
                     # Seeded so Patch() has a figure to apply onto
                     figure=plotting.empty_figure(
-                        "Select variables above to view custom plot", "light"
+                        "Select variables above to view custom plot", theme
                     ),
                     style={"height": "400px"},
                     responsive=True,
