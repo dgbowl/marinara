@@ -672,16 +672,13 @@ def render_component_data_graph_traces(
 
     tab = graph_id["index"]
     relative = bool(align_time and "relative" in align_time)
-    formatted_x, _ = plotting.format_timeseries_x(
-        ds["coords"]["uts"]["data"], relative=relative
-    )
 
     if tab == "all":
-        keys_to_plot = list(ds["data_vars"])
+        y_vars = list(ds["data_vars"])
     else:
-        keys_to_plot = group_by_unit(ds).get(unit_tab_label(tab), [])
+        y_vars = group_by_unit(ds).get(unit_tab_label(tab), [])
 
-    traces = plotting.build_traces(ds, keys_to_plot, formatted_x)
+    traces = plotting.build_traces(ds, "uts", y_vars, relative=relative)
     return plotting.patch_traces(prev_figure, traces)
 
 
@@ -744,7 +741,10 @@ def render_graphs_list(
             },
         )
 
-    vars_list = sorted(ds.get("data_vars", {}).keys()) if ds else []
+    vars_list = sorted(ds.get("data_vars", {})) if ds else []
+    vars_options = [{"label": v, "value": v} for v in vars_list]
+    coords_options = [{"label": "Time(uts)", "value": "uts"}]
+
     meta_by_id = {m["index"]: v for m, v in zip(meta_ids, meta_values)}
 
     graphs_layouts = []
@@ -821,10 +821,8 @@ def render_graphs_list(
                                 ),
                                 dcc.Dropdown(
                                     id={"type": "custom-graph-x-selector", "index": i},
-                                    options=[{"label": "Time (uts)", "value": "uts"}],
-                                    value="uts",
-                                    disabled=True,
-                                    clearable=False,
+                                    options=coords_options,
+                                    placeholder="Select variable",
                                     style={"width": "100%"},
                                 ),
                             ],
@@ -844,9 +842,7 @@ def render_graphs_list(
                                 ),
                                 dcc.Dropdown(
                                     id={"type": "custom-graph-y-selector", "index": i},
-                                    options=[
-                                        {"label": v, "value": v} for v in vars_list
-                                    ],
+                                    options=vars_options,
                                     value=yvar_val,
                                     multi=True,
                                     placeholder="Select variables",
@@ -946,9 +942,13 @@ def update_custom_graph_meta(
 def populate_dynamic_selectors(ds: dict | None) -> tuple[list[dict], list[dict]]:
     if ds is None:
         return [], []
-    vars_list = sorted(ds.get("data_vars", {}).keys())
-    x_options = [{"label": "Time (uts)", "value": "uts"}]
+    vars_list = sorted(ds.get("data_vars", {}))
+    coords_list = sorted(ds.get("coords", {}))
     y_options = [{"label": v, "value": v} for v in vars_list]
+    x_options = [{"label": "Time (uts)", "value": "uts"}]
+    for coord in coords_list:
+        if coord != "uts":
+            x_options.append({"label": coord, "value": coord})
     return x_options, y_options
 
 
@@ -972,6 +972,10 @@ def render_custom_graph_layout(
         return plotting.empty_figure(
             "Select variables above to view custom plot", theme
         )
+
+    consistent, msg = plotting.dims_consistency(x_var, y_vars, ds)
+    if not consistent:
+        return plotting.empty_figure(msg, theme)
 
     # Empty list is fine - only used for the title, not actual formatting
     _, x_title = plotting.format_timeseries_x([])
@@ -1014,37 +1018,14 @@ def render_custom_graph_traces(
         patch["data"] = []
         return patch
 
-    x_data, x_title = plotting.format_timeseries_x(ds["coords"]["uts"]["data"])
+    consistent, _ = plotting.dims_consistency(x_var, y_vars, ds)
+    if not consistent:
+        return patch
 
     connect_lines = "lines" in options_val
     mode = "lines+markers" if connect_lines else "markers"
 
-    traces = []
-    for y_name in y_vars:
-        if y_name not in ds.get("data_vars", {}):
-            continue
-        y_raw = ds["data_vars"][y_name]["data"]
-
-        for name, y_vals in plotting.iter_series(y_name, y_raw):
-            min_len = min(len(x_data), len(y_vals))
-            sub_x = x_data[:min_len]
-            sub_y_trimmed = y_vals[:min_len]
-
-            traces.append(
-                {
-                    "x": sub_x,
-                    "y": sub_y_trimmed,
-                    "mode": mode,
-                    "type": "scatter",
-                    "marker": {"size": 8, "opacity": 0.8},
-                    # x is already the formatted local-time string, so the
-                    # bold hover line reuses %{x} directly instead of a
-                    # separately-tracked hovertext field.
-                    "hovertemplate": f"<b>{x_title}: %{{x}}</b><br>{name}: %{{y}}<extra></extra>",
-                    "name": name,
-                }
-            )
-
+    traces = plotting.build_traces(ds, x_var, y_vars, mode)
     return plotting.patch_traces(prev_figure, traces)
 
 

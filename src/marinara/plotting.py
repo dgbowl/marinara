@@ -1,5 +1,4 @@
 import logging
-from collections.abc import Generator
 from datetime import UTC, datetime
 
 from dash import Patch
@@ -36,45 +35,107 @@ def format_timeseries_x(
     return formatted_x, "Time (Local)"
 
 
-def iter_series(key: str, y_raw: list) -> Generator[tuple[str, list]]:
-    """Yields (name, y_values) pairs for a data_var, exploding multidimensional
-    variables into one named sub-series per index (key[0], key[1], ...)."""
-    if not (len(y_raw) > 0 and isinstance(y_raw[0], (list, tuple))):
-        yield key, y_raw
-        return
+def build_1d(
+    x: list,
+    y: list,
+    t: list,
+    mode: str,
+    x_var: str,
+    y_var: str,
+    prefix: str | None = None,
+) -> dict:
+    return {
+        "x": t if x_var == "uts" else x,
+        "y": y,
+        "mode": mode,
+        "type": "scatter",
+        "marker": {"size": 8, "opacity": 0.8},
+        "hovertemplate": f"{x_var}: %{{x}}<br>{y_var}: %{{y}}",
+        "name": y_var if prefix is None else f"{prefix}/{y_var}",
+    }
 
-    max_len = max(len(item) for item in y_raw if isinstance(item, (list, tuple)))
-    for i in range(max_len):
-        sub_y = [
-            item[i] if isinstance(item, (list, tuple)) and i < len(item) else None
-            for item in y_raw
-        ]
-        yield f"{key}[{i}]", sub_y
+
+def build_2d(
+    x: list,
+    y: list,
+    z: list[list],
+    x_var: str,
+    y_var: str,
+    z_var: str,
+    prefix: str | None = None,
+) -> dict:
+    return {
+        "x": x,
+        "y": y,
+        "z": z,
+        "type": "heatmap",
+        "hovertemplate": f"{x_var}: %{{x}}<br>{y_var}: %{{y}}<br>{z_var}: %{{z}}",
+        "name": y_var if prefix is None else f"{prefix}/{z_var}",
+    }
+
+
+def build_err(times, name) -> dict:
+    return {
+        "type": "scatter",
+        "x": [times[0], times[-1]],
+        "y": ["", ""],
+        "mode": "text",
+        "visible": "legendonly",
+        "name": f"{name} (Incompatible dims)",
+    }
 
 
 def build_traces(
-    ds: dict, keys: list[str], formatted_x: list, prefix: str | None = None
+    ds: dict,
+    x_var: str,
+    y_vars: list[str],
+    mode: str = "lines+markers",
+    relative: bool = False,
+    prefix: str | None = None,
 ) -> list[dict]:
     """Builds Plotly scatter traces for the given data_var keys, exploding
     multidimensional variables into one named sub-trace per index. `prefix`
     namespaces trace names (e.g. by component name) for call sites that plot
     several datasets together, where the same variable name could otherwise
     collide across datasets."""
-    data = []
-    for key in keys:
-        y_raw: list = ds["data_vars"][key]["data"]
-        for name, y_vals in iter_series(key, y_raw):
-            trace_name = f"{prefix}/{name}" if prefix else name
-            data.append(
-                {
-                    "x": formatted_x,
-                    "y": y_vals,
-                    "name": trace_name,
-                    "type": "scatter",
-                    "mode": "lines+markers",
-                }
+    x = ds["coords"][x_var]["data"]
+    times, _ = format_timeseries_x(ds["coords"]["uts"]["data"], relative=relative)
+
+    traces = []
+    for y_name in y_vars:
+        y = ds["data_vars"][y_name]["data"]
+        y_dims = ds["data_vars"][y_name]["dims"]
+
+        if len(y_dims) == 1:
+            traces.append(build_1d(x, y, times, mode, x_var, y_name, prefix))
+        elif len(y_dims) == 2 and x_var != "uts":
+            traces.append(build_1d(x, y[-1], times, mode, x_var, y_name, prefix))
+        elif len(y_dims) == 2 and len(y_vars) > 1:
+            traces.append(build_err(times, y_name))
+            logger.warning(
+                "Cannot plot multiple variables %s together with a heatmap: %s",
+                y_vars,
+                y_name,
             )
-    return data
+        elif len(y_dims) == 2:
+            # figure out axis order
+            if y_dims.index("uts") == 0:
+                z_var = y_dims[1]
+                y_d = ds["coords"][z_var]["data"]
+                z_d = [i for i in zip(*y)]
+            else:
+                z_var = y_dims[0]
+                y_d = ds["coords"][z_var]["data"]
+                z_d = y
+            traces.append(build_2d(times, y_d, z_d, x_var, y_name, z_var))
+        elif len(y_dims) > 2:
+            traces.append(build_err(times, y_name))
+            logger.warning(
+                "Cannot plot multi-dimensional (%s) variable: %s", y_dims, y_name
+            )
+        else:
+            continue
+    return traces
 
 
 def theme_plot_colors(theme: str) -> dict:
@@ -182,3 +243,16 @@ def patch_traces(prev_figure: dict | None, traces: list[dict]) -> Patch:
     for trace in traces[len(prev_names) :]:
         patch["data"].append(trace)
     return patch
+
+
+def dims_consistency(x_var: str, y_vars: list[str], ds: dict) -> tuple[bool, str]:
+    for y_name in y_vars:
+        y_dims = ds["data_vars"][y_name]["dims"]
+        if x_var not in y_dims:
+            return (
+                False,
+                f"The selected X axis variable {x_var!r} "
+                + f"is not a coordinate of the Y axis variable {y_name!r}. "
+                + f"Select an X axis variable out of: {y_dims!r}.",
+            )
+    return True, ""
