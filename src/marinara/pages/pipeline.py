@@ -10,6 +10,7 @@ from marinara.utils import (
     format_constraint,
     get_field,
     get_unit_str,
+    is_component_running,
     update_datastore,
 )
 
@@ -269,15 +270,15 @@ def create_content_div(port: int, name: str) -> html.Div:
 
         try:
             status_ret = passata.status(port=port, name=cname, timeout=TOUT)
-            status = status_ret.data if status_ret.success else {"running": False}
+            is_running = (
+                is_component_running(status_ret.data) if status_ret.success else False
+            )
         except Exception as e:
             logger.warning("Exception during passata.status:", exc_info=e)
-            status = {"running": False}
+            is_running = False
 
-        badge_class = (
-            "badge badge-success" if status["running"] else "badge badge-secondary"
-        )
-        badge_text = "RUNNING" if status["running"] else "STOPPED"
+        badge_class = "badge badge-success" if is_running else "badge badge-secondary"
+        badge_text = "RUNNING" if is_running else "STOPPED"
 
         div_status = html.Div(
             children=[
@@ -294,7 +295,7 @@ def create_content_div(port: int, name: str) -> html.Div:
             className="block",
             style={"margin-bottom": "12px"},
         )
-        running_store[cname] = status["running"]
+        running_store[cname] = is_running
         try:
             attrs_ret = passata.attrs(port=port, name=cname, timeout=TOUT)
             attrs = attrs_ret.data if attrs_ret.success else {}
@@ -668,7 +669,7 @@ def components_periodic_update_params_store(
     for cname in cmps:
         try:
             ret = passata.status(port=port, name=cname, timeout=TOUT).data
-            newparams[cname] = ret["running"]
+            newparams[cname] = is_component_running(ret)
         except Exception as e:
             logger.warning("Exception during passata.status:", exc_info=e)
             newparams[cname] = False

@@ -13,6 +13,7 @@ from marinara.utils import (
     format_constraint,
     get_field,
     get_unit_str,
+    is_component_running,
     theme_gridcolor,
     theme_plot_colors,
     update_datastore,
@@ -34,7 +35,7 @@ def layout(port: int, name: str, **_) -> list:
     # Safely fetch initial state of the component
     try:
         status_ret = passata.status(port=port, name=name, timeout=TOUT)
-        running = status_ret.data["running"] if status_ret.success else False
+        running = is_component_running(status_ret.data) if status_ret.success else False
     except Exception as e:
         logger.warning("Exception during passata.status:", exc_info=e)
         running = False
@@ -356,7 +357,7 @@ def periodic_attrs_update(
 ) -> tuple[dict[str, Any], str, str]:
     try:
         status_ret = passata.status(port=port, name=name, timeout=TOUT)
-        running = status_ret.data["running"] if status_ret.success else False
+        running = is_component_running(status_ret.data) if status_ret.success else False
     except Exception as e:
         logger.warning("Exception during passata.status:", exc_info=e)
         running = False
