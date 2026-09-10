@@ -74,7 +74,8 @@ def build_2d(
     }
 
 
-def build_err(times, name) -> dict:
+def build_err(times, name, prefix) -> dict:
+    name = name if prefix is None else f"{prefix}/{name}"
     return {
         "type": "scatter",
         "x": [times[0], times[-1]],
@@ -91,6 +92,7 @@ def build_traces(
     y_vars: list[str],
     mode: str = "lines+markers",
     relative: bool = False,
+    compact: bool = False,
     prefix: str | None = None,
 ) -> list[dict]:
     """Builds Plotly scatter traces for the given data_var keys, exploding
@@ -99,7 +101,11 @@ def build_traces(
     several datasets together, where the same variable name could otherwise
     collide across datasets."""
     x = ds["coords"][x_var]["data"]
-    times, _ = format_timeseries_x(ds["coords"]["uts"]["data"], relative=relative)
+    times, _ = format_timeseries_x(
+        ds["coords"]["uts"]["data"],
+        relative=relative,
+        compact=compact,
+    )
 
     traces = []
     for y_name in y_vars:
@@ -111,7 +117,7 @@ def build_traces(
         elif len(y_dims) == 2 and x_var != "uts":
             traces.append(build_1d(x, y[-1], times, mode, x_var, y_name, prefix))
         elif len(y_dims) == 2 and len(y_vars) > 1:
-            traces.append(build_err(times, y_name))
+            traces.append(build_err(times, y_name, prefix))
             logger.warning(
                 "Cannot plot multiple variables %s together with a heatmap: %s",
                 y_vars,
@@ -129,7 +135,7 @@ def build_traces(
                 z_d = y
             traces.append(build_2d(times, y_d, z_d, x_var, y_name, z_var))
         elif len(y_dims) > 2:
-            traces.append(build_err(times, y_name))
+            traces.append(build_err(times, y_name, prefix))
             logger.warning(
                 "Cannot plot multi-dimensional (%s) variable: %s", y_dims, y_name
             )

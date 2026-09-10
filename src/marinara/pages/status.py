@@ -493,11 +493,11 @@ def render_dashboard_graph_traces(
 ) -> dash.Patch:
     traces = []
     for cname, comp_ds in (historical_data or {}).get("components", {}).items():
-        formatted_x, _ = plotting.format_timeseries_x(
-            comp_ds["coords"]["uts"]["data"], compact=True
+        traces.extend(
+            plotting.build_traces(
+                comp_ds, "uts", list(comp_ds["data_vars"]), compact=True, prefix=cname
+            )
         )
-        keys = list(comp_ds["data_vars"])
-        traces.extend(plotting.build_traces(comp_ds, keys, formatted_x, prefix=cname))
     return plotting.patch_traces(prev_figure, traces)
 
 
