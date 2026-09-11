@@ -7,15 +7,8 @@ import pint
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
 from tomato import passata
 
-from marinara import plotting
-from marinara.utils import (
-    TOUT,
-    format_constraint,
-    get_attrs_vals,
-    get_unit_str,
-    is_component_running,
-    update_datastore,
-)
+from marinara import plotting, utils
+from marinara.utils import TOUT
 
 logger = logging.getLogger(__name__)
 dash.register_page(__name__, path_template="/components/<port>/<name>")
@@ -33,7 +26,10 @@ def layout(port: int, name: str, **_) -> list:
     # Safely fetch initial state of the component
     try:
         status_ret = passata.status(port=port, name=name, timeout=TOUT)
-        running = is_component_running(status_ret.data) if status_ret.success else False
+        if status_ret.success:
+            running = utils.is_component_running(status_ret.data)
+        else:
+            running = False
     except Exception as e:
         logger.warning("Exception during passata.status:", exc_info=e)
         running = False
@@ -48,7 +44,7 @@ def layout(port: int, name: str, **_) -> list:
         logger.warning("Exception during passata.attrs:", exc_info=e)
         attrs_dict = {}
 
-    avals_dict = get_attrs_vals(port=port, name=name, attrs=list(attrs_dict))
+    avals_dict = utils.get_attrs_vals(port=port, name=name, attrs=list(attrs_dict))
 
     # Initialize store datasets
     init_attrs_vals = {}
@@ -119,7 +115,7 @@ def layout(port: int, name: str, **_) -> list:
     # Build attribute row layout
     attr_rows = []
     for k, v in attrs_dict.items():
-        unit_str = get_unit_str(v.units)
+        unit_str = utils.get_unit_str(v.units)
         val = init_attrs_vals.get(k)
 
         # Build widget based on read-write / options
@@ -151,9 +147,9 @@ def layout(port: int, name: str, **_) -> list:
         # Display constraints helper
         constraints = []
         if v.minimum is not None:
-            constraints.append(f"min: {format_constraint(v.minimum, v.units)}")
+            constraints.append(f"min: {utils.format_constraint(v.minimum, v.units)}")
         if v.maximum is not None:
-            constraints.append(f"max: {format_constraint(v.maximum, v.units)}")
+            constraints.append(f"max: {utils.format_constraint(v.maximum, v.units)}")
         constraints_str = f" ({', '.join(constraints)})" if constraints else ""
 
         if v.rw:
@@ -344,12 +340,15 @@ def periodic_attrs_update(
 ) -> tuple[dict[str, Any], str, str]:
     try:
         status_ret = passata.status(port=port, name=name, timeout=TOUT)
-        running = is_component_running(status_ret.data) if status_ret.success else False
+        if status_ret.success:
+            running = utils.is_component_running(status_ret.data)
+        else:
+            running = False
     except Exception as e:
         logger.warning("Exception during passata.status:", exc_info=e)
         running = False
 
-    avals_dict = get_attrs_vals(port=port, name=name, attrs=list(current_vals))
+    avals_dict = utils.get_attrs_vals(port=port, name=name, attrs=list(current_vals))
 
     new_vals = {}
     for k in current_vals:
@@ -410,7 +409,7 @@ def set_component_attribute(
     if ret.success:
         return ret.data
     # If set_attr returned success=False, fetch current value to revert
-    current = get_attrs_vals(port=port, name=name, attrs=[k]).get(k)
+    current = utils.get_attrs_vals(port=port, name=name, attrs=[k]).get(k)
     return current
 
 
@@ -425,7 +424,7 @@ def set_component_attribute(
 def component_data_update(
     port: int, name: str, data: dict | None, _: int
 ) -> dict | dash.NoUpdate | None:
-    return update_datastore(port=port, name=name, datastore=data)
+    return utils.update_datastore(port=port, name=name, datastore=data)
 
 
 def group_by_unit(ds: dict) -> dict[str, list[str]]:
@@ -434,7 +433,7 @@ def group_by_unit(ds: dict) -> dict[str, list[str]]:
     groups = {}
     for key in ds["data_vars"]:
         raw_unit: str = ds["data_vars"][key].get("attrs", {}).get("units", "")
-        label = get_unit_str(raw_unit)
+        label = utils.get_unit_str(raw_unit)
         groups.setdefault(label, []).append(key)
     return groups
 

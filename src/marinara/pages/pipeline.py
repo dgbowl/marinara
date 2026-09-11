@@ -6,15 +6,8 @@ import pint
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html, set_props
 from tomato import passata, tomato
 
-from marinara.utils import (
-    TOUT,
-    format_constraint,
-    get_attrs_vals,
-    get_unit_str,
-    is_component_running,
-    pretty,
-    update_datastore,
-)
+from marinara import utils
+from marinara.utils import TOUT
 
 logger = logging.getLogger(__name__)
 
@@ -276,9 +269,10 @@ def create_content_div(port: int, name: str) -> list[html.Div]:
 
         try:
             status_ret = passata.status(port=port, name=cname, timeout=TOUT)
-            is_running = (
-                is_component_running(status_ret.data) if status_ret.success else False
-            )
+            if status_ret.success:
+                is_running = utils.is_component_running(status_ret.data)
+            else:
+                is_running = False
         except Exception as e:
             logger.warning("Exception during passata.status:", exc_info=e)
             is_running = False
@@ -312,7 +306,7 @@ def create_content_div(port: int, name: str) -> list[html.Div]:
             logger.warning("caught Exception during passata.attrs:", exc_info=e)
             attrs = {}
 
-        avals = get_attrs_vals(port=port, name=cname, attrs=list(attrs))
+        avals = utils.get_attrs_vals(port=port, name=cname, attrs=list(attrs))
         attrs_vals_store[cname] = {
             k: str(v.m if isinstance(v, pint.Quantity) else v) for k, v in avals.items()
         }
@@ -332,16 +326,16 @@ def create_content_div(port: int, name: str) -> list[html.Div]:
         for attr, params in attrs.items():
             val = avals.get(attr)
             value = str(val.m if isinstance(val, pint.Quantity) else val)
-            units_str = get_unit_str(params.units)
+            units_str = utils.get_unit_str(params.units)
 
             constraints = []
             if params.minimum is not None:
                 constraints.append(
-                    f"min: {format_constraint(params.minimum, params.units)}"
+                    f"min: {utils.format_constraint(params.minimum, params.units)}"
                 )
             if params.maximum is not None:
                 constraints.append(
-                    f"max: {format_constraint(params.maximum, params.units)}"
+                    f"max: {utils.format_constraint(params.maximum, params.units)}"
                 )
             constraints_str = f" ({', '.join(constraints)})" if constraints else ""
 
@@ -405,9 +399,7 @@ def create_content_div(port: int, name: str) -> list[html.Div]:
         if data is not None:
             for key in data.data_vars:
                 units = data[key].attrs.get("units", "")
-
-                units_str = get_unit_str(units)
-
+                units_str = utils.get_unit_str(units)
                 div_data_ch.append(
                     html.Div(
                         children=[
@@ -519,7 +511,7 @@ def component_attr_interaction(
         )
         if not ret.success:
             logger.warning("ret=%s", str(ret))
-        current = get_attrs_vals(port=port, name=cname, attrs=[attr]).get(attr)
+        current = utils.get_attrs_vals(port=port, name=cname, attrs=[attr]).get(attr)
         return str(current)
 
     return dash.no_update
@@ -617,7 +609,7 @@ def components_periodic_update_attrs_vals_store(
         if cmp not in avals or cmp not in aunits:
             continue
         newdata[cmp] = {}
-        nvals = get_attrs_vals(port=port, name=cmp, attrs=list(avals[cmp]))
+        nvals = utils.get_attrs_vals(port=port, name=cmp, attrs=list(avals[cmp]))
         nvals = {
             k: str(v.m if isinstance(v, pint.Quantity) else v) for k, v in nvals.items()
         }
@@ -650,7 +642,7 @@ def components_periodic_update_params_store(
     for cname in cmps:
         try:
             ret = passata.status(port=port, name=cname, timeout=TOUT).data
-            newparams[cname] = is_component_running(ret)
+            newparams[cname] = utils.is_component_running(ret)
         except Exception as e:
             logger.warning("Exception during passata.status:", exc_info=e)
             newparams[cname] = False
@@ -820,7 +812,7 @@ def components_update_param_display(
 )
 def update_component_stores(n_intervals: int, port: int, id: dict, data: dict | None):
     logger.debug("updating store '%s'", id["index"])
-    return update_datastore(port=port, name=id["index"], datastore=data)
+    return utils.update_datastore(port=port, name=id["index"], datastore=data)
 
 
 @callback(
@@ -843,7 +835,7 @@ def components_update_data_display(
         vcname, vattr = vid["index"].split("/")
         if vcname != cname:
             continue
-        val = pretty(cdata["data_vars"][vattr]["data"][-1])
+        val = utils.pretty(cdata["data_vars"][vattr]["data"][-1])
         if val != vals[vi]:
             nvals[vi] = val
     return nvals
