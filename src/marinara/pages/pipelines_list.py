@@ -89,11 +89,10 @@ def update_pipelines(n_clicks: int, port: int) -> html.Div:
                     comp_title = dcc.Link(
                         cname,
                         href=f"/components/{port}/{cname}",
+                        className="entity-link",
                         style={
                             "font-size": "15px",
                             "font-weight": "700",
-                            "text-decoration": "none",
-                            "color": "var(--accent-color)",
                         },
                     )
 
@@ -184,11 +183,10 @@ def update_pipelines(n_clicks: int, port: int) -> html.Div:
                                 dcc.Link(
                                     name,
                                     href=f"/pipelines/{port}/{name}",
+                                    className="entity-link",
                                     style={
                                         "font-size": "18px",
                                         "font-weight": "700",
-                                        "text-decoration": "none",
-                                        "color": "var(--accent-color)",
                                     },
                                 ),
                                 html.Span(

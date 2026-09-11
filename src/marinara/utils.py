@@ -115,20 +115,20 @@ def format_obj(obj, headers, attrs, otype, port) -> html.Div:
             title_el = dcc.Link(
                 name_str,
                 href=f"/{path_type}/{port}/{name_str}",
+                className="entity-link",
                 style={
                     "font-size": "18px",
                     "font-weight": "700",
-                    "text-decoration": "none",
-                    "color": "var(--accent-color)",
                 },
             )
         else:
+            # Not a link, so use the plain text color instead of the accent color
             title_el = html.Span(
                 name_str,
                 style={
                     "font-size": "18px",
                     "font-weight": "700",
-                    "color": "var(--accent-color)",
+                    "color": "var(--text-color)",
                 },
             )
 
