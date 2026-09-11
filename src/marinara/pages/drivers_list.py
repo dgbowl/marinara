@@ -5,7 +5,7 @@ from dash import Input, Output, State, callback, html
 from tomato import tomato
 
 from marinara.icons import get_icon
-from marinara.utils import format_obj, kwargs
+from marinara.utils import TOUT, format_obj
 
 logger = logging.getLogger(__name__)
 dash.register_page(__name__, path="/drivers", title="Drivers")
@@ -50,7 +50,7 @@ layout = html.Div(
 )
 def update_drivers(n_clicks: int, port: int) -> html.Div:
     try:
-        ret = tomato.status(stgrp="tomato", port=port, **kwargs)
+        ret = tomato.status(stgrp="tomato", port=port, timeout=TOUT)
         if not ret.success:
             logger.warning("tomato.status returned failure: %s", ret.msg)
             return html.Div(
@@ -58,7 +58,8 @@ def update_drivers(n_clicks: int, port: int) -> html.Div:
                 className="text-secondary",
                 style={"text-align": "center", "padding": "20px"},
             )
-        drvs = ret.data.drvs
+        drvs_ret = tomato.status(stgrp="drivers", port=port, timeout=TOUT)
+        drvs = drvs_ret.data if drvs_ret.success else {}
         return format_obj(
             obj=drvs,
             headers=["Driver Name", "Version", "Port", "Process ID (PID)"],

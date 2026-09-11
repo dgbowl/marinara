@@ -3,10 +3,10 @@ import logging
 
 import dash
 from dash import Input, Output, State, callback, html
-from tomato import ketchup
+from tomato import ketchup, tomato
 
 from marinara.icons import get_icon
-from marinara.utils import clean_data, kwargs
+from marinara.utils import clean_data
 
 logger = logging.getLogger(__name__)
 dash.register_page(__name__, path="/jobs", title="Jobs")
@@ -59,7 +59,14 @@ layout = html.Div(
 )
 def update_jobs_list(n_clicks, port):
     try:
-        ret = ketchup.status(port=port, verbosity=20, jobids=[], **kwargs)
+        daemon_ret = tomato.status(stgrp="tomato", port=port, timeout=1000)
+        if not daemon_ret.success:
+            return html.Div(
+                f"Tomato status error: {daemon_ret.msg}",
+                className="text-secondary",
+                style={"text-align": "center", "padding": "20px"},
+            )
+        ret = ketchup.status(daemon=daemon_ret.data, jobids=[])  # ty: ignore[invalid-argument-type]
         if not ret.success:
             if ret.msg == "job queue is empty":
                 return html.Div(

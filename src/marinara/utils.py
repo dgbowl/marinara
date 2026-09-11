@@ -1,15 +1,13 @@
 import logging
 from typing import Any
 
+import dash
 import pint
-import zmq
 from dash import dcc, html
 from tomato import passata
 
 PORT = 1234
 TOUT = 1000
-CTXT = zmq.Context()
-kwargs = {"timeout": TOUT, "context": CTXT}
 logger = logging.getLogger(__name__)
 
 
@@ -24,28 +22,23 @@ def get_field(obj: Any, key: str, default: Any = None) -> Any:
     return default
 
 
-def clean_value(val: Any) -> Any:
+def is_component_running(status_data: Any) -> bool:
     """
-    Coerces Pint Quantity objects and numpy types to standard serializable types.
-
-    Sequential if/elif is avoided here because the conversions can be chained:
-    1. If the value is a Pint Quantity, we extract its magnitude using .magnitude or .m.
-    2. After this extraction, the resulting value might be a numpy type (like a numpy scalar).
-       We then check if it has the .item() method to convert it to a standard Python scalar
-       for proper JSON serialization in Dash's dcc.Store.
+    Returns whether a component is actively running, supporting both the
+    driverinterface_2_1 dict-based status (with a plain "running" key) and the
+    driverinterface_3_0 Status object (with "state" and "connected" fields).
     """
-    if hasattr(val, "magnitude"):
-        val = val.magnitude
-    elif hasattr(val, "m"):
-        val = val.m
-
-    if hasattr(val, "item") and callable(val.item):
-        val = val.item()
-    return val
+    if isinstance(status_data, dict):
+        return bool(status_data.get("running", False))
+    state = getattr(status_data, "state", None)
+    if state is not None:
+        return state in ("meas", "task")
+    return bool(getattr(status_data, "connected", False))
 
 
 def clean_data(d: Any) -> Any:
-    """Recursively cleans values in dictionaries, lists, and tuples."""
+    """Recursively walks dicts, lists, and tuples (no-op at the leaves now that
+    clean_value has been removed - kept only to see what breaks without it)."""
     if isinstance(d, dict):
         return {k: clean_data(v) for k, v in d.items()}
     elif isinstance(d, list):
@@ -53,7 +46,7 @@ def clean_data(d: Any) -> Any:
     elif isinstance(d, tuple):
         return tuple(clean_data(v) for v in d)
     else:
-        return clean_value(d)
+        return d
 
 
 def get_unit_str(units: str | Any | None) -> str:
@@ -89,28 +82,13 @@ def format_constraint(val: Any, base_unit: str) -> str:
                 val = val.to(base_unit)
             except pint.errors.DimensionalityError:
                 logger.error("could not convert val '%s' to unit '%s'", val, base_unit)
-        mag = clean_value(val)
+        mag = val
         u_str = get_unit_str(val.units)
         return f"{mag} {u_str}" if u_str else str(mag)
     else:
-        mag = clean_value(val)
+        mag = val
         u_str = get_unit_str(base_unit)
         return f"{mag} {u_str}" if u_str else str(mag)
-
-
-def theme_plot_colors(theme: str) -> dict:
-    """Shared Plotly template/background/font settings driven by the light/dark theme."""
-    is_dark = theme == "dark"
-    return {
-        "template": "plotly_dark" if is_dark else "plotly",
-        "paper_bgcolor": "rgba(0,0,0,0)",
-        "plot_bgcolor": "rgba(0,0,0,0)",
-        "font": {"color": "#ffffff" if is_dark else "#212529"},
-    }
-
-
-def theme_gridcolor(theme: str) -> str:
-    return "rgba(255,255,255,0.08)" if theme == "dark" else "rgba(0,0,0,0.08)"
 
 
 def format_obj(obj, headers, attrs, otype, port) -> html.Div:
@@ -248,7 +226,7 @@ def format_obj(obj, headers, attrs, otype, port) -> html.Div:
 
 
 def get_attrs_vals(port: int, name: str, attrs: list[str]) -> dict[str, Any]:
-    ret = passata.get_attrs(**kwargs, port=port, name=name, attrs=attrs)  # ty: ignore[invalid-argument-type]
+    ret = passata.get_attrs(port=port, name=name, attrs=attrs, timeout=TOUT)
     if ret.success and ret.data is not None:
         vals: dict = ret.model_dump()["data"]
     else:
@@ -265,3 +243,44 @@ def pretty(val: Any) -> str:
         except (TypeError, pint.UndefinedUnitError):
             ret = str(val)
     return ret
+
+
+def update_datastore(
+    port: int,
+    name: str,
+    datastore: dict | None,
+    cap: int | None = None,
+) -> dict | dash.NoUpdate | None:
+    ret = passata.get_last_data(port=port, name=name, timeout=TOUT)
+    logger.debug("ret=%s", str(ret))
+    if not ret.success:
+        return dash.no_update
+    if datastore is None and ret.data is None:
+        return dash.no_update
+    elif ret.data is None:
+        logger.warning("passata.get_last_data returned no data, erasing data store")
+        return None
+
+    ndata = ret.data.to_dict()
+    # Simply return data if first load.
+    if datastore is None:
+        return ndata
+    # Do not update if timestamp is already present.
+    uts = ndata["coords"]["uts"]["data"][0]
+    if uts in datastore["coords"]["uts"]["data"]:
+        return dash.no_update
+    # Go through data_vars and append last datapoint.
+    datastore["coords"]["uts"]["data"].append(uts)
+    for k, v in ndata["data_vars"].items():
+        datastore["data_vars"][k]["data"].append(v["data"][0])
+    datastore["dims"]["uts"] = len(datastore["coords"]["uts"]["data"])
+    if cap is not None and datastore["dims"]["uts"] > cap:
+        overflow = datastore["dims"]["uts"] - cap
+        datastore["coords"]["uts"]["data"] = datastore["coords"]["uts"]["data"][
+            overflow:
+        ]
+        for v in datastore["data_vars"].values():
+            v["data"] = v["data"][overflow:]
+        datastore["dims"]["uts"] = cap
+    logger.debug("datastore=%s", str(datastore))
+    return datastore

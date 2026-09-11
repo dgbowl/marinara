@@ -5,7 +5,7 @@ from dash import Input, Output, State, callback, html
 from tomato import tomato
 
 from marinara.icons import get_icon
-from marinara.utils import format_obj, kwargs
+from marinara.utils import TOUT, format_obj
 
 logger = logging.getLogger(__name__)
 dash.register_page(__name__, path="/devices", title="Devices")
@@ -50,7 +50,7 @@ layout = html.Div(
 )
 def update_devices(n_clicks: int, port: int) -> html.Div:
     try:
-        ret = tomato.status(stgrp="tomato", port=port, **kwargs)
+        ret = tomato.status(stgrp="tomato", port=port, timeout=TOUT)
         if not ret.success:
             logger.warning("tomato.status returned failure: %s", ret.msg)
             return html.Div(
@@ -58,7 +58,7 @@ def update_devices(n_clicks: int, port: int) -> html.Div:
                 className="text-secondary",
                 style={"text-align": "center", "padding": "20px"},
             )
-        devs = ret.data.devs
+        devs = ret.data.devicefile.devices
         return format_obj(
             obj=devs,
             headers=["Device Name", "Driver", "Address", "Channels"],

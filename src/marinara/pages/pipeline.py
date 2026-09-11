@@ -2,17 +2,17 @@ import logging
 from typing import Any
 
 import dash
-from dash import MATCH, Input, Output, State, callback, dcc, html, set_props
+from dash import ALL, MATCH, Input, Output, State, callback, dcc, html, set_props
 from tomato import passata, tomato
-from tomato.passata import get_attrs
 
 from marinara.utils import (
-    clean_value,
+    TOUT,
     format_constraint,
     get_attrs_vals,
     get_field,
     get_unit_str,
-    kwargs,
+    is_component_running,
+    update_datastore,
 )
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,6 @@ def create_header_div(port: int, name: str) -> html.Div:
             dcc.Store(id="store-pipeline-component-attrs-vals", data=None),
             dcc.Store(id="store-pipeline-component-attrs-units", data=None),
             dcc.Store(id="store-pipeline-component-attrs-rw", data=None),
-            dcc.Store(id="store-pipeline-component-data", data=None),
             dcc.Interval(id="interval-pipeline-content", interval=2000),
         ],
         className="header-store",
@@ -113,7 +112,12 @@ def object_from_attrs(cname, attr, params, value) -> dcc.Dropdown | dcc.Input:
 )
 def create_content_div(port: int, name: str) -> html.Div:
     try:
-        pip_ret = tomato.status(**kwargs, port=port, stgrp="pipelines")
+        cfg_ret = tomato.status(port=port, stgrp="tomato", timeout=TOUT)
+        pip_ret = tomato.status(port=port, stgrp="pipelines", timeout=TOUT)
+        if cfg_ret.success and name in cfg_ret.data.devicefile.pipelines:
+            pip_components = cfg_ret.data.devicefile.pipelines[name].components
+        else:
+            pip_components = []
         pip = pip_ret.data[name] if pip_ret.success else None
     except Exception as e:
         logger.warning("Exception during tomato.status:", exc_info=e)
@@ -126,9 +130,9 @@ def create_content_div(port: int, name: str) -> html.Div:
         "store-pipeline-params",
         {
             "data": {
-                "jobid": pip.jobid,
-                "sampleid": str(pip.sampleid) if pip.sampleid is not None else "",
-                "ready": ["ready"] if pip.ready else [],
+                "jobid": pip.get("jobid"),
+                "sampleid": pip.get("sampleid", ""),
+                "ready": ["ready"] if pip.get("ready", False) else [],
             }
         },
     )
@@ -147,7 +151,7 @@ def create_content_div(port: int, name: str) -> html.Div:
             dcc.Input(
                 id="pipeline-input-jobid",
                 type="number",
-                value=pip.jobid,
+                value=pip.get("jobid"),
                 disabled=True,
                 className="top-card-input",
                 style={"width": "100%", "height": "36px"},
@@ -176,7 +180,7 @@ def create_content_div(port: int, name: str) -> html.Div:
             dcc.Input(
                 id="pipeline-input-sampleid",
                 type="text",
-                value=str(pip.sampleid) if pip.sampleid is not None else "",
+                value=pip.get("sampleid", ""),
                 debounce=True,
                 className="top-card-input",
                 style={"width": "100%", "height": "36px"},
@@ -212,7 +216,7 @@ def create_content_div(port: int, name: str) -> html.Div:
             ),
             dcc.Checklist(
                 options=[{"label": " Ready", "value": "ready"}],
-                value=["ready"] if pip.ready else [],
+                value=["ready"] if pip.get("ready", False) else [],
                 id="pipeline-input-ready",
                 style={
                     "display": "inline-block",
@@ -239,18 +243,20 @@ def create_content_div(port: int, name: str) -> html.Div:
     attrs_rw_store = {}
     components = []
 
-    for cname in pip.components:
+    # pip_components maps role name -> real component name (e.g. "counter" -> "example_counter:(addr,1)").
+    # We need the real component names (the values) to look components up below, not the role names (the keys).
+    for role, cname in pip_components.items():
         try:
-            cmp = tomato.status(**kwargs, port=port, stgrp="components").data[cname]
+            cmp = tomato.status(port=port, stgrp="components", timeout=TOUT).data[cname]
         except Exception as e:
             logger.warning("Exception during tomato.status:", exc_info=e)
             continue
 
         div_info = html.Div(
             children=[
-                html.H4(f"Component: {cmp.name}", style={"margin": "0 0 5px 0"}),
+                html.H4(f"Component: {cmp.get('name')}", style={"margin": "0 0 5px 0"}),
                 html.Div(
-                    f"Role: {cmp.role} | Address: {cmp.address!r} | Channel: {cmp.channel!r}",
+                    f"Role: {role} | Address: {cfg_ret.data.devicefile.components.get(cname).address!r} | Channel: {cfg_ret.data.devicefile.components.get(cname).channel!r}",
                     className="text-secondary",
                     style={"font-size": "12px"},
                 ),
@@ -264,16 +270,16 @@ def create_content_div(port: int, name: str) -> html.Div:
         )
 
         try:
-            status_ret = passata.status(**kwargs, port=port, name=cname)
-            status = status_ret.data if status_ret.success else {"running": False}
+            status_ret = passata.status(port=port, name=cname, timeout=TOUT)
+            is_running = (
+                is_component_running(status_ret.data) if status_ret.success else False
+            )
         except Exception as e:
             logger.warning("Exception during passata.status:", exc_info=e)
-            status = {"running": False}
+            is_running = False
 
-        badge_class = (
-            "badge badge-success" if status["running"] else "badge badge-secondary"
-        )
-        badge_text = "RUNNING" if status["running"] else "STOPPED"
+        badge_class = "badge badge-success" if is_running else "badge badge-secondary"
+        badge_text = "RUNNING" if is_running else "STOPPED"
 
         div_status = html.Div(
             children=[
@@ -290,16 +296,16 @@ def create_content_div(port: int, name: str) -> html.Div:
             className="block",
             style={"margin-bottom": "12px"},
         )
-        running_store[cname] = status["running"]
+        running_store[cname] = is_running
         try:
-            attrs_ret = passata.attrs(**kwargs, port=port, name=cname)
+            attrs_ret = passata.attrs(port=port, name=cname, timeout=TOUT)
             attrs = attrs_ret.data if attrs_ret.success else {}
         except Exception as e:
             logger.warning("caught Exception during passata.attrs:", exc_info=e)
             attrs = {}
 
         avals = get_attrs_vals(port=port, name=cname, attrs=list(attrs))
-        attrs_vals_store[cname] = {k: clean_value(v) for k, v in avals.items()}
+        attrs_vals_store[cname] = avals
         attrs_units_store[cname] = {k: get_field(attrs[k], "units") for k in attrs}
         attrs_rw_store[cname] = {k: get_field(attrs[k], "rw", False) for k in attrs}
 
@@ -315,7 +321,7 @@ def create_content_div(port: int, name: str) -> html.Div:
         ]
         for attr, params in attrs.items():
             is_rw = get_field(params, "rw", False)
-            value = clean_value(avals.get(attr))
+            value = avals.get(attr)
             units = get_unit_str(get_field(params, "units"))
 
             min_val = get_field(params, "minimum")
@@ -372,7 +378,7 @@ def create_content_div(port: int, name: str) -> html.Div:
         )
 
         try:
-            data_ret = passata.get_last_data(**kwargs, port=port, name=cname)
+            data_ret = passata.get_last_data(port=port, name=cname, timeout=TOUT)
             data = data_ret.data if data_ret.success else None
         except Exception as e:
             logger.warning("Exception during passata.get_last_data:", exc_info=e)
@@ -390,11 +396,8 @@ def create_content_div(port: int, name: str) -> html.Div:
         ]
         if data is not None:
             for key in data.data_vars:
-                value = clean_value(data[key].values[-1])
                 units = data[key].attrs.get("units", "")
 
-                if isinstance(value, float):
-                    value = round(value, 3)
                 units_str = get_unit_str(units)
 
                 div_data_ch.append(
@@ -407,7 +410,7 @@ def create_content_div(port: int, name: str) -> html.Div:
                                     "index": f"{cname}/{key}",
                                 },
                                 disabled=True,
-                                value=value,
+                                value=None,
                                 className="attr-control",
                                 style={"width": "200px"},
                             ),
@@ -439,11 +442,18 @@ def create_content_div(port: int, name: str) -> html.Div:
             )
         )
 
-    set_props("store-pipeline-component-names", {"data": pip.components})
+    set_props("store-pipeline-component-names", {"data": list(pip_components.values())})
     set_props("store-pipeline-component-running", {"data": running_store})
     set_props("store-pipeline-component-attrs-vals", {"data": attrs_vals_store})
     set_props("store-pipeline-component-attrs-units", {"data": attrs_units_store})
     set_props("store-pipeline-component-attrs-rw", {"data": attrs_rw_store})
+
+    # Create component stores
+    stores = []
+    for cname in pip_components.values():
+        stores.append(
+            dcc.Store(id={"type": "component-data-store", "index": cname}, data=None)
+        )
 
     children = [
         html.Div(
@@ -464,6 +474,7 @@ def create_content_div(port: int, name: str) -> html.Div:
             },
         ),
         html.Div(children=components, className="pipeline-component-grid"),
+        html.Div(children=stores),
     ]
     return children
 
@@ -497,7 +508,7 @@ def component_attr_interaction(
     if arw[cname][attr] and not disabled:
         ret = passata.set_attr(**kwargs, port=port, name=cname, attr=attr, val=value)
         if ret.success:
-            return clean_value(ret.data)
+            return ret.data
         current = get_attrs_vals(port=port, name=cname, attrs=[attr]).get(attr)
         return current
 
@@ -523,7 +534,7 @@ def pipeline_param_interaction_ready(
 
     if len(values) > 0 and all(values):
         try:
-            ret = tomato.pipeline_ready(**kwargs, port=port, pipeline=name)
+            ret = tomato.pipeline_ready(port=port, pipeline=name, timeout=TOUT)
             if ret.success:
                 set_props("pipeline-ready-error", {"children": ""})
             else:
@@ -552,10 +563,10 @@ def pipeline_param_interaction_ready(
 def pipeline_param_interaction_sampleid(sampleid: str, port: int, name: str) -> None:
     try:
         if sampleid == "":
-            ret = tomato.pipeline_eject(**kwargs, port=port, pipeline=name)
+            ret = tomato.pipeline_eject(port=port, pipeline=name, timeout=TOUT)
         else:
             ret = tomato.pipeline_load(
-                **kwargs, port=port, pipeline=name, sampleid=sampleid
+                port=port, pipeline=name, sampleid=sampleid, timeout=TOUT
             )
         if ret.success:
             set_props("pipeline-sampleid-error", {"children": ""})
@@ -605,47 +616,9 @@ def components_periodic_update_attrs_vals_store(
                     val = val.to(aunits[cmp][key])
                 except Exception as e:
                     logger.warning("Exception during unit conversion:", exc_info=e)
-            newdata[cmp][key] = clean_value(val)
+            newdata[cmp][key] = val
 
     if newdata == avals:
-        return dash.no_update
-    else:
-        return newdata
-
-
-@callback(
-    Output("store-pipeline-component-data", "data"),
-    Input("interval-pipeline-content", "n_intervals"),
-    State("store-pipeline-component-names", "data"),
-    State("store-pipeline-component-data", "data"),
-    State("store-tomato-port", "data"),
-    State("store-pipeline-name", "data"),
-    prevent_initial_call=True,
-)
-def components_periodic_update_data_store(
-    _: int, cmps: list[str] | None, data: dict[str, dict] | None, port: int, name: str
-) -> dict[str, dict] | dash.NoUpdate:
-    if not cmps:
-        return dash.no_update
-    newdata = {}
-    for cmp in cmps:
-        newdata[cmp] = {}
-        try:
-            ds_ret = passata.get_last_data(**kwargs, port=port, name=cmp)
-            ds = ds_ret.data if ds_ret.success else None
-        except Exception as e:
-            logger.warning("Exception during passata.get_last_data:", exc_info=e)
-            ds = None
-
-        if ds is None:
-            continue
-        dd = ds.to_dict()
-        for k, v in dd["coords"].items():
-            newdata[cmp][k] = clean_value(v["data"][-1])
-        for k, v in dd["data_vars"].items():
-            newdata[cmp][k] = clean_value(v["data"][-1])
-
-    if newdata == {} or newdata == data:
         return dash.no_update
     else:
         return newdata
@@ -667,8 +640,8 @@ def components_periodic_update_params_store(
     newparams = {}
     for cname in cmps:
         try:
-            ret = passata.status(**kwargs, port=port, name=cname).data
-            newparams[cname] = ret["running"]
+            ret = passata.status(port=port, name=cname, timeout=TOUT).data
+            newparams[cname] = is_component_running(ret)
         except Exception as e:
             logger.warning("Exception during passata.status:", exc_info=e)
             newparams[cname] = False
@@ -691,11 +664,11 @@ def pipeline_periodic_update_params_store(
     _: int, data: dict | None, port: int, name: str
 ) -> dict | dash.NoUpdate:
     try:
-        pip = tomato.status(**kwargs, port=port, stgrp="pipelines").data[name]
+        pip = tomato.status(port=port, stgrp="pipelines", timeout=TOUT).data[name]
         newdata = {
-            "jobid": pip.jobid,
-            "sampleid": str(pip.sampleid) if pip.sampleid is not None else "",
-            "ready": ["ready"] if pip.ready else [],
+            "jobid": pip.get("jobid"),
+            "sampleid": pip.get("sampleid", ""),
+            "ready": ["ready"] if pip.get("ready", False) else [],
         }
     except Exception as e:
         logger.warning("Exception during tomato.status:", exc_info=e)
@@ -823,27 +796,48 @@ def components_update_param_display(
 
 
 @callback(
-    Output(
-        {"type": "component-data-val", "index": MATCH},
-        "value",
-        allow_duplicate=True,
-    ),
-    Input("store-pipeline-component-data", "data"),
-    State({"type": "component-data-val", "index": MATCH}, "value"),
-    State({"type": "component-data-val", "index": MATCH}, "id"),
+    Output({"type": "component-data-store", "index": MATCH}, "data"),
+    Input("interval-pipeline-content", "n_intervals"),
+    State("store-tomato-port", "data"),
+    State({"type": "component-data-store", "index": MATCH}, "id"),
+    State({"type": "component-data-store", "index": MATCH}, "data"),
+)
+def update_component_stores(n_intervals: int, port: int, id: dict, data: dict | None):
+    logger.debug("updating store '%s'", id["index"])
+    return update_datastore(port=port, name=id["index"], datastore=data)
+
+
+@callback(
+    Output({"type": "component-data-val", "index": ALL}, "value"),
+    Input({"type": "component-data-store", "index": MATCH}, "data"),
+    Input({"type": "component-data-store", "index": MATCH}, "id"),
+    State({"type": "component-data-val", "index": ALL}, "value"),
+    State({"type": "component-data-val", "index": ALL}, "id"),
     prevent_initial_call=True,
 )
 def components_update_data_display(
-    data: dict | None, value: Any, id: dict[str, str]
-) -> Any | dash.NoUpdate:
-    cname, key = id["index"].split("/")
-    if data is None or key not in data.get(cname, {}) or value == data[cname][key]:
-        return dash.no_update
-    else:
-        val = data[cname][key]
+    cdata: dict,
+    cid: dict,
+    vals: Any,
+    vids: dict,
+) -> list[Any | dash.NoUpdate]:
+    nvals: list[Any | dash.NoUpdate] = [dash.no_update for v in vals]
+    cname = cid["index"]
+    for vi, vid in enumerate(vids):
+        vcname, vattr = vid["index"].split("/")
+        if vcname != cname:
+            continue
+        val = cdata["data_vars"][vattr]["data"][-1]
         if isinstance(val, float):
-            val = round(val, 3)
-        return val
+            val = f"{val:,.5g}"
+        elif isinstance(val, list):
+            try:
+                val = f"[{val[0]:.3g}, ··· {val[-1]:.3g}] n={len(val)}"
+            except ValueError:
+                val = f"[{val[0]:5s}, ··· {val[-1]:5s}] n={len(val)}"
+        if val != vals[vi]:
+            nvals[vi] = val
+    return nvals
 
 
 dash.register_page(__name__, path_template="/pipelines/<port>/<name>")
