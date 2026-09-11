@@ -207,7 +207,7 @@ def update_dashboard_stats(
     n_clicks: int,
     port: int,
     current_selector_value: str | None,
-) -> tuple[str, str, str, str, list[dict[str, Any]], str | None, html.Div]:
+) -> tuple[str, str, str, str, list[dict[str, Any]], str | None, html.Div | html.Table]:
     try:
         ret = tomato.status(stgrp="tomato", port=port, timeout=TOUT)
         if not ret.success or ret.data is None:

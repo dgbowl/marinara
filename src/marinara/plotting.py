@@ -58,7 +58,7 @@ def build_1d(
 def build_2d(
     x: list,
     y: list,
-    z: list[list],
+    z: list[list | tuple],
     x_var: str,
     y_var: str,
     z_var: str,
@@ -133,7 +133,7 @@ def build_traces(
                 z_var = y_dims[0]
                 y_d = ds["coords"][z_var]["data"]
                 z_d = y
-            traces.append(build_2d(times, y_d, z_d, x_var, y_name, z_var))
+            traces.append(build_2d(times, y_d, z_d, x_var, y_name, z_var))  # ty: ignore[invalid-argument-type]
         elif len(y_dims) > 2:
             traces.append(build_err(times, y_name, prefix))
             logger.warning(

@@ -1,4 +1,3 @@
-from dash import html
 from dash_svg import Circle, Line, Path, Polyline, Rect, Svg
 
 
@@ -374,4 +373,4 @@ def get_icon(
             ],
         )
 
-    return html.Div()
+    return Svg()

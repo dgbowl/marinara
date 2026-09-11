@@ -104,7 +104,7 @@ def object_from_attrs(cname, attr, params, value) -> dcc.Dropdown | dcc.Input:
     Input("store-tomato-port", "data"),
     Input("store-pipeline-name", "data"),
 )
-def create_content_div(port: int, name: str) -> html.Div:
+def create_content_div(port: int, name: str) -> list[html.Div]:
     try:
         cfg_ret = tomato.status(port=port, stgrp="tomato", timeout=TOUT)
         pip_ret = tomato.status(port=port, stgrp="pipelines", timeout=TOUT)
@@ -125,7 +125,7 @@ def create_content_div(port: int, name: str) -> html.Div:
         pip = None
 
     if not pip:
-        return html.Div("Failed to load pipeline.", className="card")
+        return [html.Div("Failed to load pipeline.", className="card")]
 
     set_props(
         "store-pipeline-params",
@@ -513,7 +513,7 @@ def component_attr_interaction(
     if n_clicks is None:
         return dash.no_update
     cname, attr = id["index"].split("/")
-    if arw[cname][attr] and not disabled:
+    if arw is not None and arw[cname][attr] and not disabled:
         ret = passata.set_attr(
             port=port, name=cname, attr=attr, val=value, timeout=TOUT
         )
@@ -539,7 +539,7 @@ def pipeline_param_interaction_ready(
     port: int,
     name: str,
 ) -> list[str] | dash.NoUpdate:
-    if values == data["ready"]:
+    if data is not None and values == data["ready"]:
         return dash.no_update
 
     if len(values) > 0 and all(values):
@@ -623,11 +623,8 @@ def components_periodic_update_attrs_vals_store(
         }
         for key in avals[cmp]:
             val = nvals.get(key)
-            if hasattr(val, "to") and aunits[cmp].get(key) is not None:
-                try:
-                    val = val.to(aunits[cmp][key])
-                except Exception as e:
-                    logger.warning("Exception during unit conversion:", exc_info=e)
+            if isinstance(val, pint.Quantity) and aunits[cmp].get(key) is not None:
+                val = val.to(aunits[cmp][key])
             newdata[cmp][key] = val
 
     if newdata == avals:
@@ -676,7 +673,11 @@ def pipeline_periodic_update_params_store(
     _: int, data: dict | None, port: int, name: str
 ) -> dict | dash.NoUpdate:
     try:
-        pip = tomato.status(port=port, stgrp="pipelines", timeout=TOUT).data[name]
+        ret = tomato.status(port=port, stgrp="pipelines", timeout=TOUT)
+        if ret.success and ret.data is not None:
+            pip = ret.data[name]
+        else:
+            pip = {}
         newdata = {
             "jobid": pip.get("jobid"),
             "sampleid": pip.get("sampleid", ""),
@@ -684,7 +685,7 @@ def pipeline_periodic_update_params_store(
         }
     except Exception as e:
         logger.warning("Exception during tomato.status:", exc_info=e)
-        newdata = data
+        return dash.no_update
 
     if newdata == data:
         return dash.no_update
@@ -771,10 +772,13 @@ def components_disable_attr_running(
 def pipeline_update_param_display(
     data: dict | None, ready: list[str], sampleid: str | None, jobid: int
 ) -> tuple[Any | dash.NoUpdate, Any | dash.NoUpdate, Any | dash.NoUpdate]:
-    r_val = data["ready"] if data["ready"] != ready else dash.no_update
-    s_val = data["sampleid"] if data["sampleid"] != sampleid else dash.no_update
-    j_val = data["jobid"] if data["jobid"] != jobid else dash.no_update
-    return r_val, s_val, j_val
+    if data is not None:
+        r_val = data["ready"] if data["ready"] != ready else dash.no_update
+        s_val = data["sampleid"] if data["sampleid"] != sampleid else dash.no_update
+        j_val = data["jobid"] if data["jobid"] != jobid else dash.no_update
+        return r_val, s_val, j_val
+    else:
+        return dash.no_update, dash.no_update, dash.no_update
 
 
 @callback(
