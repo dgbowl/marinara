@@ -284,7 +284,8 @@ def update_dashboard_stats(
                 dcc.Link(
                     f"Job #{pip_jobid}",
                     href="/jobs",
-                    style={"font-weight": "600", "color": "var(--accent-color)"},
+                    className="entity-link",
+                    style={"font-weight": "600"},
                 )
                 if pip_jobid
                 else "-"
@@ -299,11 +300,8 @@ def update_dashboard_stats(
                             dcc.Link(
                                 pip_name,
                                 href=f"/pipelines/{port}/{pip_name}",
-                                style={
-                                    "font-weight": "600",
-                                    "color": "var(--accent-color)",
-                                    "text-decoration": "none",
-                                },
+                                className="entity-link",
+                                style={"font-weight": "600"},
                             )
                         ),
                         html.Td(status_badge),
@@ -403,16 +401,18 @@ def update_dashboard_data(
 
             if vals:
                 param_items.append(
-                    html.Div(
+                    dcc.Link(
                         cname,
+                        href=f"/components/{port}/{cname}",
+                        className="entity-link",
                         style={
+                            "display": "block",
                             "font-weight": "700",
                             "font-size": "14px",
                             "margin-top": "12px",
                             "margin-bottom": "6px",
                             "border-bottom": "1px solid var(--border-color)",
                             "padding-bottom": "2px",
-                            "color": "var(--accent-color)",
                         },
                     )
                 )
