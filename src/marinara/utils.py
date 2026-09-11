@@ -241,6 +241,7 @@ def update_datastore(
         return None
 
     ndata = ret.data.to_dict()
+    logger.debug("ndata=%s", str(ndata))
     # Simply return data if first load.
     if datastore is None:
         return ndata

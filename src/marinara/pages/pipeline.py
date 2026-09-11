@@ -108,11 +108,18 @@ def create_content_div(port: int, name: str) -> html.Div:
     try:
         cfg_ret = tomato.status(port=port, stgrp="tomato", timeout=TOUT)
         pip_ret = tomato.status(port=port, stgrp="pipelines", timeout=TOUT)
-        if cfg_ret.success and name in cfg_ret.data.devicefile.pipelines:
+        if (
+            cfg_ret.success
+            and cfg_ret.data is not None
+            and name in cfg_ret.data.devicefile.pipelines
+        ):
             pip_components = cfg_ret.data.devicefile.pipelines[name].components
         else:
-            pip_components = []
-        pip = pip_ret.data[name] if pip_ret.success else None
+            pip_components = {}
+        if pip_ret.success and pip_ret.data is not None:
+            pip = pip_ret.data[name]
+        else:
+            pip = None
     except Exception as e:
         logger.warning("Exception during tomato.status:", exc_info=e)
         pip = None
@@ -241,7 +248,10 @@ def create_content_div(port: int, name: str) -> html.Div:
     # We need the real component names (the values) to look components up below, not the role names (the keys).
     for role, cname in pip_components.items():
         try:
-            cmp = tomato.status(port=port, stgrp="components", timeout=TOUT).data[cname]
+            ret = tomato.status(port=port, stgrp="components", timeout=TOUT)
+            if ret.success and ret.data is not None:
+                cmp = ret.data[cname]
+
         except Exception as e:
             logger.warning("Exception during tomato.status:", exc_info=e)
             continue
@@ -250,7 +260,8 @@ def create_content_div(port: int, name: str) -> html.Div:
             children=[
                 html.H4(f"Component: {cmp.get('name')}", style={"margin": "0 0 5px 0"}),
                 html.Div(
-                    f"Role: {role} | Address: {cfg_ret.data.devicefile.components.get(cname).address!r} | Channel: {cfg_ret.data.devicefile.components.get(cname).channel!r}",
+                    f"Role: {role} | Address: {cmp['address']!r} "
+                    + f"| Channel: {cmp['channel']!r}",
                     className="text-secondary",
                     style={"font-size": "12px"},
                 ),
@@ -506,8 +517,8 @@ def component_attr_interaction(
         ret = passata.set_attr(
             port=port, name=cname, attr=attr, val=value, timeout=TOUT
         )
-        if ret.success:
-            return ret.data
+        if not ret.success:
+            logger.warning("ret=%s", str(ret))
         current = get_attrs_vals(port=port, name=cname, attrs=[attr]).get(attr)
         return str(current)
 
