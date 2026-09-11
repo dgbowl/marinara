@@ -4,11 +4,11 @@ from typing import Any
 import dash
 from dash import Input, Output, State, callback, dcc, html
 from dash_svg.Svg import Svg
-from tomato import passata, tomato
+from tomato import ketchup, passata, tomato
 
-from marinara import plotting
+from marinara import plotting, utils
 from marinara.icons import get_icon
-from marinara.utils import TOUT, get_field, update_datastore
+from marinara.utils import TOUT
 
 logger = logging.getLogger(__name__)
 
@@ -207,12 +207,10 @@ def update_dashboard_stats(
     n_clicks: int,
     port: int,
     current_selector_value: str | None,
-) -> tuple[str, str, str, str, list[dict[str, Any]], str | None, html.Div]:
+) -> tuple[str, str, str, str, list[dict[str, Any]], str | None, html.Div | html.Table]:
     try:
-        from tomato import ketchup
-
         ret = tomato.status(stgrp="tomato", port=port, timeout=TOUT)
-        if not ret.success:
+        if not ret.success or ret.data is None:
             return (
                 "0",
                 "0",
@@ -224,7 +222,7 @@ def update_dashboard_stats(
             )
 
         pips = ret.data.devicefile.pipelines
-        pipret = tomato.status(stgrp="pipelines", port=port, timeout=TOUT)
+        pip_ret = tomato.status(stgrp="pipelines", port=port, timeout=TOUT)
         pips_count = len(pips)
         devs_count = len(ret.data.devicefile.devices)
         drvs_count = len(ret.data.devicefile.drivers)
@@ -240,7 +238,7 @@ def update_dashboard_stats(
         # Resolve active job users
         jobs_ret = ketchup.status(daemon=ret.data, jobids=[])
         jobs_map = {}
-        if jobs_ret.success:
+        if jobs_ret.success and jobs_ret.data is not None:
             for job in jobs_ret.data:
                 user_id = "N/A"
                 if (
@@ -265,7 +263,10 @@ def update_dashboard_stats(
         ]
 
         for pip_name in pips:
-            pstate = pipret.data.get(pip_name, {}) if pipret.success else {}
+            if pip_ret.success and pip_ret.data is not None:
+                pstate = pip_ret.data[pip_name]
+            else:
+                pstate = {}
             pip_jobid = pstate.get("jobid")
             pip_ready = pstate.get("ready", False)
             pip_sampleid = pstate.get("sampleid")
@@ -394,12 +395,11 @@ def update_dashboard_data(
     for cname in pip.components.values():
         try:
             attrs_ret = passata.attrs(port=port, name=cname, timeout=TOUT)
-            attrs_meta = attrs_ret.data if attrs_ret.success else {}
-
-            vals_ret = passata.get_attrs(
-                port=port, name=cname, attrs=list(attrs_meta), timeout=TOUT
-            )
-            vals = vals_ret.data if vals_ret.success else {}
+            if attrs_ret.success and attrs_ret.data is not None:
+                attrs_meta = attrs_ret.data
+            else:
+                attrs_meta = {}
+            vals = utils.get_attrs_vals(port=port, name=cname, attrs=list(attrs_meta))
 
             if vals:
                 param_items.append(
@@ -417,16 +417,13 @@ def update_dashboard_data(
                     )
                 )
                 for k, v in vals.items():
-                    meta = attrs_meta.get(k, {})
-                    unit = get_field(meta, "units", "")
-                    unit_str = f" {unit}" if unit else ""
                     param_items.append(
                         html.Div(
                             className="param-item",
                             children=[
                                 html.Span(f"{k}:", className="param-item-name"),
                                 html.Span(
-                                    f"{v}{unit_str}",
+                                    utils.pretty(v),
                                     className="param-item-val",
                                 ),
                             ],
@@ -443,7 +440,7 @@ def update_dashboard_data(
     # Capped at 50 rows (vs 500 in component.py) - compact overview, not detail view
     for cname in pip.components.values():
         try:
-            comp_ds = update_datastore(
+            comp_ds = utils.update_datastore(
                 port=port,
                 name=cname,
                 datastore=historical_data["components"].get(cname),

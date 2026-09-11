@@ -11,17 +11,6 @@ TOUT = 1000
 logger = logging.getLogger(__name__)
 
 
-def get_field(obj: Any, key: str, default: Any = None) -> Any:
-    """Safely gets a field from an object (attribute or dict) or returns default."""
-    if hasattr(obj, key):
-        val = getattr(obj, key)
-        return val if val is not None else default
-    elif isinstance(obj, dict):
-        val = obj.get(key, default)
-        return val if val is not None else default
-    return default
-
-
 def is_component_running(status_data: Any) -> bool:
     """
     Returns whether a component is actively running, supporting both the
@@ -34,19 +23,6 @@ def is_component_running(status_data: Any) -> bool:
     if state is not None:
         return state in ("meas", "task")
     return bool(getattr(status_data, "connected", False))
-
-
-def clean_data(d: Any) -> Any:
-    """Recursively walks dicts, lists, and tuples (no-op at the leaves now that
-    clean_value has been removed - kept only to see what breaks without it)."""
-    if isinstance(d, dict):
-        return {k: clean_data(v) for k, v in d.items()}
-    elif isinstance(d, list):
-        return [clean_data(v) for v in d]
-    elif isinstance(d, tuple):
-        return tuple(clean_data(v) for v in d)
-    else:
-        return d
 
 
 def get_unit_str(units: str | Any | None) -> str:
@@ -91,7 +67,7 @@ def format_constraint(val: Any, base_unit: str) -> str:
         return f"{mag} {u_str}" if u_str else str(mag)
 
 
-def format_obj(obj, headers, attrs, otype, port) -> html.Div:
+def format_obj(obj: dict, headers, attrs, otype, port) -> html.Div:
     if not obj:
         return html.Div(
             "No registered elements found.",
@@ -138,7 +114,7 @@ def format_obj(obj, headers, attrs, otype, port) -> html.Div:
         # We skip the first attribute (name) because it is the title
         for idx, attr in enumerate(attrs[1:]):
             header_label = headers[idx + 1]
-            val = get_field(v, attr, "")
+            val = v.get(attr, "")
             if isinstance(val, (list, tuple, set)):
                 val_str = ", ".join(str(x) for x in val)
             else:
@@ -180,7 +156,7 @@ def format_obj(obj, headers, attrs, otype, port) -> html.Div:
 
         # If there are capabilities, render them beautifully
         if "capabilities" in attrs:
-            cap_val = get_field(v, "capabilities", [])
+            cap_val = v["capabilities"]
             if cap_val:
                 cap_str = (
                     ", ".join(str(x) for x in cap_val)
@@ -225,6 +201,29 @@ def format_obj(obj, headers, attrs, otype, port) -> html.Div:
     return html.Div(cards, className=container_class)
 
 
+def get_attrs_vals(port: int, name: str, attrs: list[str]) -> dict[str, Any]:
+    ret = passata.get_attrs(port=port, name=name, attrs=attrs, timeout=TOUT)
+    if ret.success and ret.data is not None:
+        vals: dict = ret.model_dump()["data"]
+    else:
+        vals = {}
+    return vals
+
+
+def pretty(val: Any, prec: bool = True) -> str:
+    if isinstance(val, list):
+        ret = f"[{pretty(val[0], False)},··· {pretty(val[-1], False)}] n={len(val)}"
+    else:
+        try:
+            if prec:
+                ret = f"{pint.Quantity(val):.5~gP}"
+            else:
+                ret = f"{pint.Quantity(val):.3~gP}"
+        except (TypeError, pint.UndefinedUnitError):
+            ret = str(val)
+    return ret
+
+
 def update_datastore(
     port: int,
     name: str,
@@ -242,6 +241,7 @@ def update_datastore(
         return None
 
     ndata = ret.data.to_dict()
+    logger.debug("ndata=%s", str(ndata))
     # Simply return data if first load.
     if datastore is None:
         return ndata

@@ -59,7 +59,10 @@ def update_drivers(n_clicks: int, port: int) -> html.Div:
                 style={"text-align": "center", "padding": "20px"},
             )
         drvs_ret = tomato.status(stgrp="drivers", port=port, timeout=TOUT)
-        drvs = drvs_ret.data if drvs_ret.success else {}
+        if drvs_ret.success and drvs_ret.data is not None:
+            drvs = drvs_ret.data
+        else:
+            drvs = {}
         return format_obj(
             obj=drvs,
             headers=["Driver Name", "Version", "Port", "Process ID (PID)"],
