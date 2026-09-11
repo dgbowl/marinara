@@ -57,6 +57,7 @@ def layout(port: int, name: str, **_) -> list:
     init_attrs_vals = {}
     init_attrs_units = {}
     init_attrs_rw = {}
+    init_attrs_status = {}
 
     for k, v in attrs_dict.items():
         val = avals_dict.get(k)
@@ -64,6 +65,7 @@ def layout(port: int, name: str, **_) -> list:
         init_attrs_vals[k] = val
         init_attrs_units[k] = unit
         init_attrs_rw[k] = get_field(v, "rw", False)
+        init_attrs_status[k] = get_field(v, "status", False)
 
     # Status Badge
     if isinstance(running, bool):
@@ -313,6 +315,7 @@ def layout(port: int, name: str, **_) -> list:
         dcc.Store(id="component-attrs-vals-store", data=init_attrs_vals),
         dcc.Store(id="component-attrs-units-store", data=init_attrs_units),
         dcc.Store(id="component-attrs-rw-store", data=init_attrs_rw),
+        dcc.Store(id="component-attrs-status-store", data=init_attrs_status),
         dcc.Store(id="component-graph-tab-store", data=["all"]),
         dcc.Store(id="component-graph-units-store", data=None),
         dcc.Store(id="custom-graphs-list-store", data=[]),
@@ -655,6 +658,7 @@ def render_component_data_graph_layout(
     ),
     Input("component-data-store", "data"),
     State("checkbox-align-time", "value"),
+    State("component-attrs-status-store", "data"),
     State({"type": "component-data-graph", "index": MATCH}, "id"),
     State({"type": "component-data-graph", "index": MATCH}, "figure"),
     prevent_initial_call="initial_duplicate",
@@ -662,6 +666,7 @@ def render_component_data_graph_layout(
 def render_component_data_graph_traces(
     ds: dict | None,
     align_time: list[str],
+    attrs_status: dict,
     graph_id: dict[str, str],
     prev_figure: dict | None,
 ) -> dash.Patch:
@@ -674,7 +679,10 @@ def render_component_data_graph_traces(
     relative = bool(align_time and "relative" in align_time)
 
     if tab == "all":
-        y_vars = list(ds["data_vars"])
+        # Only plot attributes the driver marked status=True (or measured
+        # quantities like `temperature` that aren't in attrs_status at all) -
+        # not every data_var the driver happens to record, e.g. duty_cycle.
+        y_vars = [v for v in ds["data_vars"] if attrs_status.get(v, True)]
     else:
         y_vars = group_by_unit(ds).get(unit_tab_label(tab), [])
 
