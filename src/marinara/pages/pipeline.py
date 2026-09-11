@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 import dash
+import pint
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html, set_props
 from tomato import passata, tomato
 
@@ -9,9 +10,9 @@ from marinara.utils import (
     TOUT,
     format_constraint,
     get_attrs_vals,
-    get_field,
     get_unit_str,
     is_component_running,
+    pretty,
     update_datastore,
 )
 
@@ -70,22 +71,17 @@ def create_header_div(port: int, name: str) -> html.Div:
 
 
 def object_from_attrs(cname, attr, params, value) -> dcc.Dropdown | dcc.Input:
-    options = get_field(params, "options")
-    is_rw = get_field(params, "rw", False)
-
-    if options is not None:
+    if params.options is not None:
         obj = dcc.Dropdown(
             id={
                 "type": "component-attr-val",
                 "index": f"{cname}/{attr}",
             },
-            disabled=not is_rw,
-            options=sorted(options),
+            disabled=not params.rw,
+            options=sorted(params.options),
             value=value,
             clearable=False,
-            className="attr-control mutable-input"
-            if is_rw
-            else "attr-control immutable-input",
+            className=f"attr-control {'im' if not params.rw else ''}mutable-input",
         )
     else:
         obj = dcc.Input(
@@ -93,13 +89,11 @@ def object_from_attrs(cname, attr, params, value) -> dcc.Dropdown | dcc.Input:
                 "type": "component-attr-val",
                 "index": f"{cname}/{attr}",
             },
-            disabled=not is_rw,
+            disabled=not params.rw,
             debounce=True,
             value=value,
             type="text",
-            className="attr-control mutable-input"
-            if is_rw
-            else "attr-control immutable-input",
+            className=f"attr-control {'im' if not params.rw else ''}mutable-input",
         )
     return obj
 
@@ -299,15 +293,20 @@ def create_content_div(port: int, name: str) -> html.Div:
         running_store[cname] = is_running
         try:
             attrs_ret = passata.attrs(port=port, name=cname, timeout=TOUT)
-            attrs = attrs_ret.data if attrs_ret.success else {}
+            if attrs_ret.success and attrs_ret.data is not None:
+                attrs = attrs_ret.data
+            else:
+                attrs = {}
         except Exception as e:
             logger.warning("caught Exception during passata.attrs:", exc_info=e)
             attrs = {}
 
         avals = get_attrs_vals(port=port, name=cname, attrs=list(attrs))
-        attrs_vals_store[cname] = avals
-        attrs_units_store[cname] = {k: get_field(attrs[k], "units") for k in attrs}
-        attrs_rw_store[cname] = {k: get_field(attrs[k], "rw", False) for k in attrs}
+        attrs_vals_store[cname] = {
+            k: str(v.m if isinstance(v, pint.Quantity) else v) for k, v in avals.items()
+        }
+        attrs_units_store[cname] = {k: v.units for k, v in attrs.items()}
+        attrs_rw_store[cname] = {k: v.rw for k, v in attrs.items()}
 
         div_attrs_ch = [
             html.Div(
@@ -320,24 +319,22 @@ def create_content_div(port: int, name: str) -> html.Div:
             )
         ]
         for attr, params in attrs.items():
-            is_rw = get_field(params, "rw", False)
-            value = avals.get(attr)
-            units = get_unit_str(get_field(params, "units"))
+            val = avals.get(attr)
+            value = str(val.m if isinstance(val, pint.Quantity) else val)
+            units_str = get_unit_str(params.units)
 
-            min_val = get_field(params, "minimum")
-            max_val = get_field(params, "maximum")
             constraints = []
-            if min_val is not None:
+            if params.minimum is not None:
                 constraints.append(
-                    f"min: {format_constraint(min_val, get_field(params, 'units'))}"
+                    f"min: {format_constraint(params.minimum, params.units)}"
                 )
-            if max_val is not None:
+            if params.maximum is not None:
                 constraints.append(
-                    f"max: {format_constraint(max_val, get_field(params, 'units'))}"
+                    f"max: {format_constraint(params.maximum, params.units)}"
                 )
             constraints_str = f" ({', '.join(constraints)})" if constraints else ""
 
-            if is_rw:
+            if params.rw:
                 apply_btn = html.Button(
                     "Apply",
                     id={"type": "component-attr-apply-btn", "index": f"{cname}/{attr}"},
@@ -350,7 +347,7 @@ def create_content_div(port: int, name: str) -> html.Div:
                             object_from_attrs(cname, attr, params, value),
                             apply_btn,
                             html.Span(
-                                f" {units}{constraints_str}", className="attr-unit"
+                                f" {units_str}{constraints_str}", className="attr-unit"
                             ),
                         ],
                         id=f"component-{cname}-attr-{attr}",
@@ -365,7 +362,7 @@ def create_content_div(port: int, name: str) -> html.Div:
                             object_from_attrs(cname, attr, params, value),
                             html.Div(style={"width": "66px", "flex-shrink": "0"}),
                             html.Span(
-                                f" {units}{constraints_str}", className="attr-unit"
+                                f" {units_str}{constraints_str}", className="attr-unit"
                             ),
                         ],
                         id=f"component-{cname}-attr-{attr}",
@@ -495,7 +492,7 @@ def create_content_div(port: int, name: str) -> html.Div:
 )
 def component_attr_interaction(
     n_clicks: int,
-    value: Any,
+    value: str,
     id: dict[str, str],
     disabled: bool,
     arw: dict[str, dict[str, bool]] | None,
@@ -506,11 +503,13 @@ def component_attr_interaction(
         return dash.no_update
     cname, attr = id["index"].split("/")
     if arw[cname][attr] and not disabled:
-        ret = passata.set_attr(**kwargs, port=port, name=cname, attr=attr, val=value)
+        ret = passata.set_attr(
+            port=port, name=cname, attr=attr, val=value, timeout=TOUT
+        )
         if ret.success:
             return ret.data
         current = get_attrs_vals(port=port, name=cname, attrs=[attr]).get(attr)
-        return current
+        return str(current)
 
     return dash.no_update
 
@@ -608,7 +607,9 @@ def components_periodic_update_attrs_vals_store(
             continue
         newdata[cmp] = {}
         nvals = get_attrs_vals(port=port, name=cmp, attrs=list(avals[cmp]))
-
+        nvals = {
+            k: str(v.m if isinstance(v, pint.Quantity) else v) for k, v in nvals.items()
+        }
         for key in avals[cmp]:
             val = nvals.get(key)
             if hasattr(val, "to") and aunits[cmp].get(key) is not None:
@@ -827,14 +828,7 @@ def components_update_data_display(
         vcname, vattr = vid["index"].split("/")
         if vcname != cname:
             continue
-        val = cdata["data_vars"][vattr]["data"][-1]
-        if isinstance(val, float):
-            val = f"{val:,.5g}"
-        elif isinstance(val, list):
-            try:
-                val = f"[{val[0]:.3g}, ··· {val[-1]:.3g}] n={len(val)}"
-            except ValueError:
-                val = f"[{val[0]:5s}, ··· {val[-1]:5s}] n={len(val)}"
+        val = pretty(cdata["data_vars"][vattr]["data"][-1])
         if val != vals[vi]:
             nvals[vi] = val
     return nvals

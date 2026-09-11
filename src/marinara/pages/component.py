@@ -12,7 +12,6 @@ from marinara.utils import (
     TOUT,
     format_constraint,
     get_attrs_vals,
-    get_field,
     get_unit_str,
     is_component_running,
     update_datastore,
@@ -41,7 +40,10 @@ def layout(port: int, name: str, **_) -> list:
 
     try:
         attrs_ret = passata.attrs(port=port, name=name, timeout=TOUT)
-        attrs_dict = attrs_ret.data if attrs_ret.success else {}
+        if attrs_ret.success and attrs_ret.data is not None:
+            attrs_dict = attrs_ret.data
+        else:
+            attrs_dict = {}
     except Exception as e:
         logger.warning("Exception during passata.attrs:", exc_info=e)
         attrs_dict = {}
@@ -55,10 +57,9 @@ def layout(port: int, name: str, **_) -> list:
 
     for k, v in attrs_dict.items():
         val = avals_dict.get(k)
-        unit = get_field(v, "units")
-        init_attrs_vals[k] = val.m if isinstance(val, pint.Quantity) else str(val)
-        init_attrs_units[k] = unit
-        init_attrs_rw[k] = get_field(v, "rw", False)
+        init_attrs_vals[k] = str(val.m if isinstance(val, pint.Quantity) else val)
+        init_attrs_units[k] = v.units
+        init_attrs_rw[k] = v.rw
 
     # Status Badge
     if isinstance(running, bool):
@@ -118,18 +119,15 @@ def layout(port: int, name: str, **_) -> list:
     # Build attribute row layout
     attr_rows = []
     for k, v in attrs_dict.items():
-        is_rw = get_field(v, "rw", False)
-        unit = get_field(v, "units")
-        unit_str = get_unit_str(unit)
-        options = get_field(v, "options")
+        unit_str = get_unit_str(v.units)
         val = init_attrs_vals.get(k)
 
         # Build widget based on read-write / options
-        if is_rw:
-            if options:
+        if v.rw:
+            if v.options:
                 control = dcc.Dropdown(
                     id={"type": "component-attr-input", "index": k},
-                    options=sorted(options),
+                    options=sorted(v.options),
                     value=val,
                     clearable=False,
                     className="attr-control mutable-input",
@@ -151,16 +149,14 @@ def layout(port: int, name: str, **_) -> list:
             )
 
         # Display constraints helper
-        min_val = get_field(v, "minimum")
-        max_val = get_field(v, "maximum")
         constraints = []
-        if min_val is not None:
-            constraints.append(f"min: {format_constraint(min_val, unit)}")
-        if max_val is not None:
-            constraints.append(f"max: {format_constraint(max_val, unit)}")
+        if v.minimum is not None:
+            constraints.append(f"min: {format_constraint(v.minimum, v.units)}")
+        if v.maximum is not None:
+            constraints.append(f"max: {format_constraint(v.maximum, v.units)}")
         constraints_str = f" ({', '.join(constraints)})" if constraints else ""
 
-        if is_rw:
+        if v.rw:
             apply_btn = html.Button(
                 "Apply",
                 id={"type": "component-attr-apply-btn", "index": k},
