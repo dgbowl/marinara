@@ -30,7 +30,7 @@ def data_store_update():
 
 
 def periodic_attr_val_update():
-    # Periodic updates for store values
+    # Periodic updates for attr-val store values
     @callback(
         Output({"type": "attr-val", "index": MATCH}, "data"),
         Input("interval", "n_intervals"),
@@ -55,6 +55,7 @@ def periodic_attr_val_update():
 
 
 def update_readwrite_attr():
+    # Change style of attr-apply-btn when attr-input does not match attr-val
     @callback(
         Output({"type": "attr-apply-btn", "index": MATCH}, "class"),
         Input({"type": "attr-val", "index": MATCH}, "data"),

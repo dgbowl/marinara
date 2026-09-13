@@ -662,47 +662,6 @@ def pipeline_periodic_update_params_store(
         return newdata
 
 
-# UI updates triggered by Stores
-@callback(
-    Output(
-        {"type": "attr-input", "index": MATCH},
-        "value",
-        allow_duplicate=True,
-    ),
-    Input("store-pipeline-component-attrs-vals", "data"),
-    State({"type": "attr-input", "index": MATCH}, "value"),
-    State({"type": "attr-input", "index": MATCH}, "id"),
-    State("store-pipeline-component-attrs-rw", "data"),
-    prevent_initial_call=True,
-)
-def components_update_attr_display(
-    avals: dict[str, dict[str, Any]] | None,
-    value: Any,
-    id: dict[str, str],
-    rw: dict[str, dict[str, bool]] | None,
-) -> Any | dash.NoUpdate:
-    if not avals or not id or "index" not in id or not rw:
-        return dash.no_update
-    try:
-        cname, key = id["index"].split("/")
-        if cname not in avals or key not in avals[cname]:
-            return dash.no_update
-        if rw.get(cname, {}).get(key, False):
-            return dash.no_update
-        newval = avals[cname][key]
-    except Exception as e:
-        logger.warning("Exception during components_update_attr_display:", exc_info=e)
-        return dash.no_update
-    if isinstance(newval, float):
-        newval = round(newval, 3)
-    if isinstance(value, float):
-        value = round(value, 3)
-    if newval == value:
-        return dash.no_update
-    else:
-        return newval
-
-
 @callback(
     Output({"type": "attr-input", "index": MATCH}, "disabled"),
     Input("store-pipeline-component-running", "data"),
