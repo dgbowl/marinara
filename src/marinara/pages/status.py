@@ -442,7 +442,7 @@ def update_dashboard_data(
             comp_ds = utils.update_datastore(
                 port=port,
                 name=cname,
-                datastore=historical_data["components"].get(cname),
+                datastore=historical_data["components"].get(cname, {}),
                 cap=50,
             )
             if comp_ds is None:

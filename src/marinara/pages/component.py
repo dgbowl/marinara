@@ -420,8 +420,8 @@ def set_component_attribute(
     Input("interval", "n_intervals"),
 )
 def component_data_update(
-    port: int, name: str, data: dict | None, _: int
-) -> dict | dash.NoUpdate | None:
+    port: int, name: str, data: dict, _: int
+) -> dict | dash.NoUpdate:
     return utils.update_datastore(port=port, name=name, datastore=data)
 
 
@@ -457,10 +457,8 @@ def unit_tab_label(tab: str) -> str:
     State("component-graph-units-store", "data"),
 )
 def update_available_units(
-    ds: dict | None, current_labels: list[str] | None
+    ds: dict, current_labels: list[str] | None
 ) -> list[str] | None | dash.NoUpdate:
-    if ds is None:
-        return dash.no_update if current_labels is None else None
     # Deterministic order: units alphabetically, unitless variables last
     labels = sorted(group_by_unit(ds), key=lambda u: (u == "", u))
     if labels == current_labels:
@@ -571,7 +569,7 @@ def render_component_data_graph_layout(
     theme: str,
     align_time: list[str],
     active_tabs: list[str],
-    ds: dict | None,
+    ds: dict,
     graph_id: dict[str, str],
 ) -> dict | dash.Patch:
     active_tabs = active_tabs or ["all"]
