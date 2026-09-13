@@ -248,7 +248,7 @@ def layout(port: int, name: str, **_) -> list:
             # an Input from the start, instead of referencing an id that
             # doesn't exist yet on first render.
             dcc.Checklist(
-                id="component-graph-tab-checklist",
+                id="data-graph-tab-checklist",
                 options=[],
                 value=["all"],
                 inline=True,
@@ -260,7 +260,7 @@ def layout(port: int, name: str, **_) -> list:
                 },
             ),
             html.Div(
-                id="component-data-graph-container",
+                id="data-graph-container",
                 style={"min-height": "400px"},
             ),
         ],
@@ -300,8 +300,8 @@ def layout(port: int, name: str, **_) -> list:
         # Dashboard Stores
         dcc.Store(id="component-name", data=name),
         dcc.Store(id="data-store", data={}),
-        dcc.Store(id="component-graph-tab-store", data=["all"]),
-        dcc.Store(id="component-graph-units-store", data=None),
+        dcc.Store(id="data-graph-tab-store", data=["all"]),
+        dcc.Store(id="data-graph-units-store", data=None),
         dcc.Store(id="custom-graphs-list-store", data=[]),
         header,
         # Row 1: Attributes & Controls (Left) and Data Graph (Right)
@@ -493,8 +493,8 @@ def update_available_units(
 # lives in the initial layout (see layout()), so only its `options` need
 # updating here, not the whole component.
 @callback(
-    Output("component-graph-tab-checklist", "options"),
-    Input("component-graph-units-store", "data"),
+    Output("data-graph-tab-checklist", "options"),
+    Input("data-graph-units-store", "data"),
 )
 def render_graph_tabs(group_labels: list[str] | None) -> list[dict[str, str]]:
     if group_labels is None:
@@ -510,11 +510,11 @@ def render_graph_tabs(group_labels: list[str] | None) -> list[dict[str, str]]:
 # "All" was checked drops "All". Also prunes any selected unit whose label
 # has dropped out of the live data.
 @callback(
-    Output("component-graph-tab-store", "data"),
-    Output("component-graph-tab-checklist", "value"),
-    Input("component-graph-tab-checklist", "value"),
-    Input("component-graph-units-store", "data"),
-    State("component-graph-tab-store", "data"),
+    Output("data-graph-tab-store", "data"),
+    Output("data-graph-tab-checklist", "value"),
+    Input("data-graph-tab-checklist", "value"),
+    Input("data-graph-units-store", "data"),
+    State("data-graph-tab-store", "data"),
     prevent_initial_call=True,
 )
 def update_active_graph_tab(
@@ -545,8 +545,8 @@ def update_active_graph_tab(
 # separately by render_component_data_graph below, which can patch existing
 # traces in place instead of losing zoom/pan on every tick.
 @callback(
-    Output("component-data-graph-container", "children"),
-    Input("component-graph-tab-store", "data"),
+    Output("data-graph-container", "children"),
+    Input("data-graph-tab-store", "data"),
     State("app-theme-store", "data"),
 )
 def render_component_data_graph_shells(
@@ -561,7 +561,7 @@ def render_component_data_graph_shells(
     graph_gap = "15px" if len(active_tabs) <= 1 else "40px"
     return [
         dcc.Graph(
-            id={"type": "component-data-graph", "index": tab},
+            id={"type": "data-graph", "index": tab},
             # Seeded so Patch() has a figure to apply onto
             figure=plotting.empty_figure("Waiting for data...", theme),
             style={"height": graph_height, "margin-bottom": graph_gap},
@@ -573,14 +573,12 @@ def render_component_data_graph_shells(
 
 # Layout only - traces are patched separately below to preserve zoom/pan
 @callback(
-    Output(
-        {"type": "component-data-graph", "index": MATCH}, "figure", allow_duplicate=True
-    ),
+    Output({"type": "data-graph", "index": MATCH}, "figure", allow_duplicate=True),
     Input("app-theme-store", "data"),
     Input("checkbox-align-time", "value"),
-    Input("component-graph-tab-store", "data"),
+    Input("data-graph-tab-store", "data"),
     State("data-store", "data"),
-    State({"type": "component-data-graph", "index": MATCH}, "id"),
+    State({"type": "data-graph", "index": MATCH}, "id"),
     prevent_initial_call="initial_duplicate",
 )
 def render_component_data_graph_layout(
@@ -635,13 +633,11 @@ def render_component_data_graph_layout(
 
 # Traces only - layout handled above
 @callback(
-    Output(
-        {"type": "component-data-graph", "index": MATCH}, "figure", allow_duplicate=True
-    ),
+    Output({"type": "data-graph", "index": MATCH}, "figure", allow_duplicate=True),
     Input("data-store", "data"),
     State("checkbox-align-time", "value"),
-    State({"type": "component-data-graph", "index": MATCH}, "id"),
-    State({"type": "component-data-graph", "index": MATCH}, "figure"),
+    State({"type": "data-graph", "index": MATCH}, "id"),
+    State({"type": "data-graph", "index": MATCH}, "figure"),
     prevent_initial_call="initial_duplicate",
 )
 def render_component_data_graph_traces(
