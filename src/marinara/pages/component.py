@@ -299,7 +299,7 @@ def layout(port: int, name: str, **_) -> list:
     layout_children = [
         # Dashboard Stores
         dcc.Store(id="component-name", data=name),
-        dcc.Store(id="data-store", data={}),
+        dcc.Store(id={"type": "data-store", "index": name}, data={}),
         dcc.Store(id="data-graph-tab-store", data=["all"]),
         dcc.Store(id="data-graph-units-store", data=None),
         dcc.Store(id="custom-graphs-list-store", data=[]),
@@ -431,16 +431,21 @@ def set_component_attribute(
 
 # Data Store Updater
 @callback(
-    Output("data-store", "data"),
-    State("tomato-port", "data"),
-    State("component-name", "data"),
-    State("data-store", "data"),
+    Output({"type": "data-store", "index": MATCH}, "data"),
     Input("interval", "n_intervals"),
+    State("tomato-port", "data"),
+    State({"type": "data-store", "index": MATCH}, "data"),
+    State({"type": "data-store", "index": MATCH}, "id"),
 )
-def component_data_update(
-    port: int, name: str, data: dict, _: int
+def data_store_update(
+    _: int,
+    port: int,
+    ds: dict,
+    id: dict,
 ) -> dict | dash.NoUpdate:
-    return utils.update_datastore(port=port, name=name, datastore=data)
+    name = id["index"]
+    ret = utils.update_datastore(port=port, name=name, datastore=ds)
+    return ret
 
 
 def group_by_unit(ds: dict) -> dict[str, list[str]]:
@@ -470,18 +475,20 @@ def unit_tab_label(tab: str) -> str:
 # instead of on every ~2s data poll - which would otherwise reset the
 # just-rendered buttons' n_clicks and risk clobbering the active tab.
 @callback(
-    Output("component-graph-units-store", "data"),
-    Input("data-store", "data"),
-    State("component-graph-units-store", "data"),
+    Output("data-graph-units-store", "data"),
+    Input({"type": "data-store", "index": ALL}, "data"),
+    State("data-graph-units-store", "data"),
 )
 def update_available_units(
-    ds: dict, current_labels: list[str] | None
+    datastores: list[dict], current_labels: list[str] | None
 ) -> list[str] | None | dash.NoUpdate:
     # Deterministic order: units alphabetically, unitless variables last
-    labels = sorted(group_by_unit(ds), key=lambda u: (u == "", u))
+    labels = set()
+    for ds in datastores:
+        labels.update(sorted(group_by_unit(ds), key=lambda u: (u == "", u)))
     if labels == current_labels:
         return dash.no_update
-    return labels
+    return list(labels)
 
 
 # Renders the "All" / per-unit tab picker's options as a checklist styled
@@ -577,7 +584,7 @@ def render_component_data_graph_shells(
     Input("app-theme-store", "data"),
     Input("checkbox-align-time", "value"),
     Input("data-graph-tab-store", "data"),
-    State("data-store", "data"),
+    State({"type": "data-store", "index": ALL}, "data"),
     State({"type": "data-graph", "index": MATCH}, "id"),
     prevent_initial_call="initial_duplicate",
 )
@@ -585,22 +592,24 @@ def render_component_data_graph_layout(
     theme: str,
     align_time: list[str],
     active_tabs: list[str],
-    ds: dict,
+    datastores: list[dict],
     graph_id: dict[str, str],
 ) -> dict | dash.Patch:
     active_tabs = active_tabs or ["all"]
     tab = graph_id["index"]
 
-    if ds is None:
-        return plotting.empty_figure("Waiting for data...", theme)
+    has_data = False
+    for ds in datastores:
+        if ds == {}:
+            continue
 
-    if tab == "all":
-        has_data = bool(ds["data_vars"])
-        y_title = "Value"
-    else:
-        label = unit_tab_label(tab)
-        has_data = bool(group_by_unit(ds).get(label))
-        y_title = label or "Value"
+        if tab == "all":
+            has_data = bool(ds["data_vars"])
+            y_title = "Value"
+        else:
+            label = unit_tab_label(tab)
+            has_data = bool(group_by_unit(ds).get(label))
+            y_title = label or "Value"
 
     if not has_data:
         return plotting.empty_figure("No data for this tab", theme)
@@ -633,34 +642,34 @@ def render_component_data_graph_layout(
 
 # Traces only - layout handled above
 @callback(
-    Output({"type": "data-graph", "index": MATCH}, "figure", allow_duplicate=True),
-    Input("data-store", "data"),
+    Output({"type": "data-graph", "index": ALL}, "figure", allow_duplicate=True),
+    Input({"type": "data-store", "index": ALL}, "data"),
     State("checkbox-align-time", "value"),
-    State({"type": "data-graph", "index": MATCH}, "id"),
-    State({"type": "data-graph", "index": MATCH}, "figure"),
+    State({"type": "data-graph", "index": ALL}, "id"),
+    State({"type": "data-graph", "index": ALL}, "figure"),
     prevent_initial_call="initial_duplicate",
 )
 def render_component_data_graph_traces(
-    ds: dict | None,
+    datastores: list[dict],
     align_time: list[str],
-    graph_id: dict[str, str],
-    prev_figure: dict | None,
-) -> dash.Patch:
-    patch = dash.Patch()
-    if ds is None:
-        patch["data"] = []
-        return patch
-
-    tab = graph_id["index"]
+    graph_ids: list[dict[str, str]],
+    prev_figures: list[dict],
+) -> list[dash.Patch]:
+    ret = []
     relative = bool(align_time and "relative" in align_time)
-
-    if tab == "all":
-        y_vars = list(ds["data_vars"])
-    else:
-        y_vars = group_by_unit(ds).get(unit_tab_label(tab), [])
-
-    traces = plotting.build_traces(ds, "uts", y_vars, relative=relative)
-    return plotting.patch_traces(prev_figure, traces)
+    for graph_id, prev_figure in zip(graph_ids, prev_figures):
+        tab = graph_id["index"]
+        traces = []
+        for ds in datastores:
+            if ds == {}:
+                continue
+            if tab == "all":
+                y_vars = list(ds["data_vars"])
+            else:
+                y_vars = group_by_unit(ds).get(unit_tab_label(tab), [])
+            traces.extend(plotting.build_traces(ds, "uts", y_vars, relative=relative))
+        ret.append(plotting.patch_traces(prev_figure, traces))
+    return ret
 
 
 # Manages adding and removing custom graphs
@@ -698,7 +707,7 @@ def manage_custom_graphs(
     Input("custom-graphs-list-store", "data"),
     State({"type": "component-custom-graph", "index": ALL}, "id"),
     State({"type": "component-custom-graph", "index": ALL}, "data"),
-    State("data-store", "data"),
+    State({"type": "data-store", "index": MATCH}, "data"),
     State("app-theme-store", "data"),
 )
 def render_graphs_list(
@@ -918,16 +927,17 @@ def update_custom_graph_meta(
 @callback(
     Output({"type": "custom-graph-x-selector", "index": MATCH}, "options"),
     Output({"type": "custom-graph-y-selector", "index": MATCH}, "options"),
-    Input("data-store", "data"),
+    Input({"type": "data-store", "index": ALL}, "data"),
 )
-def populate_dynamic_selectors(ds: dict | None) -> tuple[list[dict], list[dict]]:
-    if ds is None:
-        return [], []
-    vars_list = sorted(ds.get("data_vars", {}))
-    coords_list = sorted(ds.get("coords", {}))
-    y_options = [{"label": v, "value": v} for v in vars_list]
+def populate_dynamic_selectors(datastores: list[dict]) -> tuple[list[dict], list[dict]]:
+    vars_list = []
+    coords_list = []
+    for ds in datastores:
+        vars_list.extend(ds.get("data_vars", []))
+        coords_list.extend(ds.get("coords", []))
+    y_options = [{"label": v, "value": v} for v in sorted(vars_list)]
     x_options = [{"label": "Time (uts)", "value": "uts"}]
-    for coord in coords_list:
+    for coord in sorted(coords_list):
         if coord != "uts":
             x_options.append({"label": coord, "value": coord})
     return x_options, y_options
@@ -939,24 +949,24 @@ def populate_dynamic_selectors(ds: dict | None) -> tuple[list[dict], list[dict]]
     Input({"type": "custom-graph-x-selector", "index": MATCH}, "value"),
     Input({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
     Input("app-theme-store", "data"),
-    State("data-store", "data"),
+    State({"type": "data-store", "index": ALL}, "data"),
     prevent_initial_call="initial_duplicate",
 )
 def render_custom_graph_layout(
     x_var: str,
     y_var: str | list[str],
     theme: str,
-    ds: dict | None,
+    datastores: list[dict],
 ) -> dict | dash.Patch:
     y_vars = [y_var] if isinstance(y_var, str) else y_var or []
-    if ds is None or not x_var or len(y_vars) == 0:
+    if not x_var or len(y_vars) == 0:
         return plotting.empty_figure(
             "Select variables above to view custom plot", theme
         )
-
-    consistent, msg = plotting.dims_consistency(x_var, y_vars, ds)
-    if not consistent:
-        return plotting.empty_figure(msg, theme)
+    for ds in datastores:
+        consistent, msg = plotting.dims_consistency(x_var, y_vars, ds)
+        if not consistent:
+            return plotting.empty_figure(msg, theme)
 
     # Empty list is fine - only used for the title, not actual formatting
     _, x_title = plotting.format_timeseries_x([])
@@ -978,36 +988,43 @@ def render_custom_graph_layout(
 
 # Traces only - layout handled above
 @callback(
-    Output({"type": "custom-graph", "index": MATCH}, "figure", allow_duplicate=True),
-    Input("data-store", "data"),
-    Input({"type": "custom-graph-options", "index": MATCH}, "value"),
-    State({"type": "custom-graph-x-selector", "index": MATCH}, "value"),
-    State({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
-    State({"type": "custom-graph", "index": MATCH}, "figure"),
+    Output({"type": "custom-graph", "index": ALL}, "figure", allow_duplicate=True),
+    Input({"type": "data-store", "index": ALL}, "data"),
+    Input({"type": "custom-graph-options", "index": ALL}, "value"),
+    State({"type": "custom-graph-x-selector", "index": ALL}, "value"),
+    State({"type": "custom-graph-y-selector", "index": ALL}, "value"),
+    State({"type": "custom-graph", "index": ALL}, "figure"),
     prevent_initial_call="initial_duplicate",
 )
 def render_custom_graph_traces(
-    ds: dict | None,
-    options_val: list[str],
-    x_var: str,
-    y_var: str | list[str],
-    prev_figure: dict | None,
-) -> dash.Patch:
-    y_vars = [y_var] if isinstance(y_var, str) else y_var or []
-    patch = dash.Patch()
-    if ds is None or not x_var or len(y_vars) == 0:
-        patch["data"] = []
-        return patch
+    datastores: list[dict],
+    all_opt: list[str],
+    all_x_var: list[str],
+    all_y_var: list[str | list[str]],
+    all_p_fig: list[dict | None],
+) -> list[dash.Patch]:
+    ret = []
+    for options_val, x_var, y_var, prev_figure in zip(
+        all_opt, all_x_var, all_y_var, all_p_fig
+    ):
+        y_vars = [y_var] if isinstance(y_var, str) else y_var or []
+        patch = dash.Patch()
+        if not x_var or len(y_vars) == 0:
+            patch["data"] = []
+            ret.append(patch)
+            continue
 
-    consistent, _ = plotting.dims_consistency(x_var, y_vars, ds)
-    if not consistent:
-        return patch
+        connect_lines = "lines" in options_val
+        mode = "lines+markers" if connect_lines else "markers"
 
-    connect_lines = "lines" in options_val
-    mode = "lines+markers" if connect_lines else "markers"
-
-    traces = plotting.build_traces(ds, x_var, y_vars, mode)
-    return plotting.patch_traces(prev_figure, traces)
+        traces = []
+        for ds in datastores:
+            consistent, _ = plotting.dims_consistency(x_var, y_vars, ds)
+            if not consistent:
+                ret.append(patch)
+            traces.extend(plotting.build_traces(ds, x_var, y_vars, mode))
+        ret.append(plotting.patch_traces(prev_figure, traces))
+    return ret
 
 
 @callback(
