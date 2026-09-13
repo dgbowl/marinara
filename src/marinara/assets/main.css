@@ -383,6 +383,17 @@ input, select, .dash-dropdown {
     transition: all 0.2s ease;
 }
 
+/* Clickable entity titles (components/pipelines) - underline on hover so
+   they read as links, distinguishing them from same-colored plain text. */
+.entity-link {
+    color: var(--accent-color);
+    text-decoration: none;
+}
+
+.entity-link:hover {
+    text-decoration: underline;
+}
+
 .sidebar-link:hover {
     background-color: var(--sidebar-link-hover-bg) !important;
     color: var(--sidebar-text-hover) !important;
