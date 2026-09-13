@@ -3,18 +3,12 @@ import logging
 from typing import Any
 
 import dash
+import pint
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
 from tomato import passata
 
-from marinara import plotting
-from marinara.utils import (
-    TOUT,
-    format_constraint,
-    get_field,
-    get_unit_str,
-    is_component_running,
-    update_datastore,
-)
+from marinara import plotting, utils
+from marinara.utils import TOUT
 
 logger = logging.getLogger(__name__)
 dash.register_page(__name__, path_template="/components/<port>/<name>")
@@ -32,26 +26,25 @@ def layout(port: int, name: str, **_) -> list:
     # Safely fetch initial state of the component
     try:
         status_ret = passata.status(port=port, name=name, timeout=TOUT)
-        running = is_component_running(status_ret.data) if status_ret.success else False
+        if status_ret.success:
+            running = utils.is_component_running(status_ret.data)
+        else:
+            running = False
     except Exception as e:
         logger.warning("Exception during passata.status:", exc_info=e)
         running = False
 
     try:
         attrs_ret = passata.attrs(port=port, name=name, timeout=TOUT)
-        attrs_dict = attrs_ret.data if attrs_ret.success else {}
+        if attrs_ret.success and attrs_ret.data is not None:
+            attrs_dict = attrs_ret.data
+        else:
+            attrs_dict = {}
     except Exception as e:
         logger.warning("Exception during passata.attrs:", exc_info=e)
         attrs_dict = {}
 
-    try:
-        avals_ret = passata.get_attrs(
-            port=port, name=name, attrs=list(attrs_dict), timeout=TOUT
-        )
-        avals_dict = avals_ret.data if avals_ret.success else {}
-    except Exception as e:
-        logger.warning("Exception during passata.get_attrs:", exc_info=e)
-        avals_dict = {}
+    avals_dict = utils.get_attrs_vals(port=port, name=name, attrs=list(attrs_dict))
 
     # Initialize store datasets
     init_attrs_vals = {}
@@ -60,10 +53,9 @@ def layout(port: int, name: str, **_) -> list:
 
     for k, v in attrs_dict.items():
         val = avals_dict.get(k)
-        unit = get_field(v, "units")
-        init_attrs_vals[k] = val
-        init_attrs_units[k] = unit
-        init_attrs_rw[k] = get_field(v, "rw", False)
+        init_attrs_vals[k] = str(val.m if isinstance(val, pint.Quantity) else val)
+        init_attrs_units[k] = v.units
+        init_attrs_rw[k] = v.rw
 
     # Status Badge
     if isinstance(running, bool):
@@ -123,18 +115,15 @@ def layout(port: int, name: str, **_) -> list:
     # Build attribute row layout
     attr_rows = []
     for k, v in attrs_dict.items():
-        is_rw = get_field(v, "rw", False)
-        unit = get_field(v, "units")
-        unit_str = get_unit_str(unit)
-        options = get_field(v, "options")
+        unit_str = utils.get_unit_str(v.units)
         val = init_attrs_vals.get(k)
 
         # Build widget based on read-write / options
-        if is_rw:
-            if options:
+        if v.rw:
+            if v.options:
                 control = dcc.Dropdown(
                     id={"type": "component-attr-input", "index": k},
-                    options=sorted(options),
+                    options=sorted(v.options),
                     value=val,
                     clearable=False,
                     className="attr-control mutable-input",
@@ -156,16 +145,14 @@ def layout(port: int, name: str, **_) -> list:
             )
 
         # Display constraints helper
-        min_val = get_field(v, "minimum")
-        max_val = get_field(v, "maximum")
         constraints = []
-        if min_val is not None:
-            constraints.append(f"min: {format_constraint(min_val, unit)}")
-        if max_val is not None:
-            constraints.append(f"max: {format_constraint(max_val, unit)}")
+        if v.minimum is not None:
+            constraints.append(f"min: {utils.format_constraint(v.minimum, v.units)}")
+        if v.maximum is not None:
+            constraints.append(f"max: {utils.format_constraint(v.maximum, v.units)}")
         constraints_str = f" ({', '.join(constraints)})" if constraints else ""
 
-        if is_rw:
+        if v.rw:
             apply_btn = html.Button(
                 "Apply",
                 id={"type": "component-attr-apply-btn", "index": k},
@@ -353,24 +340,19 @@ def periodic_attrs_update(
 ) -> tuple[dict[str, Any], str, str]:
     try:
         status_ret = passata.status(port=port, name=name, timeout=TOUT)
-        running = is_component_running(status_ret.data) if status_ret.success else False
+        if status_ret.success:
+            running = utils.is_component_running(status_ret.data)
+        else:
+            running = False
     except Exception as e:
         logger.warning("Exception during passata.status:", exc_info=e)
         running = False
 
-    try:
-        avals_ret = passata.get_attrs(
-            port=port, name=name, attrs=list(current_vals), timeout=TOUT
-        )
-        avals_dict = avals_ret.data if avals_ret.success else {}
-    except Exception as e:
-        logger.warning("Exception during passata.get_attrs:", exc_info=e)
-        avals_dict = {}
+    avals_dict = utils.get_attrs_vals(port=port, name=name, attrs=list(current_vals))
 
     new_vals = {}
     for k in current_vals:
-        val = avals_dict.get(k)
-        new_vals[k] = val
+        new_vals[k] = avals_dict.get(k)
 
     if isinstance(running, bool):
         running_bool = running
@@ -423,23 +405,12 @@ def set_component_attribute(
     if n_clicks is None:
         return dash.no_update
     k = id["index"]
-    try:
-        ret = passata.set_attr(port=port, name=name, attr=k, val=value, timeout=TOUT)
-        if ret.success:
-            return ret.data
-        # If set_attr returned success=False, fetch current value to revert
-        ret = passata.get_attrs(port=port, name=name, attrs=[k], timeout=TOUT)
-        current = ret.data.get(k)
-        return current
-    except Exception as e:
-        logger.warning("Exception during passata.get_attrs:", exc_info=e)
-        try:
-            ret = passata.get_attrs(port=port, name=name, attrs=[k], timeout=TOUT)
-            current = ret.data.get(k)
-            return current
-        except Exception as e:
-            logger.warning("Exception during passata.get_attrs:", exc_info=e)
-            return dash.no_update
+    ret = passata.set_attr(port=port, name=name, attr=k, val=value, timeout=TOUT)
+    if ret.success:
+        return ret.data
+    # If set_attr returned success=False, fetch current value to revert
+    current = utils.get_attrs_vals(port=port, name=name, attrs=[k]).get(k)
+    return current
 
 
 # Data Store Updater
@@ -453,7 +424,7 @@ def set_component_attribute(
 def component_data_update(
     port: int, name: str, data: dict | None, _: int
 ) -> dict | dash.NoUpdate | None:
-    return update_datastore(port=port, name=name, datastore=data)
+    return utils.update_datastore(port=port, name=name, datastore=data)
 
 
 def group_by_unit(ds: dict) -> dict[str, list[str]]:
@@ -462,7 +433,7 @@ def group_by_unit(ds: dict) -> dict[str, list[str]]:
     groups = {}
     for key in ds["data_vars"]:
         raw_unit: str = ds["data_vars"][key].get("attrs", {}).get("units", "")
-        label = get_unit_str(raw_unit)
+        label = utils.get_unit_str(raw_unit)
         groups.setdefault(label, []).append(key)
     return groups
 

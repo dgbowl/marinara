@@ -51,7 +51,7 @@ layout = html.Div(
 def update_components(n_clicks: int, port: int) -> html.Div:
     try:
         ret = tomato.status(stgrp="tomato", port=port, timeout=TOUT)
-        if not ret.success:
+        if not ret.success or ret.data is None:
             logger.warning("tomato.status returned failure: %s", ret.msg)
             return html.Div(
                 f"No data found. Error: {ret.msg}. Please check the reload button above.",
@@ -59,7 +59,10 @@ def update_components(n_clicks: int, port: int) -> html.Div:
                 style={"text-align": "center", "padding": "20px"},
             )
         cmps_ret = tomato.status(stgrp="components", port=port, timeout=TOUT)
-        cmps = cmps_ret.data if cmps_ret.success else {}
+        if cmps_ret.success and cmps_ret.data is not None:
+            cmps = cmps_ret.data
+        else:
+            cmps = {}
         # Live components data only has name/driver/device/capabilities.
         # address/channel come from the static config; role comes from
         # scanning which pipeline uses each component under which role.

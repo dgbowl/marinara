@@ -4,6 +4,7 @@ import dash
 from dash import Input, Output, State, callback, dcc, html
 
 from marinara.icons import get_icon
+from marinara.utils import TOUT
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +52,9 @@ def update_pipelines(n_clicks: int, port: int) -> html.Div:
     try:
         from tomato import tomato
 
-        ret = tomato.status(stgrp="tomato", port=port, timeout=1000)
-        pipret = tomato.status(stgrp="pipelines", port=port, timeout=1000)
-        if not ret.success:
+        ret = tomato.status(stgrp="tomato", port=port, timeout=TOUT)
+        pip_ret = tomato.status(stgrp="pipelines", port=port, timeout=TOUT)
+        if not ret.success or ret.data is None:
             logger.warning("tomato.status returned failure: %s", ret.msg)
             return html.Div(
                 f"No data found. Error: {ret.msg}. Please check the reload button above.",
@@ -61,8 +62,11 @@ def update_pipelines(n_clicks: int, port: int) -> html.Div:
                 style={"text-align": "center", "padding": "20px"},
             )
         pips = ret.data.devicefile.pipelines
-        cmps_ret = tomato.status(stgrp="components", port=port, timeout=1000)
-        cmps = cmps_ret.data if cmps_ret.success else {}
+        cmps_ret = tomato.status(stgrp="components", port=port, timeout=TOUT)
+        if cmps_ret.success and cmps_ret.data is not None:
+            cmps = cmps_ret.data
+        else:
+            cmps = {}
         if not pips:
             return html.Div(
                 "No pipelines registered in system.",
@@ -71,7 +75,10 @@ def update_pipelines(n_clicks: int, port: int) -> html.Div:
             )
         pipeline_cards = []
         for name, pip in pips.items():
-            pstate = pipret.data.get(name, {}) if pipret.success else {}
+            if pip_ret.success and pip_ret.data is not None:
+                pstate = pip_ret.data
+            else:
+                pstate = {}
             pip_jobid = pstate.get("jobid")
             pip_ready = pstate.get("ready", False)
             pip_sampleid = pstate.get("sampleid")

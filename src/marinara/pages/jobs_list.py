@@ -6,7 +6,6 @@ from dash import Input, Output, State, callback, html
 from tomato import ketchup, tomato
 
 from marinara.icons import get_icon
-from marinara.utils import clean_data
 
 logger = logging.getLogger(__name__)
 dash.register_page(__name__, path="/jobs", title="Jobs")
@@ -93,7 +92,7 @@ def update_jobs_list(n_clicks, port):
         cleaned_jobs = []
         for job in jobs_list:
             v_dict = job.model_dump() if hasattr(job, "model_dump") else job
-            cleaned_jobs.append(clean_data(v_dict))
+            cleaned_jobs.append(str(v_dict))
 
         return html.Pre(
             json.dumps(cleaned_jobs, indent=2),
