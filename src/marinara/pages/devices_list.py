@@ -4,8 +4,9 @@ import dash
 from dash import Input, Output, State, callback, html
 from tomato import tomato
 
+from marinara import utils
 from marinara.icons import get_icon
-from marinara.utils import TOUT, format_obj
+from marinara.utils import TOUT
 
 logger = logging.getLogger(__name__)
 dash.register_page(__name__, path="/devices", title="Devices")
@@ -51,15 +52,20 @@ layout = html.Div(
 def update_devices(n_clicks: int, port: int) -> html.Div:
     try:
         ret = tomato.status(stgrp="tomato", port=port, timeout=TOUT)
-        if not ret.success:
+        if not ret.success or ret.data is None:
             logger.warning("tomato.status returned failure: %s", ret.msg)
             return html.Div(
                 f"No data found. Error: {ret.msg}. Please check the reload button above.",
                 className="text-secondary",
                 style={"text-align": "center", "padding": "20px"},
             )
-        devs = ret.data.devicefile.devices
-        return format_obj(
+        devs_ret = tomato.status(stgrp="devices", port=port, timeout=TOUT)
+        if devs_ret.success and devs_ret.data is not None:
+            devs = devs_ret.data
+        else:
+            devs = {}
+        print(f"{devs=}")
+        return utils.format_obj(
             obj=devs,
             headers=["Device Name", "Driver", "Address", "Channels"],
             attrs=["name", "driver", "address", "channels"],
