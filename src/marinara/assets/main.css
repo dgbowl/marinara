@@ -16,7 +16,7 @@
     --shadow: 0 4px 6px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.1);
     --radius: 8px;
     --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    
+
     /* Component Detail Card Accent Colors (Light Theme) */
     --detail-border: #0891b2;
     --detail-bg: rgba(8, 145, 178, 0.03);
@@ -45,7 +45,7 @@
     --border-mutable: #10b981;
     --border-immutable: #ef4444;
     --shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
-    
+
     /* Component Detail Card Accent Colors (Dark Theme) */
     --detail-border: #22d3ee;
     --detail-bg: rgba(34, 211, 238, 0.05);
@@ -554,13 +554,13 @@ button:active {
 
 /* Override global input styling inside react-select elements */
 .Select-input,
-.Select-input > input, 
+.Select-input > input,
 .Select-input input,
 input.Select-input,
 .Select__input,
 input.Select__input,
 .Select__input-container,
-.Select__input-container input, 
+.Select__input-container input,
 .Select__input input,
 .Select__value-container input,
 .dash-dropdown input {
@@ -698,6 +698,29 @@ input[type=number] {
 
 .attr-apply-btn:hover {
     background-color: var(--accent-color) !important;
+    color: white !important;
+}
+
+.attr-apply-btn-danger {
+    height: 36px !important;
+    padding: 0 12px !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    border-radius: 4px !important;
+    border: 1px solid var(--danger-color) !important;
+    background-color: transparent !important;
+    color: var(--danger-color) !important;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin: 0 !important;
+    flex-shrink: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+.attr-apply-btn-danger:hover {
+    background-color: var(--danger-color) !important;
     color: white !important;
 }
 

@@ -37,25 +37,14 @@ def layout(port: int, name: str, **_) -> list:
     try:
         attrs_ret = passata.attrs(port=port, name=name, timeout=TOUT)
         if attrs_ret.success and attrs_ret.data is not None:
-            attrs_dict = attrs_ret.data
+            attrs = attrs_ret.data
         else:
-            attrs_dict = {}
+            attrs = {}
     except Exception as e:
         logger.warning("Exception during passata.attrs:", exc_info=e)
-        attrs_dict = {}
+        attrs = {}
 
-    avals_dict = utils.get_attrs_vals(port=port, name=name, attrs=list(attrs_dict))
-
-    # Initialize store datasets
-    init_attrs_vals = {}
-    init_attrs_units = {}
-    init_attrs_rw = {}
-
-    for k, v in attrs_dict.items():
-        val = avals_dict.get(k)
-        init_attrs_vals[k] = str(val.m if isinstance(val, pint.Quantity) else val)
-        init_attrs_units[k] = v.units
-        init_attrs_rw[k] = v.rw
+    avals = utils.get_attrs_vals(port=port, name=name, attrs=list(attrs))
 
     # Status Badge
     if isinstance(running, bool):
@@ -114,9 +103,10 @@ def layout(port: int, name: str, **_) -> list:
 
     # Build attribute row layout
     attr_rows = []
-    for k, v in attrs_dict.items():
+    for k, v in attrs.items():
+        raw_val = avals.get(k)
+        val = raw_val.m if isinstance(raw_val, pint.Quantity) else raw_val
         unit_str = utils.get_unit_str(v.units)
-        val = init_attrs_vals.get(k)
 
         # Build widget based on read-write / options
         if v.rw:
@@ -124,22 +114,23 @@ def layout(port: int, name: str, **_) -> list:
                 control = dcc.Dropdown(
                     id={"type": "attr-input", "index": k},
                     options=sorted(v.options),
-                    value=val,
+                    value=str(val),
                     clearable=False,
+                    searchable=False,
                     className="attr-control mutable-input",
                 )
             else:
                 control = dcc.Input(
                     id={"type": "attr-input", "index": k},
                     type="text",
-                    value=val,
+                    value=str(val),
                     debounce=True,
                     className="attr-control mutable-input",
                 )
         else:
             control = dcc.Input(
                 id={"type": "attr-display", "index": k},
-                value=str(val) if val is not None else "N/A",
+                value=str(val),
                 disabled=True,
                 className="attr-control immutable-input",
             )
@@ -153,13 +144,13 @@ def layout(port: int, name: str, **_) -> list:
         constraints_str = f" ({', '.join(constraints)})" if constraints else ""
 
         attr_val_store = dcc.Store(id={"type": "attr-val", "index": k}, data=val)
-        attrs = v.model_dump(include={"rw", "units", "options"}, mode="json")
-        attr_param_store = dcc.Store(id={"type": "attrs", "index": k}, data=attrs)
+        attrdump = v.model_dump(include={"rw", "units", "options"}, mode="json")
+        attr_param_store = dcc.Store(id={"type": "attrs", "index": k}, data=attrdump)
 
         if v.rw:
             apply_btn = html.Button(
                 "Apply",
-                id={"type": "component-attr-apply-btn", "index": k},
+                id={"type": "attr-apply-btn", "index": k},
                 className="attr-apply-btn",
             )
             attr_rows.append(
@@ -304,8 +295,6 @@ def layout(port: int, name: str, **_) -> list:
         # Dashboard Stores
         dcc.Store(id="component-name", data=name),
         dcc.Store(id="component-data-store", data={}),
-        dcc.Store(id="component-attrs-units-store", data=init_attrs_units),
-        dcc.Store(id="component-attrs-rw-store", data=init_attrs_rw),
         dcc.Store(id="component-graph-tab-store", data=["all"]),
         dcc.Store(id="component-graph-units-store", data=None),
         dcc.Store(id="custom-graphs-list-store", data=[]),
@@ -324,7 +313,7 @@ def layout(port: int, name: str, **_) -> list:
     return layout_children
 
 
-# Periodic updates for Store values
+# Periodic updates for store values
 @callback(
     Output({"type": "attr-val", "index": ALL}, "data"),
     Input("interval", "n_intervals"),
@@ -334,7 +323,7 @@ def layout(port: int, name: str, **_) -> list:
     State({"type": "attr-val", "index": ALL}, "id"),
     prevent_initial_call=True,
 )
-def periodic_attrs_update(
+def periodic_attr_val_update(
     _: int,
     port: int,
     name: str,
@@ -346,6 +335,8 @@ def periodic_attrs_update(
     new_vals = [avals[attr] for attr in attrs]
     ret = []
     for old, new in zip(old_vals, new_vals):
+        if isinstance(new, pint.Quantity):
+            new = new.m
         if old == new:
             ret.append(dash.no_update)
         else:
@@ -362,7 +353,7 @@ def periodic_attrs_update(
     State("component-name", "data"),
     prevent_initial_call=True,
 )
-def status_badge_update(
+def periodic_status_badge_update(
     _: int,
     port: int,
     name: str,
@@ -396,19 +387,30 @@ def status_badge_update(
 
 
 # UI displays updates from Stores
-# @callback(
-#    Output({"type": "attr-display", "index": MATCH}, "value"),
-#    Input({"type": "attr-val", "index": MATCH}, "data"),
-# )
-# def update_readonly_attr(val: Any, id: dict[str, str]) -> str:
-#    print(f"{val=}")
-#    return str(val) if val is not None else "N/A"
+@callback(
+    Output({"type": "attr-display", "index": MATCH}, "value"),
+    Input({"type": "attr-val", "index": MATCH}, "data"),
+)
+def update_readonly_attr(val: Any) -> str:
+    return str(val)
+
+
+@callback(
+    Output({"type": "attr-apply-btn", "index": MATCH}, "class"),
+    Input({"type": "attr-val", "index": MATCH}, "data"),
+    Input({"type": "attr-input", "index": MATCH}, "value"),
+)
+def update_readwrite_attr(val: Any, input: str) -> str:
+    if (isinstance(val, (float, int)) and float(input) == val) or input == str(val):
+        return "attr-apply-btn"
+    else:
+        return "attr-apply-btn-danger"
 
 
 # Input handler for read-write attribute updates via Apply button
 @callback(
     Output({"type": "attr-input", "index": MATCH}, "value"),
-    Input({"type": "component-attr-apply-btn", "index": MATCH}, "n_clicks"),
+    Input({"type": "attr-apply-btn", "index": MATCH}, "n_clicks"),
     State({"type": "attr-input", "index": MATCH}, "value"),
     State({"type": "attr-input", "index": MATCH}, "id"),
     State("tomato-port", "data"),
@@ -416,15 +418,15 @@ def status_badge_update(
     prevent_initial_call=True,
 )
 def set_component_attribute(
-    n_clicks: int, value: str, id: dict[str, str], port: int, name: str
-) -> Any | dash.NoUpdate:
-    k = id["index"]
-    ret = passata.set_attr(port=port, name=name, attr=k, val=value, timeout=TOUT)
-    if ret.success:
-        return ret.data
-    # If set_attr returned success=False, fetch current value to revert
-    current = utils.get_attrs_vals(port=port, name=name, attrs=[k]).get(k)
-    return current
+    _: int, value: str, id: dict[str, str], port: int, name: str
+) -> str:
+    attr = id["index"]
+    passata.set_attr(port=port, name=name, attr=attr, val=value, timeout=TOUT)
+    val = utils.get_attrs_vals(port=port, name=name, attrs=[attr]).get(attr)
+    if isinstance(val, pint.Quantity):
+        return str(val.m)
+    else:
+        return str(val)
 
 
 # Data Store Updater
