@@ -112,7 +112,7 @@ def layout(port: int, name: str, **_) -> list:
         if v.rw:
             if v.options:
                 control = dcc.Dropdown(
-                    id={"type": "attr-input", "index": k},
+                    id={"type": "attr-input", "index": f"{name}/{k}"},
                     options=sorted(v.options),
                     value=str(val),
                     clearable=False,
@@ -121,7 +121,7 @@ def layout(port: int, name: str, **_) -> list:
                 )
             else:
                 control = dcc.Input(
-                    id={"type": "attr-input", "index": k},
+                    id={"type": "attr-input", "index": f"{name}/{k}"},
                     type="text",
                     value=str(val),
                     debounce=True,
@@ -129,7 +129,7 @@ def layout(port: int, name: str, **_) -> list:
                 )
         else:
             control = dcc.Input(
-                id={"type": "attr-display", "index": k},
+                id={"type": "attr-display", "index": f"{name}/{k}"},
                 value=str(val),
                 disabled=True,
                 className="attr-control immutable-input",
@@ -143,14 +143,19 @@ def layout(port: int, name: str, **_) -> list:
             constraints.append(f"max: {utils.format_constraint(v.maximum, v.units)}")
         constraints_str = f" ({', '.join(constraints)})" if constraints else ""
 
-        attr_val_store = dcc.Store(id={"type": "attr-val", "index": k}, data=val)
-        attrdump = v.model_dump(include={"rw", "units", "options"}, mode="json")
-        attr_param_store = dcc.Store(id={"type": "attrs", "index": k}, data=attrdump)
+        attr_val_store = dcc.Store(
+            id={"type": "attr-val", "index": f"{name}/{k}"},
+            data=val,
+        )
+        attr_param_store = dcc.Store(
+            id={"type": "attrs", "index": f"{name}/{k}"},
+            data=v.model_dump(include={"rw", "units", "options"}, mode="json"),
+        )
 
         if v.rw:
             apply_btn = html.Button(
                 "Apply",
-                id={"type": "attr-apply-btn", "index": k},
+                id={"type": "attr-apply-btn", "index": f"{name}/{k}"},
                 className="attr-apply-btn",
             )
             attr_rows.append(
@@ -294,7 +299,7 @@ def layout(port: int, name: str, **_) -> list:
     layout_children = [
         # Dashboard Stores
         dcc.Store(id="component-name", data=name),
-        dcc.Store(id="component-data-store", data={}),
+        dcc.Store(id="data-store", data={}),
         dcc.Store(id="component-graph-tab-store", data=["all"]),
         dcc.Store(id="component-graph-units-store", data=None),
         dcc.Store(id="custom-graphs-list-store", data=[]),
@@ -315,33 +320,28 @@ def layout(port: int, name: str, **_) -> list:
 
 # Periodic updates for store values
 @callback(
-    Output({"type": "attr-val", "index": ALL}, "data"),
+    Output({"type": "attr-val", "index": MATCH}, "data"),
     Input("interval", "n_intervals"),
     State("tomato-port", "data"),
     State("component-name", "data"),
-    State({"type": "attr-val", "index": ALL}, "data"),
-    State({"type": "attr-val", "index": ALL}, "id"),
+    State({"type": "attr-val", "index": MATCH}, "data"),
+    State({"type": "attr-val", "index": MATCH}, "id"),
     prevent_initial_call=True,
 )
 def periodic_attr_val_update(
     _: int,
     port: int,
     name: str,
-    old_vals: Any,
-    ids: dict,
-) -> list[Any | dash.NoUpdate]:
-    attrs = [id["index"] for id in ids]
-    avals = utils.get_attrs_vals(port=port, name=name, attrs=attrs)
-    new_vals = [avals[attr] for attr in attrs]
-    ret = []
-    for old, new in zip(old_vals, new_vals):
-        if isinstance(new, pint.Quantity):
-            new = new.m
-        if old == new:
-            ret.append(dash.no_update)
-        else:
-            ret.append(new)
-    return ret
+    old: Any,
+    id: dict,
+) -> Any | dash.NoUpdate:
+    cname, attr = id["index"].split("/")
+    new = utils.get_attrs_vals(port=port, name=cname, attrs=[attr]).get(attr)
+    if isinstance(new, pint.Quantity):
+        new = new.m
+    if old == new:
+        return dash.no_update
+    return new
 
 
 # Periodic updates for Store values
@@ -420,8 +420,8 @@ def update_readwrite_attr(val: Any, input: str) -> str:
 def set_component_attribute(
     _: int, value: str, id: dict[str, str], port: int, name: str
 ) -> str:
-    attr = id["index"]
-    passata.set_attr(port=port, name=name, attr=attr, val=value, timeout=TOUT)
+    cname, attr = id["index"].split("/")
+    passata.set_attr(port=port, name=cname, attr=attr, val=value, timeout=TOUT)
     val = utils.get_attrs_vals(port=port, name=name, attrs=[attr]).get(attr)
     if isinstance(val, pint.Quantity):
         return str(val.m)
@@ -431,10 +431,10 @@ def set_component_attribute(
 
 # Data Store Updater
 @callback(
-    Output("component-data-store", "data"),
+    Output("data-store", "data"),
     State("tomato-port", "data"),
     State("component-name", "data"),
-    State("component-data-store", "data"),
+    State("data-store", "data"),
     Input("interval", "n_intervals"),
 )
 def component_data_update(
@@ -471,7 +471,7 @@ def unit_tab_label(tab: str) -> str:
 # just-rendered buttons' n_clicks and risk clobbering the active tab.
 @callback(
     Output("component-graph-units-store", "data"),
-    Input("component-data-store", "data"),
+    Input("data-store", "data"),
     State("component-graph-units-store", "data"),
 )
 def update_available_units(
@@ -579,7 +579,7 @@ def render_component_data_graph_shells(
     Input("app-theme-store", "data"),
     Input("checkbox-align-time", "value"),
     Input("component-graph-tab-store", "data"),
-    State("component-data-store", "data"),
+    State("data-store", "data"),
     State({"type": "component-data-graph", "index": MATCH}, "id"),
     prevent_initial_call="initial_duplicate",
 )
@@ -638,7 +638,7 @@ def render_component_data_graph_layout(
     Output(
         {"type": "component-data-graph", "index": MATCH}, "figure", allow_duplicate=True
     ),
-    Input("component-data-store", "data"),
+    Input("data-store", "data"),
     State("checkbox-align-time", "value"),
     State({"type": "component-data-graph", "index": MATCH}, "id"),
     State({"type": "component-data-graph", "index": MATCH}, "figure"),
@@ -702,7 +702,7 @@ def manage_custom_graphs(
     Input("custom-graphs-list-store", "data"),
     State({"type": "component-custom-graph", "index": ALL}, "id"),
     State({"type": "component-custom-graph", "index": ALL}, "data"),
-    State("component-data-store", "data"),
+    State("data-store", "data"),
     State("app-theme-store", "data"),
 )
 def render_graphs_list(
@@ -922,7 +922,7 @@ def update_custom_graph_meta(
 @callback(
     Output({"type": "custom-graph-x-selector", "index": MATCH}, "options"),
     Output({"type": "custom-graph-y-selector", "index": MATCH}, "options"),
-    Input("component-data-store", "data"),
+    Input("data-store", "data"),
 )
 def populate_dynamic_selectors(ds: dict | None) -> tuple[list[dict], list[dict]]:
     if ds is None:
@@ -943,7 +943,7 @@ def populate_dynamic_selectors(ds: dict | None) -> tuple[list[dict], list[dict]]
     Input({"type": "custom-graph-x-selector", "index": MATCH}, "value"),
     Input({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
     Input("app-theme-store", "data"),
-    State("component-data-store", "data"),
+    State("data-store", "data"),
     prevent_initial_call="initial_duplicate",
 )
 def render_custom_graph_layout(
@@ -983,7 +983,7 @@ def render_custom_graph_layout(
 # Traces only - layout handled above
 @callback(
     Output({"type": "custom-graph", "index": MATCH}, "figure", allow_duplicate=True),
-    Input("component-data-store", "data"),
+    Input("data-store", "data"),
     Input({"type": "custom-graph-options", "index": MATCH}, "value"),
     State({"type": "custom-graph-x-selector", "index": MATCH}, "value"),
     State({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
