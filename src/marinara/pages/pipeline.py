@@ -6,7 +6,7 @@ import pint
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html, set_props
 from tomato import passata, tomato
 
-from marinara import utils
+from marinara import callbacks, utils
 from marinara.utils import TOUT
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,7 @@ def object_from_attrs(cname, attr, params, value) -> dcc.Dropdown | dcc.Input:
     if params.options is not None:
         obj = dcc.Dropdown(
             id={
-                "type": "component-attr-val",
+                "type": "attr-input",
                 "index": f"{cname}/{attr}",
             },
             disabled=not params.rw,
@@ -77,7 +77,7 @@ def object_from_attrs(cname, attr, params, value) -> dcc.Dropdown | dcc.Input:
     else:
         obj = dcc.Input(
             id={
-                "type": "component-attr-val",
+                "type": "attr-input",
                 "index": f"{cname}/{attr}",
             },
             disabled=not params.rw,
@@ -322,8 +322,8 @@ def create_content_div(port: int, name: str) -> list[html.Div]:
             )
         ]
         for attr, params in attrs.items():
-            val = avals.get(attr)
-            value = str(val.m if isinstance(val, pint.Quantity) else val)
+            raw_val = avals.get(attr)
+            val = raw_val.m if isinstance(raw_val, pint.Quantity) else raw_val
             units_str = utils.get_unit_str(params.units)
 
             constraints = []
@@ -337,18 +337,29 @@ def create_content_div(port: int, name: str) -> list[html.Div]:
                 )
             constraints_str = f" ({', '.join(constraints)})" if constraints else ""
 
+            attr_val_store = dcc.Store(
+                id={"type": "attr-val", "index": f"{cname}/{attr}"},
+                data=val,
+            )
+            attr_param_store = dcc.Store(
+                id={"type": "attrs", "index": f"{cname}/{attr}"},
+                data=params.model_dump(include={"rw", "units", "options"}, mode="json"),
+            )
+
             if params.rw:
                 apply_btn = html.Button(
                     "Apply",
-                    id={"type": "component-attr-apply-btn", "index": f"{cname}/{attr}"},
+                    id={"type": "attr-apply-btn", "index": f"{cname}/{attr}"},
                     className="attr-apply-btn",
                 )
                 div_attrs_ch.append(
                     html.Div(
                         children=[
                             html.Div(f"{attr}:", className="attr-label"),
-                            object_from_attrs(cname, attr, params, value),
+                            object_from_attrs(cname, attr, params, str(val)),
                             apply_btn,
+                            attr_val_store,
+                            attr_param_store,
                             html.Span(
                                 f" {units_str}{constraints_str}", className="attr-unit"
                             ),
@@ -362,7 +373,9 @@ def create_content_div(port: int, name: str) -> list[html.Div]:
                     html.Div(
                         children=[
                             html.Div(f"{attr}:", className="attr-label"),
-                            object_from_attrs(cname, attr, params, value),
+                            object_from_attrs(cname, attr, params, str(val)),
+                            attr_val_store,
+                            attr_param_store,
                             html.Div(style={"width": "66px", "flex-shrink": "0"}),
                             html.Span(
                                 f" {units_str}{constraints_str}", className="attr-unit"
@@ -449,9 +462,7 @@ def create_content_div(port: int, name: str) -> list[html.Div]:
     # Create component stores
     stores = []
     for cname in pip_components.values():
-        stores.append(
-            dcc.Store(id={"type": "component-data-store", "index": cname}, data=None)
-        )
+        stores.append(dcc.Store(id={"type": "data-store", "index": cname}, data={}))
 
     children = [
         html.Div(
@@ -477,42 +488,10 @@ def create_content_div(port: int, name: str) -> list[html.Div]:
     return children
 
 
-# Sync theme selection callbacks removed to app.py to avoid duplicates
-
-
-@callback(
-    Output({"type": "component-attr-val", "index": MATCH}, "value"),
-    Input({"type": "component-attr-apply-btn", "index": MATCH}, "n_clicks"),
-    State({"type": "component-attr-val", "index": MATCH}, "value"),
-    State({"type": "component-attr-val", "index": MATCH}, "id"),
-    State({"type": "component-attr-val", "index": MATCH}, "disabled"),
-    State("store-pipeline-component-attrs-rw", "data"),
-    State("tomato-port", "data"),
-    State("store-pipeline-name", "data"),
-    prevent_initial_call=True,
-)
-def component_attr_interaction(
-    n_clicks: int,
-    value: str,
-    id: dict[str, str],
-    disabled: bool,
-    arw: dict[str, dict[str, bool]] | None,
-    port: int,
-    name: str,
-) -> Any | dash.NoUpdate:
-    if n_clicks is None:
-        return dash.no_update
-    cname, attr = id["index"].split("/")
-    if arw is not None and arw[cname][attr] and not disabled:
-        ret = passata.set_attr(
-            port=port, name=cname, attr=attr, val=value, timeout=TOUT
-        )
-        if not ret.success:
-            logger.warning("ret=%s", str(ret))
-        current = utils.get_attrs_vals(port=port, name=cname, attrs=[attr]).get(attr)
-        return str(current)
-
-    return dash.no_update
+callbacks.data_store_update()
+callbacks.periodic_attr_val_update()
+callbacks.update_readwrite_attr()
+callbacks.set_component_attribute()
 
 
 @callback(
@@ -686,13 +665,13 @@ def pipeline_periodic_update_params_store(
 # UI updates triggered by Stores
 @callback(
     Output(
-        {"type": "component-attr-val", "index": MATCH},
+        {"type": "attr-input", "index": MATCH},
         "value",
         allow_duplicate=True,
     ),
     Input("store-pipeline-component-attrs-vals", "data"),
-    State({"type": "component-attr-val", "index": MATCH}, "value"),
-    State({"type": "component-attr-val", "index": MATCH}, "id"),
+    State({"type": "attr-input", "index": MATCH}, "value"),
+    State({"type": "attr-input", "index": MATCH}, "id"),
     State("store-pipeline-component-attrs-rw", "data"),
     prevent_initial_call=True,
 )
@@ -725,9 +704,9 @@ def components_update_attr_display(
 
 
 @callback(
-    Output({"type": "component-attr-val", "index": MATCH}, "disabled"),
+    Output({"type": "attr-input", "index": MATCH}, "disabled"),
     Input("store-pipeline-component-running", "data"),
-    State({"type": "component-attr-val", "index": MATCH}, "id"),
+    State({"type": "attr-input", "index": MATCH}, "id"),
     State("store-pipeline-component-attrs-rw", "data"),
     prevent_initial_call=True,
 )
@@ -802,21 +781,9 @@ def components_update_param_display(
 
 
 @callback(
-    Output({"type": "component-data-store", "index": MATCH}, "data"),
-    Input("interval", "n_intervals"),
-    State("tomato-port", "data"),
-    State({"type": "component-data-store", "index": MATCH}, "id"),
-    State({"type": "component-data-store", "index": MATCH}, "data"),
-)
-def update_component_stores(n_intervals: int, port: int, id: dict, data: dict | None):
-    logger.debug("updating store '%s'", id["index"])
-    return utils.update_datastore(port=port, name=id["index"], datastore=data)
-
-
-@callback(
     Output({"type": "component-data-val", "index": ALL}, "value"),
-    Input({"type": "component-data-store", "index": MATCH}, "data"),
-    Input({"type": "component-data-store", "index": MATCH}, "id"),
+    Input({"type": "data-store", "index": MATCH}, "data"),
+    Input({"type": "data-store", "index": MATCH}, "id"),
     State({"type": "component-data-val", "index": ALL}, "value"),
     State({"type": "component-data-val", "index": ALL}, "id"),
     prevent_initial_call=True,

@@ -1,14 +1,12 @@
 import json
 import logging
-from typing import Any
 
 import dash
 import pint
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
 from tomato import passata
 
-from marinara import plotting, utils
-from marinara.callbacks import data_store_update, periodic_attr_val_update
+from marinara import callbacks, plotting, utils
 from marinara.utils import TOUT
 
 logger = logging.getLogger(__name__)
@@ -361,49 +359,6 @@ def periodic_status_badge_update(
     return status_badge_text, status_badge_class
 
 
-# UI displays updates from Stores
-@callback(
-    Output({"type": "attr-display", "index": MATCH}, "value"),
-    Input({"type": "attr-val", "index": MATCH}, "data"),
-)
-def update_readonly_attr(val: Any) -> str:
-    return str(val)
-
-
-@callback(
-    Output({"type": "attr-apply-btn", "index": MATCH}, "class"),
-    Input({"type": "attr-val", "index": MATCH}, "data"),
-    Input({"type": "attr-input", "index": MATCH}, "value"),
-)
-def update_readwrite_attr(val: Any, input: str) -> str:
-    if (isinstance(val, (float, int)) and float(input) == val) or input == str(val):
-        return "attr-apply-btn"
-    else:
-        return "attr-apply-btn-danger"
-
-
-# Input handler for read-write attribute updates via Apply button
-@callback(
-    Output({"type": "attr-input", "index": MATCH}, "value"),
-    Input({"type": "attr-apply-btn", "index": MATCH}, "n_clicks"),
-    State({"type": "attr-input", "index": MATCH}, "value"),
-    State({"type": "attr-input", "index": MATCH}, "id"),
-    State("tomato-port", "data"),
-    State("component-name", "data"),
-    prevent_initial_call=True,
-)
-def set_component_attribute(
-    _: int, value: str, id: dict[str, str], port: int, name: str
-) -> str:
-    cname, attr = id["index"].split("/")
-    passata.set_attr(port=port, name=cname, attr=attr, val=value, timeout=TOUT)
-    val = utils.get_attrs_vals(port=port, name=name, attrs=[attr]).get(attr)
-    if isinstance(val, pint.Quantity):
-        return str(val.m)
-    else:
-        return str(val)
-
-
 def group_by_unit(ds: dict) -> dict[str, list[str]]:
     """Groups data_var keys by their pint-normalized unit label ("" bucket for
     unitless vars), so equivalent units (e.g. "s" and "sec") share one tab."""
@@ -424,6 +379,12 @@ def unit_tab_id(label: str) -> str:
 def unit_tab_label(tab: str) -> str:
     """Decodes a unit-tab token (as produced by unit_tab_id) back to its label."""
     return tab.removeprefix("unit:")
+
+
+callbacks.data_store_update()
+callbacks.periodic_attr_val_update()
+callbacks.update_readwrite_attr()
+callbacks.set_component_attribute()
 
 
 # Tracks the set of distinct unit labels present in the data. Only changes
