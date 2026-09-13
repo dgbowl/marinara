@@ -1,13 +1,12 @@
 import json
 import logging
-from typing import Any
 
 import dash
 import pint
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
 from tomato import passata
 
-from marinara import plotting, utils
+from marinara import callbacks, plotting, utils
 from marinara.utils import TOUT
 
 logger = logging.getLogger(__name__)
@@ -37,25 +36,14 @@ def layout(port: int, name: str, **_) -> list:
     try:
         attrs_ret = passata.attrs(port=port, name=name, timeout=TOUT)
         if attrs_ret.success and attrs_ret.data is not None:
-            attrs_dict = attrs_ret.data
+            attrs = attrs_ret.data
         else:
-            attrs_dict = {}
+            attrs = {}
     except Exception as e:
         logger.warning("Exception during passata.attrs:", exc_info=e)
-        attrs_dict = {}
+        attrs = {}
 
-    avals_dict = utils.get_attrs_vals(port=port, name=name, attrs=list(attrs_dict))
-
-    # Initialize store datasets
-    init_attrs_vals = {}
-    init_attrs_units = {}
-    init_attrs_rw = {}
-
-    for k, v in attrs_dict.items():
-        val = avals_dict.get(k)
-        init_attrs_vals[k] = str(val.m if isinstance(val, pint.Quantity) else val)
-        init_attrs_units[k] = v.units
-        init_attrs_rw[k] = v.rw
+    avals = utils.get_attrs_vals(port=port, name=name, attrs=list(attrs))
 
     # Status Badge
     if isinstance(running, bool):
@@ -101,7 +89,7 @@ def layout(port: int, name: str, **_) -> list:
                     ),
                     html.Span(
                         status_badge_text,
-                        id="component-status-badge",
+                        id="status-badge",
                         className=status_badge_class,
                         style={"margin-left": "15px"},
                     ),
@@ -114,32 +102,34 @@ def layout(port: int, name: str, **_) -> list:
 
     # Build attribute row layout
     attr_rows = []
-    for k, v in attrs_dict.items():
+    for k, v in attrs.items():
+        raw_val = avals.get(k)
+        val = raw_val.m if isinstance(raw_val, pint.Quantity) else raw_val
         unit_str = utils.get_unit_str(v.units)
-        val = init_attrs_vals.get(k)
 
         # Build widget based on read-write / options
         if v.rw:
             if v.options:
                 control = dcc.Dropdown(
-                    id={"type": "component-attr-input", "index": k},
+                    id={"type": "attr-input", "index": f"{name}/{k}"},
                     options=sorted(v.options),
-                    value=val,
+                    value=str(val),
                     clearable=False,
+                    searchable=False,
                     className="attr-control mutable-input",
                 )
             else:
                 control = dcc.Input(
-                    id={"type": "component-attr-input", "index": k},
+                    id={"type": "attr-input", "index": f"{name}/{k}"},
                     type="text",
-                    value=val,
+                    value=str(val),
                     debounce=True,
                     className="attr-control mutable-input",
                 )
         else:
             control = dcc.Input(
-                id={"type": "component-attr-readonly", "index": k},
-                value=str(val) if val is not None else "N/A",
+                id={"type": "attr-display", "index": f"{name}/{k}"},
+                value=str(val),
                 disabled=True,
                 className="attr-control immutable-input",
             )
@@ -152,10 +142,19 @@ def layout(port: int, name: str, **_) -> list:
             constraints.append(f"max: {utils.format_constraint(v.maximum, v.units)}")
         constraints_str = f" ({', '.join(constraints)})" if constraints else ""
 
+        attr_val_store = dcc.Store(
+            id={"type": "attr-val", "index": f"{name}/{k}"},
+            data=val,
+        )
+        attr_param_store = dcc.Store(
+            id={"type": "attrs", "index": f"{name}/{k}"},
+            data=v.model_dump(include={"rw", "units", "options"}, mode="json"),
+        )
+
         if v.rw:
             apply_btn = html.Button(
                 "Apply",
-                id={"type": "component-attr-apply-btn", "index": k},
+                id={"type": "attr-apply-btn", "index": f"{name}/{k}"},
                 className="attr-apply-btn",
             )
             attr_rows.append(
@@ -167,6 +166,8 @@ def layout(port: int, name: str, **_) -> list:
                         html.Span(
                             f" {unit_str}{constraints_str}", className="attr-unit"
                         ),
+                        attr_val_store,
+                        attr_param_store,
                     ],
                     className="attr-row",
                 )
@@ -180,6 +181,8 @@ def layout(port: int, name: str, **_) -> list:
                         html.Span(
                             f" {unit_str}{constraints_str}", className="attr-unit"
                         ),
+                        attr_val_store,
+                        attr_param_store,
                     ],
                     className="attr-row",
                 )
@@ -244,7 +247,7 @@ def layout(port: int, name: str, **_) -> list:
             # an Input from the start, instead of referencing an id that
             # doesn't exist yet on first render.
             dcc.Checklist(
-                id="component-graph-tab-checklist",
+                id="data-graph-tab-checklist",
                 options=[],
                 value=["all"],
                 inline=True,
@@ -256,7 +259,7 @@ def layout(port: int, name: str, **_) -> list:
                 },
             ),
             html.Div(
-                id="component-data-graph-container",
+                id="data-graph-container",
                 style={"min-height": "400px"},
             ),
         ],
@@ -294,16 +297,11 @@ def layout(port: int, name: str, **_) -> list:
 
     layout_children = [
         # Dashboard Stores
-        dcc.Store(id="tomato-port-store", data=port),
-        dcc.Store(id="component-name-store", data=name),
-        dcc.Store(id="component-data-store", data=None),
-        dcc.Store(id="component-attrs-vals-store", data=init_attrs_vals),
-        dcc.Store(id="component-attrs-units-store", data=init_attrs_units),
-        dcc.Store(id="component-attrs-rw-store", data=init_attrs_rw),
-        dcc.Store(id="component-graph-tab-store", data=["all"]),
-        dcc.Store(id="component-graph-units-store", data=None),
+        dcc.Store(id="component-name", data=name),
+        dcc.Store(id={"type": "data-store", "index": name}, data={}),
+        dcc.Store(id="data-graph-tab-store", data=["all"]),
+        dcc.Store(id="data-graph-units-store", data=None),
         dcc.Store(id="custom-graphs-list-store", data=[]),
-        dcc.Interval(id="component-interval", interval=2000),
         header,
         # Row 1: Attributes & Controls (Left) and Data Graph (Right)
         html.Div(
@@ -321,38 +319,23 @@ def layout(port: int, name: str, **_) -> list:
 
 # Periodic updates for Store values
 @callback(
-    Output("component-attrs-vals-store", "data"),
-    Output("component-status-badge", "children"),
-    Output("component-status-badge", "className"),
-    Input("component-interval", "n_intervals"),
-    State("tomato-port-store", "data"),
-    State("component-name-store", "data"),
-    State("component-attrs-vals-store", "data"),
-    State("component-attrs-units-store", "data"),
+    Output("status-badge", "children"),
+    Output("status-badge", "className"),
+    Input("interval", "n_intervals"),
+    State("tomato-port", "data"),
+    State("component-name", "data"),
     prevent_initial_call=True,
 )
-def periodic_attrs_update(
+def periodic_status_badge_update(
     _: int,
     port: int,
     name: str,
-    current_vals: dict[str, Any],
-    units_dict: dict[str, Any],
-) -> tuple[dict[str, Any], str, str]:
-    try:
-        status_ret = passata.status(port=port, name=name, timeout=TOUT)
-        if status_ret.success:
-            running = utils.is_component_running(status_ret.data)
-        else:
-            running = False
-    except Exception as e:
-        logger.warning("Exception during passata.status:", exc_info=e)
+) -> tuple[str, str]:
+    status_ret = passata.status(port=port, name=name, timeout=TOUT)
+    if status_ret.success:
+        running = utils.is_component_running(status_ret.data)
+    else:
         running = False
-
-    avals_dict = utils.get_attrs_vals(port=port, name=name, attrs=list(current_vals))
-
-    new_vals = {}
-    for k in current_vals:
-        new_vals[k] = avals_dict.get(k)
 
     if isinstance(running, bool):
         running_bool = running
@@ -373,58 +356,7 @@ def periodic_attrs_update(
         else ("RUNNING" if running_bool else "STOPPED")
     )
 
-    return new_vals, status_badge_text, status_badge_class
-
-
-# UI displays updates from Stores
-@callback(
-    Output({"type": "component-attr-readonly", "index": MATCH}, "children"),
-    Input("component-attrs-vals-store", "data"),
-    State({"type": "component-attr-readonly", "index": MATCH}, "id"),
-    prevent_initial_call=True,
-)
-def update_readonly_attr(vals: dict[str, Any], id: dict[str, str]) -> str:
-    k = id["index"]
-    val = vals.get(k)
-    return str(val) if val is not None else "N/A"
-
-
-# Input handler for read-write attribute updates via Apply button
-@callback(
-    Output({"type": "component-attr-input", "index": MATCH}, "value"),
-    Input({"type": "component-attr-apply-btn", "index": MATCH}, "n_clicks"),
-    State({"type": "component-attr-input", "index": MATCH}, "value"),
-    State({"type": "component-attr-input", "index": MATCH}, "id"),
-    State("tomato-port-store", "data"),
-    State("component-name-store", "data"),
-    prevent_initial_call=True,
-)
-def set_component_attribute(
-    n_clicks: int, value: str, id: dict[str, str], port: int, name: str
-) -> Any | dash.NoUpdate:
-    if n_clicks is None:
-        return dash.no_update
-    k = id["index"]
-    ret = passata.set_attr(port=port, name=name, attr=k, val=value, timeout=TOUT)
-    if ret.success:
-        return ret.data
-    # If set_attr returned success=False, fetch current value to revert
-    current = utils.get_attrs_vals(port=port, name=name, attrs=[k]).get(k)
-    return current
-
-
-# Data Store Updater
-@callback(
-    Output("component-data-store", "data"),
-    State("tomato-port-store", "data"),
-    State("component-name-store", "data"),
-    State("component-data-store", "data"),
-    Input("component-interval", "n_intervals"),
-)
-def component_data_update(
-    port: int, name: str, data: dict | None, _: int
-) -> dict | dash.NoUpdate | None:
-    return utils.update_datastore(port=port, name=name, datastore=data)
+    return status_badge_text, status_badge_class
 
 
 def group_by_unit(ds: dict) -> dict[str, list[str]]:
@@ -449,25 +381,31 @@ def unit_tab_label(tab: str) -> str:
     return tab.removeprefix("unit:")
 
 
+callbacks.data_store_update()
+callbacks.periodic_attr_val_update()
+callbacks.update_readwrite_attr()
+callbacks.set_component_attribute()
+
+
 # Tracks the set of distinct unit labels present in the data. Only changes
 # (and so only triggers a tab-bar rebuild) when that set actually changes,
 # instead of on every ~2s data poll - which would otherwise reset the
 # just-rendered buttons' n_clicks and risk clobbering the active tab.
 @callback(
-    Output("component-graph-units-store", "data"),
-    Input("component-data-store", "data"),
-    State("component-graph-units-store", "data"),
+    Output("data-graph-units-store", "data"),
+    Input({"type": "data-store", "index": ALL}, "data"),
+    State("data-graph-units-store", "data"),
 )
 def update_available_units(
-    ds: dict | None, current_labels: list[str] | None
+    datastores: list[dict], current_labels: list[str] | None
 ) -> list[str] | None | dash.NoUpdate:
-    if ds is None:
-        return dash.no_update if current_labels is None else None
     # Deterministic order: units alphabetically, unitless variables last
-    labels = sorted(group_by_unit(ds), key=lambda u: (u == "", u))
+    labels = set()
+    for ds in datastores:
+        labels.update(sorted(group_by_unit(ds), key=lambda u: (u == "", u)))
     if labels == current_labels:
         return dash.no_update
-    return labels
+    return list(labels)
 
 
 # Renders the "All" / per-unit tab picker's options as a checklist styled
@@ -479,8 +417,8 @@ def update_available_units(
 # lives in the initial layout (see layout()), so only its `options` need
 # updating here, not the whole component.
 @callback(
-    Output("component-graph-tab-checklist", "options"),
-    Input("component-graph-units-store", "data"),
+    Output("data-graph-tab-checklist", "options"),
+    Input("data-graph-units-store", "data"),
 )
 def render_graph_tabs(group_labels: list[str] | None) -> list[dict[str, str]]:
     if group_labels is None:
@@ -496,11 +434,11 @@ def render_graph_tabs(group_labels: list[str] | None) -> list[dict[str, str]]:
 # "All" was checked drops "All". Also prunes any selected unit whose label
 # has dropped out of the live data.
 @callback(
-    Output("component-graph-tab-store", "data"),
-    Output("component-graph-tab-checklist", "value"),
-    Input("component-graph-tab-checklist", "value"),
-    Input("component-graph-units-store", "data"),
-    State("component-graph-tab-store", "data"),
+    Output("data-graph-tab-store", "data"),
+    Output("data-graph-tab-checklist", "value"),
+    Input("data-graph-tab-checklist", "value"),
+    Input("data-graph-units-store", "data"),
+    State("data-graph-tab-store", "data"),
     prevent_initial_call=True,
 )
 def update_active_graph_tab(
@@ -531,8 +469,8 @@ def update_active_graph_tab(
 # separately by render_component_data_graph below, which can patch existing
 # traces in place instead of losing zoom/pan on every tick.
 @callback(
-    Output("component-data-graph-container", "children"),
-    Input("component-graph-tab-store", "data"),
+    Output("data-graph-container", "children"),
+    Input("data-graph-tab-store", "data"),
     State("app-theme-store", "data"),
 )
 def render_component_data_graph_shells(
@@ -547,7 +485,7 @@ def render_component_data_graph_shells(
     graph_gap = "15px" if len(active_tabs) <= 1 else "40px"
     return [
         dcc.Graph(
-            id={"type": "component-data-graph", "index": tab},
+            id={"type": "data-graph", "index": tab},
             # Seeded so Patch() has a figure to apply onto
             figure=plotting.empty_figure("Waiting for data...", theme),
             style={"height": graph_height, "margin-bottom": graph_gap},
@@ -559,36 +497,36 @@ def render_component_data_graph_shells(
 
 # Layout only - traces are patched separately below to preserve zoom/pan
 @callback(
-    Output(
-        {"type": "component-data-graph", "index": MATCH}, "figure", allow_duplicate=True
-    ),
+    Output({"type": "data-graph", "index": MATCH}, "figure", allow_duplicate=True),
     Input("app-theme-store", "data"),
     Input("checkbox-align-time", "value"),
-    Input("component-graph-tab-store", "data"),
-    State("component-data-store", "data"),
-    State({"type": "component-data-graph", "index": MATCH}, "id"),
+    Input("data-graph-tab-store", "data"),
+    State({"type": "data-store", "index": ALL}, "data"),
+    State({"type": "data-graph", "index": MATCH}, "id"),
     prevent_initial_call="initial_duplicate",
 )
 def render_component_data_graph_layout(
     theme: str,
     align_time: list[str],
     active_tabs: list[str],
-    ds: dict | None,
+    datastores: list[dict],
     graph_id: dict[str, str],
 ) -> dict | dash.Patch:
     active_tabs = active_tabs or ["all"]
     tab = graph_id["index"]
 
-    if ds is None:
-        return plotting.empty_figure("Waiting for data...", theme)
+    has_data = False
+    for ds in datastores:
+        if ds == {}:
+            continue
 
-    if tab == "all":
-        has_data = bool(ds["data_vars"])
-        y_title = "Value"
-    else:
-        label = unit_tab_label(tab)
-        has_data = bool(group_by_unit(ds).get(label))
-        y_title = label or "Value"
+        if tab == "all":
+            has_data = bool(ds["data_vars"])
+            y_title = "Value"
+        else:
+            label = unit_tab_label(tab)
+            has_data = bool(group_by_unit(ds).get(label))
+            y_title = label or "Value"
 
     if not has_data:
         return plotting.empty_figure("No data for this tab", theme)
@@ -621,36 +559,34 @@ def render_component_data_graph_layout(
 
 # Traces only - layout handled above
 @callback(
-    Output(
-        {"type": "component-data-graph", "index": MATCH}, "figure", allow_duplicate=True
-    ),
-    Input("component-data-store", "data"),
+    Output({"type": "data-graph", "index": ALL}, "figure", allow_duplicate=True),
+    Input({"type": "data-store", "index": ALL}, "data"),
     State("checkbox-align-time", "value"),
-    State({"type": "component-data-graph", "index": MATCH}, "id"),
-    State({"type": "component-data-graph", "index": MATCH}, "figure"),
+    State({"type": "data-graph", "index": ALL}, "id"),
+    State({"type": "data-graph", "index": ALL}, "figure"),
     prevent_initial_call="initial_duplicate",
 )
 def render_component_data_graph_traces(
-    ds: dict | None,
+    datastores: list[dict],
     align_time: list[str],
-    graph_id: dict[str, str],
-    prev_figure: dict | None,
-) -> dash.Patch:
-    patch = dash.Patch()
-    if ds is None:
-        patch["data"] = []
-        return patch
-
-    tab = graph_id["index"]
+    graph_ids: list[dict[str, str]],
+    prev_figures: list[dict],
+) -> list[dash.Patch]:
+    ret = []
     relative = bool(align_time and "relative" in align_time)
-
-    if tab == "all":
-        y_vars = list(ds["data_vars"])
-    else:
-        y_vars = group_by_unit(ds).get(unit_tab_label(tab), [])
-
-    traces = plotting.build_traces(ds, "uts", y_vars, relative=relative)
-    return plotting.patch_traces(prev_figure, traces)
+    for graph_id, prev_figure in zip(graph_ids, prev_figures):
+        tab = graph_id["index"]
+        traces = []
+        for ds in datastores:
+            if ds == {}:
+                continue
+            if tab == "all":
+                y_vars = list(ds["data_vars"])
+            else:
+                y_vars = group_by_unit(ds).get(unit_tab_label(tab), [])
+            traces.extend(plotting.build_traces(ds, "uts", y_vars, relative=relative))
+        ret.append(plotting.patch_traces(prev_figure, traces))
+    return ret
 
 
 # Manages adding and removing custom graphs
@@ -688,10 +624,10 @@ def manage_custom_graphs(
     Input("custom-graphs-list-store", "data"),
     State({"type": "component-custom-graph", "index": ALL}, "id"),
     State({"type": "component-custom-graph", "index": ALL}, "data"),
-    State("component-data-store", "data"),
+    State({"type": "data-store", "index": MATCH}, "data"),
     State("app-theme-store", "data"),
 )
-def render_graphs_list(
+def render_custom_graphs_list(
     active_ids: list[int],
     meta_ids: list[dict[str, int]],
     meta_values: list[dict],
@@ -908,16 +844,17 @@ def update_custom_graph_meta(
 @callback(
     Output({"type": "custom-graph-x-selector", "index": MATCH}, "options"),
     Output({"type": "custom-graph-y-selector", "index": MATCH}, "options"),
-    Input("component-data-store", "data"),
+    Input({"type": "data-store", "index": ALL}, "data"),
 )
-def populate_dynamic_selectors(ds: dict | None) -> tuple[list[dict], list[dict]]:
-    if ds is None:
-        return [], []
-    vars_list = sorted(ds.get("data_vars", {}))
-    coords_list = sorted(ds.get("coords", {}))
-    y_options = [{"label": v, "value": v} for v in vars_list]
+def populate_dynamic_selectors(datastores: list[dict]) -> tuple[list[dict], list[dict]]:
+    vars_list = []
+    coords_list = []
+    for ds in datastores:
+        vars_list.extend(ds.get("data_vars", []))
+        coords_list.extend(ds.get("coords", []))
+    y_options = [{"label": v, "value": v} for v in sorted(vars_list)]
     x_options = [{"label": "Time (uts)", "value": "uts"}]
-    for coord in coords_list:
+    for coord in sorted(coords_list):
         if coord != "uts":
             x_options.append({"label": coord, "value": coord})
     return x_options, y_options
@@ -929,24 +866,24 @@ def populate_dynamic_selectors(ds: dict | None) -> tuple[list[dict], list[dict]]
     Input({"type": "custom-graph-x-selector", "index": MATCH}, "value"),
     Input({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
     Input("app-theme-store", "data"),
-    State("component-data-store", "data"),
+    State({"type": "data-store", "index": ALL}, "data"),
     prevent_initial_call="initial_duplicate",
 )
 def render_custom_graph_layout(
     x_var: str,
     y_var: str | list[str],
     theme: str,
-    ds: dict | None,
+    datastores: list[dict],
 ) -> dict | dash.Patch:
     y_vars = [y_var] if isinstance(y_var, str) else y_var or []
-    if ds is None or not x_var or len(y_vars) == 0:
+    if not x_var or len(y_vars) == 0:
         return plotting.empty_figure(
             "Select variables above to view custom plot", theme
         )
-
-    consistent, msg = plotting.dims_consistency(x_var, y_vars, ds)
-    if not consistent:
-        return plotting.empty_figure(msg, theme)
+    for ds in datastores:
+        consistent, msg = plotting.dims_consistency(x_var, y_vars, ds)
+        if not consistent:
+            return plotting.empty_figure(msg, theme)
 
     # Empty list is fine - only used for the title, not actual formatting
     _, x_title = plotting.format_timeseries_x([])
@@ -968,36 +905,43 @@ def render_custom_graph_layout(
 
 # Traces only - layout handled above
 @callback(
-    Output({"type": "custom-graph", "index": MATCH}, "figure", allow_duplicate=True),
-    Input("component-data-store", "data"),
-    Input({"type": "custom-graph-options", "index": MATCH}, "value"),
-    State({"type": "custom-graph-x-selector", "index": MATCH}, "value"),
-    State({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
-    State({"type": "custom-graph", "index": MATCH}, "figure"),
+    Output({"type": "custom-graph", "index": ALL}, "figure", allow_duplicate=True),
+    Input({"type": "data-store", "index": ALL}, "data"),
+    Input({"type": "custom-graph-options", "index": ALL}, "value"),
+    State({"type": "custom-graph-x-selector", "index": ALL}, "value"),
+    State({"type": "custom-graph-y-selector", "index": ALL}, "value"),
+    State({"type": "custom-graph", "index": ALL}, "figure"),
     prevent_initial_call="initial_duplicate",
 )
 def render_custom_graph_traces(
-    ds: dict | None,
-    options_val: list[str],
-    x_var: str,
-    y_var: str | list[str],
-    prev_figure: dict | None,
-) -> dash.Patch:
-    y_vars = [y_var] if isinstance(y_var, str) else y_var or []
-    patch = dash.Patch()
-    if ds is None or not x_var or len(y_vars) == 0:
-        patch["data"] = []
-        return patch
+    datastores: list[dict],
+    all_opt: list[str],
+    all_x_var: list[str],
+    all_y_var: list[str | list[str]],
+    all_p_fig: list[dict | None],
+) -> list[dash.Patch]:
+    ret = []
+    for options_val, x_var, y_var, prev_figure in zip(
+        all_opt, all_x_var, all_y_var, all_p_fig
+    ):
+        y_vars = [y_var] if isinstance(y_var, str) else y_var or []
+        patch = dash.Patch()
+        if not x_var or len(y_vars) == 0:
+            patch["data"] = []
+            ret.append(patch)
+            continue
 
-    consistent, _ = plotting.dims_consistency(x_var, y_vars, ds)
-    if not consistent:
-        return patch
+        connect_lines = "lines" in options_val
+        mode = "lines+markers" if connect_lines else "markers"
 
-    connect_lines = "lines" in options_val
-    mode = "lines+markers" if connect_lines else "markers"
-
-    traces = plotting.build_traces(ds, x_var, y_vars, mode)
-    return plotting.patch_traces(prev_figure, traces)
+        traces = []
+        for ds in datastores:
+            consistent, _ = plotting.dims_consistency(x_var, y_vars, ds)
+            if not consistent:
+                ret.append(patch)
+            traces.extend(plotting.build_traces(ds, x_var, y_vars, mode))
+        ret.append(plotting.patch_traces(prev_figure, traces))
+    return ret
 
 
 @callback(

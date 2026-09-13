@@ -227,23 +227,21 @@ def pretty(val: Any, prec: bool = True) -> str:
 def update_datastore(
     port: int,
     name: str,
-    datastore: dict | None,
+    datastore: dict,
     cap: int | None = None,
-) -> dict | dash.NoUpdate | None:
+) -> dict | dash.NoUpdate:
     ret = passata.get_last_data(port=port, name=name, timeout=TOUT)
     logger.debug("ret=%s", str(ret))
     if not ret.success:
         return dash.no_update
-    if datastore is None and ret.data is None:
-        return dash.no_update
-    elif ret.data is None:
+    if ret.data is None:
         logger.warning("passata.get_last_data returned no data, erasing data store")
-        return None
+        return {}
 
     ndata = ret.data.to_dict()
     logger.debug("ndata=%s", str(ndata))
     # Simply return data if first load.
-    if datastore is None:
+    if "coords" not in datastore:
         return ndata
     # Do not update if timestamp is already present.
     uts = ndata["coords"]["uts"]["data"][0]

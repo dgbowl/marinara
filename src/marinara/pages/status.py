@@ -166,7 +166,6 @@ dashboard_layout = html.Div(
                             style={"height": "450px"},
                             responsive=True,
                         ),
-                        dcc.Interval(id="dash-graph-interval", interval=2000),
                     ],
                 ),
             ],
@@ -344,7 +343,7 @@ def update_dashboard_stats(
 @callback(
     Output("dash-parameters-list", "children"),
     Output("dash-plot-data-store", "data"),
-    Input("dash-graph-interval", "n_intervals"),
+    Input("interval", "n_intervals"),
     Input("dash-plot-pipeline-selector", "value"),
     State("tomato-port", "data"),
     State("dash-plot-data-store", "data"),
@@ -443,7 +442,7 @@ def update_dashboard_data(
             comp_ds = utils.update_datastore(
                 port=port,
                 name=cname,
-                datastore=historical_data["components"].get(cname),
+                datastore=historical_data["components"].get(cname, {}),
                 cap=50,
             )
             if comp_ds is None:
