@@ -302,7 +302,6 @@ def layout(port: int, name: str, **_) -> list:
         dcc.Store(id="component-graph-tab-store", data=["all"]),
         dcc.Store(id="component-graph-units-store", data=None),
         dcc.Store(id="custom-graphs-list-store", data=[]),
-        dcc.Interval(id="interval", interval=2000),
         header,
         # Row 1: Attributes & Controls (Left) and Data Graph (Right)
         html.Div(

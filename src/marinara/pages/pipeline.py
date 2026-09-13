@@ -22,7 +22,6 @@ def create_header_div(port: int, name: str) -> html.Div:
             dcc.Store(id="store-pipeline-component-attrs-vals", data=None),
             dcc.Store(id="store-pipeline-component-attrs-units", data=None),
             dcc.Store(id="store-pipeline-component-attrs-rw", data=None),
-            dcc.Interval(id="interval-pipeline-content", interval=2000),
         ],
         className="header-store",
     )
@@ -585,7 +584,7 @@ def pipeline_param_interaction_sampleid(sampleid: str, port: int, name: str) -> 
 # Periodic updates for attributes store values
 @callback(
     Output("store-pipeline-component-attrs-vals", "data"),
-    Input("interval-pipeline-content", "n_intervals"),
+    Input("interval", "n_intervals"),
     State("store-pipeline-component-names", "data"),
     State("store-pipeline-component-attrs-vals", "data"),
     State("store-pipeline-component-attrs-units", "data"),
@@ -626,7 +625,7 @@ def components_periodic_update_attrs_vals_store(
 
 @callback(
     Output("store-pipeline-component-running", "data"),
-    Input("interval-pipeline-content", "n_intervals"),
+    Input("interval", "n_intervals"),
     State("store-pipeline-component-names", "data"),
     State("store-pipeline-component-running", "data"),
     State("tomato-port", "data"),
@@ -654,7 +653,7 @@ def components_periodic_update_params_store(
 
 @callback(
     Output("store-pipeline-params", "data"),
-    Input("interval-pipeline-content", "n_intervals"),
+    Input("interval", "n_intervals"),
     State("store-pipeline-params", "data"),
     State("tomato-port", "data"),
     State("store-pipeline-name", "data"),
@@ -804,7 +803,7 @@ def components_update_param_display(
 
 @callback(
     Output({"type": "component-data-store", "index": MATCH}, "data"),
-    Input("interval-pipeline-content", "n_intervals"),
+    Input("interval", "n_intervals"),
     State("tomato-port", "data"),
     State({"type": "component-data-store", "index": MATCH}, "id"),
     State({"type": "component-data-store", "index": MATCH}, "data"),
