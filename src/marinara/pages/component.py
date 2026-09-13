@@ -101,7 +101,7 @@ def layout(port: int, name: str, **_) -> list:
                     ),
                     html.Span(
                         status_badge_text,
-                        id="component-status-badge",
+                        id="status-badge",
                         className=status_badge_class,
                         style={"margin-left": "15px"},
                     ),
@@ -122,7 +122,7 @@ def layout(port: int, name: str, **_) -> list:
         if v.rw:
             if v.options:
                 control = dcc.Dropdown(
-                    id={"type": "component-attr-input", "index": k},
+                    id={"type": "attr-input", "index": k},
                     options=sorted(v.options),
                     value=val,
                     clearable=False,
@@ -130,7 +130,7 @@ def layout(port: int, name: str, **_) -> list:
                 )
             else:
                 control = dcc.Input(
-                    id={"type": "component-attr-input", "index": k},
+                    id={"type": "attr-input", "index": k},
                     type="text",
                     value=val,
                     debounce=True,
@@ -138,7 +138,7 @@ def layout(port: int, name: str, **_) -> list:
                 )
         else:
             control = dcc.Input(
-                id={"type": "component-attr-readonly", "index": k},
+                id={"type": "attr-display", "index": k},
                 value=str(val) if val is not None else "N/A",
                 disabled=True,
                 className="attr-control immutable-input",
@@ -151,6 +151,10 @@ def layout(port: int, name: str, **_) -> list:
         if v.maximum is not None:
             constraints.append(f"max: {utils.format_constraint(v.maximum, v.units)}")
         constraints_str = f" ({', '.join(constraints)})" if constraints else ""
+
+        attr_val_store = dcc.Store(id={"type": "attr-val", "index": k}, data=val)
+        attrs = v.model_dump(include={"rw", "units", "options"}, mode="json")
+        attr_param_store = dcc.Store(id={"type": "attrs", "index": k}, data=attrs)
 
         if v.rw:
             apply_btn = html.Button(
@@ -167,6 +171,8 @@ def layout(port: int, name: str, **_) -> list:
                         html.Span(
                             f" {unit_str}{constraints_str}", className="attr-unit"
                         ),
+                        attr_val_store,
+                        attr_param_store,
                     ],
                     className="attr-row",
                 )
@@ -180,6 +186,8 @@ def layout(port: int, name: str, **_) -> list:
                         html.Span(
                             f" {unit_str}{constraints_str}", className="attr-unit"
                         ),
+                        attr_val_store,
+                        attr_param_store,
                     ],
                     className="attr-row",
                 )
@@ -296,7 +304,6 @@ def layout(port: int, name: str, **_) -> list:
         # Dashboard Stores
         dcc.Store(id="component-name", data=name),
         dcc.Store(id="component-data-store", data={}),
-        dcc.Store(id="component-attrs-vals-store", data=init_attrs_vals),
         dcc.Store(id="component-attrs-units-store", data=init_attrs_units),
         dcc.Store(id="component-attrs-rw-store", data=init_attrs_rw),
         dcc.Store(id="component-graph-tab-store", data=["all"]),
@@ -319,38 +326,52 @@ def layout(port: int, name: str, **_) -> list:
 
 # Periodic updates for Store values
 @callback(
-    Output("component-attrs-vals-store", "data"),
-    Output("component-status-badge", "children"),
-    Output("component-status-badge", "className"),
+    Output({"type": "attr-val", "index": ALL}, "data"),
     Input("interval", "n_intervals"),
     State("tomato-port", "data"),
     State("component-name", "data"),
-    State("component-attrs-vals-store", "data"),
-    State("component-attrs-units-store", "data"),
+    State({"type": "attr-val", "index": ALL}, "data"),
+    State({"type": "attr-val", "index": ALL}, "id"),
     prevent_initial_call=True,
 )
 def periodic_attrs_update(
     _: int,
     port: int,
     name: str,
-    current_vals: dict[str, Any],
-    units_dict: dict[str, Any],
-) -> tuple[dict[str, Any], str, str]:
-    try:
-        status_ret = passata.status(port=port, name=name, timeout=TOUT)
-        if status_ret.success:
-            running = utils.is_component_running(status_ret.data)
+    old_vals: Any,
+    ids: dict,
+) -> list[Any | dash.NoUpdate]:
+    attrs = [id["index"] for id in ids]
+    avals = utils.get_attrs_vals(port=port, name=name, attrs=attrs)
+    new_vals = [avals[attr] for attr in attrs]
+    ret = []
+    for old, new in zip(old_vals, new_vals):
+        if old == new:
+            ret.append(dash.no_update)
         else:
-            running = False
-    except Exception as e:
-        logger.warning("Exception during passata.status:", exc_info=e)
+            ret.append(new)
+    return ret
+
+
+# Periodic updates for Store values
+@callback(
+    Output("status-badge", "children"),
+    Output("status-badge", "className"),
+    Input("interval", "n_intervals"),
+    State("tomato-port", "data"),
+    State("component-name", "data"),
+    prevent_initial_call=True,
+)
+def status_badge_update(
+    _: int,
+    port: int,
+    name: str,
+) -> tuple[str, str]:
+    status_ret = passata.status(port=port, name=name, timeout=TOUT)
+    if status_ret.success:
+        running = utils.is_component_running(status_ret.data)
+    else:
         running = False
-
-    avals_dict = utils.get_attrs_vals(port=port, name=name, attrs=list(current_vals))
-
-    new_vals = {}
-    for k in current_vals:
-        new_vals[k] = avals_dict.get(k)
 
     if isinstance(running, bool):
         running_bool = running
@@ -371,28 +392,25 @@ def periodic_attrs_update(
         else ("RUNNING" if running_bool else "STOPPED")
     )
 
-    return new_vals, status_badge_text, status_badge_class
+    return status_badge_text, status_badge_class
 
 
 # UI displays updates from Stores
-@callback(
-    Output({"type": "component-attr-readonly", "index": MATCH}, "children"),
-    Input("component-attrs-vals-store", "data"),
-    State({"type": "component-attr-readonly", "index": MATCH}, "id"),
-    prevent_initial_call=True,
-)
-def update_readonly_attr(vals: dict[str, Any], id: dict[str, str]) -> str:
-    k = id["index"]
-    val = vals.get(k)
-    return str(val) if val is not None else "N/A"
+# @callback(
+#    Output({"type": "attr-display", "index": MATCH}, "value"),
+#    Input({"type": "attr-val", "index": MATCH}, "data"),
+# )
+# def update_readonly_attr(val: Any, id: dict[str, str]) -> str:
+#    print(f"{val=}")
+#    return str(val) if val is not None else "N/A"
 
 
 # Input handler for read-write attribute updates via Apply button
 @callback(
-    Output({"type": "component-attr-input", "index": MATCH}, "value"),
+    Output({"type": "attr-input", "index": MATCH}, "value"),
     Input({"type": "component-attr-apply-btn", "index": MATCH}, "n_clicks"),
-    State({"type": "component-attr-input", "index": MATCH}, "value"),
-    State({"type": "component-attr-input", "index": MATCH}, "id"),
+    State({"type": "attr-input", "index": MATCH}, "value"),
+    State({"type": "attr-input", "index": MATCH}, "id"),
     State("tomato-port", "data"),
     State("component-name", "data"),
     prevent_initial_call=True,
@@ -400,8 +418,6 @@ def update_readonly_attr(vals: dict[str, Any], id: dict[str, str]) -> str:
 def set_component_attribute(
     n_clicks: int, value: str, id: dict[str, str], port: int, name: str
 ) -> Any | dash.NoUpdate:
-    if n_clicks is None:
-        return dash.no_update
     k = id["index"]
     ret = passata.set_attr(port=port, name=name, attr=k, val=value, timeout=TOUT)
     if ret.success:
