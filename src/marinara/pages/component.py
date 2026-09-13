@@ -8,6 +8,7 @@ from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
 from tomato import passata
 
 from marinara import plotting, utils
+from marinara.callbacks import data_store_update, periodic_attr_val_update
 from marinara.utils import TOUT
 
 logger = logging.getLogger(__name__)
@@ -318,32 +319,6 @@ def layout(port: int, name: str, **_) -> list:
     return layout_children
 
 
-# Periodic updates for store values
-@callback(
-    Output({"type": "attr-val", "index": MATCH}, "data"),
-    Input("interval", "n_intervals"),
-    State("tomato-port", "data"),
-    State("component-name", "data"),
-    State({"type": "attr-val", "index": MATCH}, "data"),
-    State({"type": "attr-val", "index": MATCH}, "id"),
-    prevent_initial_call=True,
-)
-def periodic_attr_val_update(
-    _: int,
-    port: int,
-    name: str,
-    old: Any,
-    id: dict,
-) -> Any | dash.NoUpdate:
-    cname, attr = id["index"].split("/")
-    new = utils.get_attrs_vals(port=port, name=cname, attrs=[attr]).get(attr)
-    if isinstance(new, pint.Quantity):
-        new = new.m
-    if old == new:
-        return dash.no_update
-    return new
-
-
 # Periodic updates for Store values
 @callback(
     Output("status-badge", "children"),
@@ -427,25 +402,6 @@ def set_component_attribute(
         return str(val.m)
     else:
         return str(val)
-
-
-# Data Store Updater
-@callback(
-    Output({"type": "data-store", "index": MATCH}, "data"),
-    Input("interval", "n_intervals"),
-    State("tomato-port", "data"),
-    State({"type": "data-store", "index": MATCH}, "data"),
-    State({"type": "data-store", "index": MATCH}, "id"),
-)
-def data_store_update(
-    _: int,
-    port: int,
-    ds: dict,
-    id: dict,
-) -> dict | dash.NoUpdate:
-    name = id["index"]
-    ret = utils.update_datastore(port=port, name=name, datastore=ds)
-    return ret
 
 
 def group_by_unit(ds: dict) -> dict[str, list[str]]:
@@ -710,7 +666,7 @@ def manage_custom_graphs(
     State({"type": "data-store", "index": MATCH}, "data"),
     State("app-theme-store", "data"),
 )
-def render_graphs_list(
+def render_custom_graphs_list(
     active_ids: list[int],
     meta_ids: list[dict[str, int]],
     meta_values: list[dict],
