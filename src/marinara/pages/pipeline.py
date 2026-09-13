@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 def create_header_div(port: int, name: str) -> html.Div:
     stores = html.Div(
         children=[
-            dcc.Store(id="store-tomato-port", data=port),
             dcc.Store(id="store-pipeline-name", data=name),
             dcc.Store(id="store-pipeline-params", data=None),
             dcc.Store(id="store-pipeline-component-names", data=None),
@@ -94,7 +93,7 @@ def object_from_attrs(cname, attr, params, value) -> dcc.Dropdown | dcc.Input:
 # Create content div once, populate stores
 @callback(
     Output("content-wrapper", "children"),
-    Input("store-tomato-port", "data"),
+    Input("tomato-port", "data"),
     Input("store-pipeline-name", "data"),
 )
 def create_content_div(port: int, name: str) -> list[html.Div]:
@@ -489,7 +488,7 @@ def create_content_div(port: int, name: str) -> list[html.Div]:
     State({"type": "component-attr-val", "index": MATCH}, "id"),
     State({"type": "component-attr-val", "index": MATCH}, "disabled"),
     State("store-pipeline-component-attrs-rw", "data"),
-    State("store-tomato-port", "data"),
+    State("tomato-port", "data"),
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
@@ -521,7 +520,7 @@ def component_attr_interaction(
     Output("pipeline-input-ready", "value"),
     Input("pipeline-input-ready", "value"),
     State("store-pipeline-params", "data"),
-    State("store-tomato-port", "data"),
+    State("tomato-port", "data"),
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
@@ -558,7 +557,7 @@ def pipeline_param_interaction_ready(
 
 @callback(
     Input("pipeline-input-sampleid", "value"),
-    State("store-tomato-port", "data"),
+    State("tomato-port", "data"),
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
@@ -590,7 +589,7 @@ def pipeline_param_interaction_sampleid(sampleid: str, port: int, name: str) -> 
     State("store-pipeline-component-names", "data"),
     State("store-pipeline-component-attrs-vals", "data"),
     State("store-pipeline-component-attrs-units", "data"),
-    State("store-tomato-port", "data"),
+    State("tomato-port", "data"),
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
@@ -630,7 +629,7 @@ def components_periodic_update_attrs_vals_store(
     Input("interval-pipeline-content", "n_intervals"),
     State("store-pipeline-component-names", "data"),
     State("store-pipeline-component-running", "data"),
-    State("store-tomato-port", "data"),
+    State("tomato-port", "data"),
     prevent_initial_call=True,
 )
 def components_periodic_update_params_store(
@@ -657,7 +656,7 @@ def components_periodic_update_params_store(
     Output("store-pipeline-params", "data"),
     Input("interval-pipeline-content", "n_intervals"),
     State("store-pipeline-params", "data"),
-    State("store-tomato-port", "data"),
+    State("tomato-port", "data"),
     State("store-pipeline-name", "data"),
     prevent_initial_call=True,
 )
@@ -806,7 +805,7 @@ def components_update_param_display(
 @callback(
     Output({"type": "component-data-store", "index": MATCH}, "data"),
     Input("interval-pipeline-content", "n_intervals"),
-    State("store-tomato-port", "data"),
+    State("tomato-port", "data"),
     State({"type": "component-data-store", "index": MATCH}, "id"),
     State({"type": "component-data-store", "index": MATCH}, "data"),
 )

@@ -294,16 +294,15 @@ def layout(port: int, name: str, **_) -> list:
 
     layout_children = [
         # Dashboard Stores
-        dcc.Store(id="tomato-port-store", data=port),
-        dcc.Store(id="component-name-store", data=name),
-        dcc.Store(id="component-data-store", data=None),
+        dcc.Store(id="component-name", data=name),
+        dcc.Store(id="component-data-store", data={}),
         dcc.Store(id="component-attrs-vals-store", data=init_attrs_vals),
         dcc.Store(id="component-attrs-units-store", data=init_attrs_units),
         dcc.Store(id="component-attrs-rw-store", data=init_attrs_rw),
         dcc.Store(id="component-graph-tab-store", data=["all"]),
         dcc.Store(id="component-graph-units-store", data=None),
         dcc.Store(id="custom-graphs-list-store", data=[]),
-        dcc.Interval(id="component-interval", interval=2000),
+        dcc.Interval(id="interval", interval=2000),
         header,
         # Row 1: Attributes & Controls (Left) and Data Graph (Right)
         html.Div(
@@ -324,9 +323,9 @@ def layout(port: int, name: str, **_) -> list:
     Output("component-attrs-vals-store", "data"),
     Output("component-status-badge", "children"),
     Output("component-status-badge", "className"),
-    Input("component-interval", "n_intervals"),
-    State("tomato-port-store", "data"),
-    State("component-name-store", "data"),
+    Input("interval", "n_intervals"),
+    State("tomato-port", "data"),
+    State("component-name", "data"),
     State("component-attrs-vals-store", "data"),
     State("component-attrs-units-store", "data"),
     prevent_initial_call=True,
@@ -395,8 +394,8 @@ def update_readonly_attr(vals: dict[str, Any], id: dict[str, str]) -> str:
     Input({"type": "component-attr-apply-btn", "index": MATCH}, "n_clicks"),
     State({"type": "component-attr-input", "index": MATCH}, "value"),
     State({"type": "component-attr-input", "index": MATCH}, "id"),
-    State("tomato-port-store", "data"),
-    State("component-name-store", "data"),
+    State("tomato-port", "data"),
+    State("component-name", "data"),
     prevent_initial_call=True,
 )
 def set_component_attribute(
@@ -416,10 +415,10 @@ def set_component_attribute(
 # Data Store Updater
 @callback(
     Output("component-data-store", "data"),
-    State("tomato-port-store", "data"),
-    State("component-name-store", "data"),
+    State("tomato-port", "data"),
+    State("component-name", "data"),
     State("component-data-store", "data"),
-    Input("component-interval", "n_intervals"),
+    Input("interval", "n_intervals"),
 )
 def component_data_update(
     port: int, name: str, data: dict | None, _: int
