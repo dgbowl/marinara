@@ -732,12 +732,7 @@ def render_graphs_list(
 
         title_val = meta.get("title") or f"Custom Graph #{i}"
         yvar_val = meta.get("y_vars") or []
-        # `options` is stored as a dict(mode, sort) - `mode` mirrors what the
-        # single "Connect points" checkbox can express; `sort` is unused for
-        # now (no sort-by-x UI yet), kept so the stored shape matches the
-        # interface used everywhere else below.
-        graph_opts = meta.get("options") or {"mode": "lines+markers", "sort": False}
-        options_val = ["lines"] if graph_opts.get("mode") == "lines+markers" else []
+        options_val = meta.get("options") or ["lines"]
 
         card = html.Div(
             id={"type": "custom-graph-card", "index": i},
@@ -915,12 +910,7 @@ def update_custom_graph_meta(
         "custom-graphs-list-store" in t["prop_id"] for t in ctx.triggered
     ):
         return current_data
-    mode = "lines+markers" if options and "lines" in options else "markers"
-    return {
-        "title": title,
-        "y_vars": y_vars or [],
-        "options": {"mode": mode, "sort": False},
-    }
+    return {"title": title, "y_vars": y_vars or [], "options": options or []}
 
 
 @callback(
@@ -1011,12 +1001,10 @@ def render_custom_graph_traces(
     if not consistent:
         return patch
 
-    graph_opts = {
-        "mode": "lines+markers" if "lines" in options_val else "markers",
-        "sort": False,
-    }
+    connect_lines = "lines" in options_val
+    mode = "lines+markers" if connect_lines else "markers"
 
-    traces = plotting.build_traces(ds, x_var, y_vars, graph_opts["mode"])
+    traces = plotting.build_traces(ds, x_var, y_vars, mode)
     return plotting.patch_traces(prev_figure, traces)
 
 
