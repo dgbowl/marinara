@@ -56,6 +56,7 @@ dashboard_layout = html.Div(
     children=[
         header,
         dcc.Store(id="dash-plot-data-store", data={}),
+        dcc.Store(id="dash-plot-status-store", data={}),
         # KPI Cards Row
         html.Div(
             className="kpi-row",
@@ -344,6 +345,7 @@ def update_dashboard_stats(
 @callback(
     Output("dash-parameters-list", "children"),
     Output("dash-plot-data-store", "data"),
+    Output("dash-plot-status-store", "data"),
     Input("dash-graph-interval", "n_intervals"),
     Input("dash-plot-pipeline-selector", "value"),
     State("tomato-port", "data"),
@@ -354,12 +356,13 @@ def update_dashboard_data(
     selected_pip: str | None,
     port: int,
     historical_data: dict,
-) -> tuple[html.Div, dict]:
+) -> tuple[html.Div, dict, dict]:
     if not selected_pip:
         return (
             html.Div(
                 "Select a pipeline to view parameters.", className="text-secondary"
             ),
+            {},
             {},
         )
 
@@ -374,11 +377,13 @@ def update_dashboard_data(
         return (
             html.Div("Parameters temporarily unavailable.", className="text-secondary"),
             {},
+            {},
         )
 
     if not pip:
         return (
             html.Div("Pipeline parameters not found.", className="text-secondary"),
+            {},
             {},
         )
 
@@ -390,6 +395,7 @@ def update_dashboard_data(
     param_items = []
     # pip.components maps role name to real component name, e.g. 'counter' to 'example_counter:(addr,1)'.
     # We need the real component names (the values), not the role names (the keys). Used again further below.
+    component_status = {}
     for cname in pip.components.values():
         try:
             attrs_ret = passata.attrs(port=port, name=cname, timeout=TOUT)
@@ -397,6 +403,7 @@ def update_dashboard_data(
                 attrs_meta = attrs_ret.data
             else:
                 attrs_meta = {}
+            component_status[cname] = {k: v.status for k, v in attrs_meta.items()}
             vals = utils.get_attrs_vals(port=port, name=cname, attrs=list(attrs_meta))
 
             if vals:
@@ -457,7 +464,7 @@ def update_dashboard_data(
                 exc_info=e,
             )
 
-    return params_list, historical_data
+    return params_list, historical_data, component_status
 
 
 # Layout only - traces are patched separately below
@@ -482,18 +489,22 @@ def render_dashboard_graph_layout(
 @callback(
     Output("dash-live-graph", "figure", allow_duplicate=True),
     Input("dash-plot-data-store", "data"),
+    State("dash-plot-status-store", "data"),
     State("dash-live-graph", "figure"),
     prevent_initial_call="initial_duplicate",
 )
 def render_dashboard_graph_traces(
-    historical_data: dict | None, prev_figure: dict | None
+    historical_data: dict | None,
+    component_status: dict | None,
+    prev_figure: dict | None,
 ) -> dash.Patch:
     traces = []
+    component_status = component_status or {}
     for cname, comp_ds in (historical_data or {}).get("components", {}).items():
+        status_map = component_status.get(cname, {})
+        keys = [k for k in comp_ds["data_vars"] if status_map.get(k, True)]
         traces.extend(
-            plotting.build_traces(
-                comp_ds, "uts", list(comp_ds["data_vars"]), compact=True, prefix=cname
-            )
+            plotting.build_traces(comp_ds, "uts", keys, compact=True, prefix=cname)
         )
     return plotting.patch_traces(prev_figure, traces)
 
