@@ -403,9 +403,7 @@ def update_dashboard_data(
                 attrs_meta = attrs_ret.data
             else:
                 attrs_meta = {}
-            component_status[cname] = {
-                k: v.status for k, v in attrs_meta.items()
-            }
+            component_status[cname] = {k: v.status for k, v in attrs_meta.items()}
             vals = utils.get_attrs_vals(port=port, name=cname, attrs=list(attrs_meta))
 
             if vals:
