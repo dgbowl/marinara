@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import dash
@@ -67,7 +68,14 @@ def format_constraint(val: Any, base_unit: str) -> str:
         return f"{mag} {u_str}" if u_str else str(mag)
 
 
-def format_obj(obj: dict, headers, attrs, otype, port) -> html.Div:
+def format_obj(
+    obj: dict,
+    headers,
+    attrs,
+    otype,
+    port,
+    formatters: dict[str, Callable[[Any], Any]] | None = None,
+) -> html.Div:
     if not obj:
         return html.Div(
             "No registered elements found.",
@@ -124,9 +132,11 @@ def format_obj(obj: dict, headers, attrs, otype, port) -> html.Div:
             if attr == "capabilities":
                 continue
 
+            formatter = (formatters or {}).get(attr)
+            val_el = formatter(val) if formatter else html.Span(val_str)
             metadata_items.append(
                 html.Div(
-                    children=[html.Strong(f"{header_label}: "), html.Span(val_str)],
+                    children=[html.Strong(f"{header_label}: "), val_el],
                     style={"margin-right": "35px"},
                 )
             )

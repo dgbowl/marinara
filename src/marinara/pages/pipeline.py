@@ -35,15 +35,8 @@ def create_header_div(port: int, name: str) -> html.Div:
                     dcc.Link(
                         "← Back to Pipelines",
                         href="/pipelines",
-                        className="btn inline-block",
-                        style={
-                            "margin-right": "20px",
-                            "text-decoration": "none",
-                            "background-color": "var(--accent-color)",
-                            "color": "white",
-                            "padding": "8px 16px",
-                            "border-radius": "4px",
-                        },
+                        className="btn",
+                        style={"margin-right": "20px"},
                     ),
                     html.H2(
                         f"Pipeline: {name}",
