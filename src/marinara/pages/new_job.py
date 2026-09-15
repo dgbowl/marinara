@@ -1,0 +1,583 @@
+import getpass
+import json
+import logging
+import os
+import tempfile
+
+import dash
+import yaml
+from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
+from dgbowl_schemas.tomato.payload_2_2 import Payload
+from pydantic import ValidationError
+from tomato import ketchup, tomato
+
+from marinara.utils import TOUT
+
+logger = logging.getLogger(__name__)
+dash.register_page(__name__, path="/jobs/new", title="New Job")
+
+
+def triggered_pattern_index(ctx):
+    """Extracts the "index" field from a pattern-matching Input's triggered id."""
+    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    return json.loads(trigger_id)["index"]
+
+
+layout = html.Div(
+    className="dashboard-container",
+    children=[
+        html.Div(
+            className="theme-header",
+            children=[
+                html.Div(
+                    children=[
+                        dcc.Link(
+                            "← Back to Jobs",
+                            href="/jobs",
+                            className="btn",
+                            style={"margin-right": "20px"},
+                        ),
+                        html.H2(
+                            "New Job",
+                            className="inline",
+                            style={"margin": 0, "font-size": "22px"},
+                        ),
+                    ],
+                    style={"display": "flex", "align-items": "center"},
+                ),
+            ],
+        ),
+        html.Div(
+            className="card",
+            children=[
+                html.H3("Pipeline & Sample", style={"margin-top": 0}),
+                html.Div(
+                    className="attr-row",
+                    children=[
+                        html.Div("Pipeline:", className="attr-label"),
+                        dcc.Dropdown(
+                            id="new-job-pipeline-dropdown",
+                            className="attr-control",
+                            clearable=False,
+                        ),
+                    ],
+                ),
+                html.Div(
+                    className="attr-row",
+                    children=[
+                        html.Div("Sample Identifier:", className="attr-label"),
+                        dcc.Input(
+                            id="new-job-sample-identifier",
+                            type="text",
+                            className="attr-control",
+                        ),
+                    ],
+                ),
+                html.Div(
+                    className="attr-row",
+                    children=[
+                        html.Div("", className="attr-label"),
+                        dcc.Checklist(
+                            id="new-job-sample-is-parent",
+                            options=[{"label": " Sample is parent", "value": "parent"}],
+                            value=["parent"],
+                        ),
+                    ],
+                ),
+            ],
+        ),
+        html.Div(
+            className="card",
+            children=[
+                html.H3("Job Settings", style={"margin-top": 0}),
+                html.Div(
+                    className="attr-row",
+                    children=[
+                        html.Div("Job Name:", className="attr-label"),
+                        dcc.Input(
+                            id="new-job-name",
+                            type="text",
+                            className="attr-control",
+                            placeholder="optional",
+                        ),
+                    ],
+                ),
+                html.Div(
+                    className="attr-row",
+                    children=[
+                        html.Div("Output Path:", className="attr-label"),
+                        dcc.Input(
+                            id="new-job-output-path",
+                            type="text",
+                            className="attr-control",
+                            placeholder="defaults to tomato server's working directory",
+                        ),
+                    ],
+                ),
+            ],
+        ),
+        html.Div(
+            className="card",
+            children=[
+                html.Div(
+                    children=[
+                        html.H3("Method", style={"margin": 0}),
+                        html.Button(
+                            "+ Add Task",
+                            id="new-job-add-task-btn",
+                            className="btn-success",
+                            style={"margin-left": "auto"},
+                        ),
+                    ],
+                    style={
+                        "display": "flex",
+                        "align-items": "center",
+                        "margin-bottom": "20px",
+                        "border-bottom": "1px solid var(--border-color)",
+                        "padding-bottom": "10px",
+                    },
+                ),
+                html.Div(id="new-job-tasks-container"),
+            ],
+        ),
+        html.Div(
+            className="card",
+            children=[
+                html.H3("YAML Preview", style={"margin-top": 0}),
+                html.Pre(
+                    id="new-job-yaml-preview",
+                    style={
+                        "font-family": "monospace",
+                        "font-size": "13px",
+                        "overflow-x": "auto",
+                        "padding": "15px",
+                        "background-color": "rgba(0,0,0,0.01)",
+                        "border-radius": "6px",
+                        "margin": 0,
+                    },
+                ),
+            ],
+        ),
+        html.Div(
+            className="card",
+            children=[
+                html.Button(
+                    "Submit Job",
+                    id="new-job-submit-btn",
+                    style={"padding": "10px 20px"},
+                ),
+                html.Div(id="new-job-submit-result", style={"margin-top": "15px"}),
+            ],
+        ),
+        dcc.Store(id="new-job-tasks-list-store", data=[]),
+        dcc.Store(id="new-job-roles-store", data={}),
+        dcc.Store(id="new-job-components-store", data={}),
+        dcc.Store(id="new-job-pipelines-store", data={}),
+    ],
+)
+
+
+# Populates the pipeline dropdown, component capabilities, and each pipeline's
+# role -> component_name mapping on page load / port change
+@callback(
+    Output("new-job-pipeline-dropdown", "options"),
+    Output("new-job-components-store", "data"),
+    Output("new-job-pipelines-store", "data"),
+    Input("tomato-port", "data"),
+)
+def populate_new_job_options(port):
+    try:
+        cfg_ret = tomato.status(stgrp="tomato", port=port, timeout=TOUT)
+        cmps_ret = tomato.status(stgrp="components", port=port, timeout=TOUT)
+        pipelines = (
+            cfg_ret.data.devicefile.pipelines
+            if cfg_ret.success and cfg_ret.data is not None
+            else {}
+        )
+        components = (
+            cmps_ret.data if cmps_ret.success and cmps_ret.data is not None else {}
+        )
+        # capabilities is a set, which dcc.Store can't JSON-serialize as-is
+        components = {
+            cname: {**cmp, "capabilities": sorted(cmp.get("capabilities") or [])}
+            for cname, cmp in components.items()
+        }
+        pipelines_roles = {
+            name: dict(pip.components) for name, pip in pipelines.items()
+        }
+        return sorted(pipelines), components, pipelines_roles
+    except Exception as e:
+        logger.warning("Exception during populate_new_job_options:", exc_info=e)
+        return [], {}, {}
+
+
+# Resolves the selected pipeline's role -> component_name mapping from the store
+# populated above, rather than re-querying the daemon
+@callback(
+    Output("new-job-roles-store", "data"),
+    Input("new-job-pipeline-dropdown", "value"),
+    State("new-job-pipelines-store", "data"),
+    prevent_initial_call=True,
+)
+def select_new_job_pipeline(pipeline_name, pipelines_roles):
+    if not pipeline_name:
+        return {}
+    return (pipelines_roles or {}).get(pipeline_name, {})
+
+
+# Manages adding and removing task cards
+@callback(
+    Output("new-job-tasks-list-store", "data"),
+    Input("new-job-add-task-btn", "n_clicks"),
+    Input({"type": "new-job-task-remove-btn", "index": ALL}, "n_clicks"),
+    State("new-job-tasks-list-store", "data"),
+    prevent_initial_call=True,
+)
+def manage_new_job_tasks(add_clicks, remove_clicks, active_ids):
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        return active_ids
+
+    trigger_id = ctx.triggered[0]["prop_id"]
+
+    if "new-job-add-task-btn" in trigger_id:
+        next_id = max(active_ids, default=0) + 1
+        return active_ids + [next_id]
+    else:
+        try:
+            remove_idx = triggered_pattern_index(ctx)
+            return [i for i in active_ids if i != remove_idx]
+        except Exception as e:
+            logger.warning("Exception during manage_new_job_tasks:", exc_info=e)
+            return active_ids
+
+
+def task_card(i, meta, roles, components):
+    role_val = meta.get("component_role")
+    technique_val = meta.get("technique_name")
+    cname = roles.get(role_val) if role_val else None
+    capabilities = (
+        (components.get(cname) or {}).get("capabilities", []) if cname else []
+    )
+
+    return html.Div(
+        id={"type": "new-job-task-card", "index": i},
+        className="card",
+        children=[
+            dcc.Store(id={"type": "new-job-task-meta", "index": i}, data=meta),
+            html.Div(
+                children=[
+                    html.H4(f"Task {i}", style={"margin": 0}),
+                    html.Button(
+                        "Remove",
+                        id={"type": "new-job-task-remove-btn", "index": i},
+                        className="btn-danger btn-sm",
+                        style={"margin-left": "auto"},
+                    ),
+                ],
+                style={
+                    "display": "flex",
+                    "align-items": "center",
+                    "border-bottom": "1px solid var(--border-color)",
+                    "padding-bottom": "10px",
+                    "margin-bottom": "15px",
+                },
+            ),
+            html.Div(
+                className="attr-row",
+                children=[
+                    html.Div("Component Role:", className="attr-label"),
+                    dcc.Dropdown(
+                        id={"type": "new-job-role-dropdown", "index": i},
+                        className="attr-control",
+                        options=sorted(roles),
+                        value=role_val,
+                        clearable=False,
+                    ),
+                ],
+            ),
+            html.Div(
+                className="attr-row",
+                children=[
+                    html.Div("Technique:", className="attr-label"),
+                    dcc.Dropdown(
+                        id={"type": "new-job-technique-dropdown", "index": i},
+                        className="attr-control",
+                        options=sorted(capabilities),
+                        value=technique_val,
+                        clearable=False,
+                    ),
+                ],
+            ),
+            html.Div(
+                className="attr-row",
+                children=[
+                    html.Div("Max Duration (s):", className="attr-label"),
+                    dcc.Input(
+                        id={"type": "new-job-max-duration", "index": i},
+                        className="attr-control",
+                        type="number",
+                        value=meta.get("max_duration"),
+                    ),
+                ],
+            ),
+            html.Div(
+                className="attr-row",
+                children=[
+                    html.Div("Sampling Interval (s):", className="attr-label"),
+                    dcc.Input(
+                        id={"type": "new-job-sampling-interval", "index": i},
+                        className="attr-control",
+                        type="number",
+                        value=meta.get("sampling_interval"),
+                    ),
+                ],
+            ),
+            html.Div(
+                "Task Params:", className="attr-label", style={"margin-bottom": "6px"}
+            ),
+            dcc.Textarea(
+                id={"type": "new-job-task-params", "index": i},
+                value=meta.get("task_params_text", ""),
+                placeholder="key: value\nother_key: other_value",
+                style={
+                    "width": "100%",
+                    "min-height": "80px",
+                    "font-family": "monospace",
+                    "font-size": "13px",
+                    "box-sizing": "border-box",
+                },
+            ),
+        ],
+        style={"margin-bottom": "20px"},
+    )
+
+
+# Renders one card per task id, seeding fields from each task's own meta store
+@callback(
+    Output("new-job-tasks-container", "children"),
+    Input("new-job-tasks-list-store", "data"),
+    State({"type": "new-job-task-meta", "index": ALL}, "id"),
+    State({"type": "new-job-task-meta", "index": ALL}, "data"),
+    State("new-job-roles-store", "data"),
+    State("new-job-components-store", "data"),
+)
+def render_new_job_tasks(active_ids, meta_ids, meta_values, roles, components):
+    if not active_ids:
+        return html.Div(
+            "No tasks added. Click '+ Add Task' above to create one.",
+            style={
+                "text-align": "center",
+                "padding": "30px",
+                "color": "gray",
+                "font-style": "italic",
+                "border": "1px dashed var(--border-color)",
+                "border-radius": "var(--radius)",
+            },
+        )
+
+    roles = roles or {}
+    components = components or {}
+    meta_by_id = {m["index"]: v for m, v in zip(meta_ids, meta_values)}
+
+    return [
+        task_card(i, meta_by_id.get(i) or {}, roles, components)
+        for i in sorted(active_ids)
+    ]
+
+
+# Commits a task card's own fields into its meta store; ignores the list-store's own stale mount echo
+@callback(
+    Output({"type": "new-job-task-meta", "index": MATCH}, "data"),
+    Input({"type": "new-job-role-dropdown", "index": MATCH}, "value"),
+    Input({"type": "new-job-technique-dropdown", "index": MATCH}, "value"),
+    Input({"type": "new-job-max-duration", "index": MATCH}, "value"),
+    Input({"type": "new-job-sampling-interval", "index": MATCH}, "value"),
+    Input({"type": "new-job-task-params", "index": MATCH}, "value"),
+    Input("new-job-tasks-list-store", "data"),
+    State({"type": "new-job-task-meta", "index": MATCH}, "data"),
+    prevent_initial_call=True,
+)
+def update_new_job_task_meta(
+    role,
+    technique,
+    max_duration,
+    sampling_interval,
+    task_params_text,
+    active_ids,
+    current_data,
+):
+    ctx = dash.callback_context
+    if not ctx.triggered or any(
+        "new-job-tasks-list-store" in t["prop_id"] for t in ctx.triggered
+    ):
+        return current_data
+    return {
+        "component_role": role,
+        "technique_name": technique,
+        "max_duration": max_duration,
+        "sampling_interval": sampling_interval,
+        "task_params_text": task_params_text or "",
+    }
+
+
+# Refreshes a task's technique options when its component_role changes
+@callback(
+    Output({"type": "new-job-technique-dropdown", "index": MATCH}, "options"),
+    Output({"type": "new-job-technique-dropdown", "index": MATCH}, "value"),
+    Input({"type": "new-job-role-dropdown", "index": MATCH}, "value"),
+    State("new-job-roles-store", "data"),
+    State("new-job-components-store", "data"),
+    State({"type": "new-job-technique-dropdown", "index": MATCH}, "value"),
+    prevent_initial_call=True,
+)
+def update_new_job_technique_options(role, roles, components, current_technique):
+    cname = (roles or {}).get(role) if role else None
+    capabilities = (
+        (components or {}).get(cname, {}).get("capabilities", []) if cname else []
+    )
+    value = current_technique if current_technique in capabilities else None
+    return sorted(capabilities), value
+
+
+def build_method(tasks_meta):
+    """Parses each task's meta dict into a method-task dict; raises ValueError with a
+    task-scoped message if task_params isn't valid YAML/a mapping."""
+    method = []
+    for i, meta in enumerate(tasks_meta):
+        meta = meta or {}
+        task_params_text = (meta.get("task_params_text") or "").strip()
+        if task_params_text:
+            try:
+                task_params = yaml.safe_load(task_params_text)
+            except yaml.YAMLError as e:
+                raise ValueError(f"Task {i + 1}: invalid task_params — {e}") from e
+            if not isinstance(task_params, dict):
+                raise ValueError(f"Task {i + 1}: task_params must be key: value pairs")
+        else:
+            task_params = {}
+        method.append(
+            {
+                "component_role": meta.get("component_role"),
+                "technique_name": meta.get("technique_name"),
+                "max_duration": meta.get("max_duration"),
+                "sampling_interval": meta.get("sampling_interval"),
+                "task_params": task_params,
+            }
+        )
+    return method
+
+
+def assemble_payload_dict(sample_id, is_parent, method, output_path=None, user=None):
+    """Builds the payload_2_2-shaped dict shared by the YAML preview and submit callbacks."""
+    payload_dict = {
+        "version": "2.2",
+        "sample": {
+            "identifier": sample_id,
+            "sample_is_parent": bool(is_parent and "parent" in is_parent),
+        },
+        "method": method,
+    }
+    if output_path:
+        payload_dict["settings"] = {"output": {"path": output_path}}
+    if user:
+        payload_dict["user"] = {"identifier": user}
+    return payload_dict
+
+
+# Renders a best-effort live preview of the payload as YAML
+@callback(
+    Output("new-job-yaml-preview", "children"),
+    Input("new-job-sample-identifier", "value"),
+    Input("new-job-sample-is-parent", "value"),
+    Input({"type": "new-job-task-meta", "index": ALL}, "data"),
+    Input("new-job-output-path", "value"),
+)
+def render_new_job_yaml_preview(sample_id, is_parent, tasks_meta, output_path):
+    try:
+        method = build_method(tasks_meta)
+    except ValueError as e:
+        method = [{"<error>": str(e)}]
+
+    payload_dict = assemble_payload_dict(sample_id, is_parent, method, output_path)
+    return yaml.safe_dump(payload_dict, sort_keys=False)
+
+
+# Builds and submits the job via ketchup, after validating against payload_2_2.Payload
+@callback(
+    Output("new-job-submit-result", "children"),
+    Input("new-job-submit-btn", "n_clicks"),
+    State("new-job-sample-identifier", "value"),
+    State("new-job-sample-is-parent", "value"),
+    State({"type": "new-job-task-meta", "index": ALL}, "data"),
+    State("new-job-name", "value"),
+    State("new-job-output-path", "value"),
+    State("tomato-port", "data"),
+    prevent_initial_call=True,
+)
+def submit_new_job(
+    n_clicks, sample_id, is_parent, tasks_meta, jobname, output_path, port
+):
+    try:
+        method = build_method(tasks_meta)
+    except ValueError as e:
+        return html.Div(
+            str(e),
+            className="text-secondary",
+            style={"text-align": "center", "padding": "20px"},
+        )
+
+    payload_dict = assemble_payload_dict(
+        sample_id, is_parent, method, output_path, user=getpass.getuser()
+    )
+
+    try:
+        payload = Payload(**payload_dict)
+    except ValidationError as e:
+        return html.Div(
+            f"Invalid payload: {e}",
+            className="text-secondary",
+            style={"text-align": "center", "padding": "20px"},
+        )
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as tmp:
+            yaml.safe_dump(payload.model_dump(mode="json"), tmp)
+            tmp_path = tmp.name
+
+        daemon_ret = tomato.status(stgrp="tomato", port=port, timeout=TOUT)
+        if not daemon_ret.success:
+            return html.Div(
+                f"Tomato status error: {daemon_ret.msg}",
+                className="text-secondary",
+                style={"text-align": "center", "padding": "20px"},
+            )
+
+        ret = ketchup.submit(
+            payload=tmp_path, jobname=jobname or None, daemon=daemon_ret.data
+        )
+        if not ret.success:
+            return html.Div(
+                f"Submit failed: {ret.msg}",
+                className="text-secondary",
+                style={"text-align": "center", "padding": "20px"},
+            )
+        return html.Div(
+            f"Job submitted successfully (jobid {ret.data.id}).",
+            className="badge badge-success",
+            style={"padding": "10px"},
+        )
+    except Exception as e:
+        logger.warning("Exception during submit_new_job:", exc_info=e)
+        return html.Div(
+            f"Error submitting job: {e!s}",
+            className="text-secondary",
+            style={"padding": "20px"},
+        )
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass

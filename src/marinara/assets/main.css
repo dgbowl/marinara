@@ -266,7 +266,7 @@ table.stgrp tr:hover {
 }
 
 /* Form Elements */
-input, select, .dash-dropdown {
+input, textarea, select, .dash-dropdown {
     background-color: var(--card-bg) !important;
     color: var(--text-color) !important;
     border: 1px solid var(--border-color) !important;
@@ -432,7 +432,7 @@ input, select, .dash-dropdown {
     display: inline-block;
 }
 
-input:focus, select:focus {
+input:focus, textarea:focus, select:focus {
     border-color: var(--accent-color) !important;
 }
 
@@ -459,6 +459,43 @@ button:hover {
 
 button:active {
     transform: scale(0.98);
+}
+
+/* Solid action buttons - covers dcc.Link elements styled as buttons (which
+   don't inherit the button{} rule above), plus color/size variants shared
+   across pages. */
+.btn {
+    display: inline-block;
+    text-decoration: none;
+    background-color: var(--accent-color);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.btn:hover {
+    background-color: var(--accent-hover);
+}
+
+.btn:active {
+    transform: scale(0.98);
+}
+
+.btn-success {
+    background-color: var(--success-color);
+}
+
+.btn-danger {
+    background-color: var(--danger-color);
+}
+
+.btn-sm {
+    padding: 4px 12px;
+    font-size: 12px;
 }
 
 /* Badges and labels */

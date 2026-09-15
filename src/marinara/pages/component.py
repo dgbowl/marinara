@@ -86,15 +86,8 @@ def layout(port: int, name: str, **_) -> list:
                     dcc.Link(
                         "← Back to Components",
                         href="/components",
-                        className="btn inline-block",
-                        style={
-                            "margin-right": "20px",
-                            "text-decoration": "none",
-                            "background-color": "var(--accent-color)",
-                            "color": "white",
-                            "padding": "8px 16px",
-                            "border-radius": "4px",
-                        },
+                        className="btn",
+                        style={"margin-right": "20px"},
                     ),
                     html.H2(
                         f"Component: {name}",
