@@ -567,6 +567,7 @@ def render_component_data_graph_layout(
     State({"type": "data-graph", "index": ALL}, "id"),
     State({"type": "data-graph", "index": ALL}, "figure"),
     State({"type": "attrs", "index": ALL}, "data"),
+    State({"type": "attrs", "index": ALL}, "id"),
     prevent_initial_call="initial_duplicate",
 )
 def render_component_data_graph_traces(
@@ -575,22 +576,25 @@ def render_component_data_graph_traces(
     graph_ids: list[dict[str, str]],
     prev_figures: list[dict],
     all_attrs: list[dict],
+    all_attr_ids: list[dict],
 ) -> list[dash.Patch]:
+    attrs = {}
+    for k, v in zip(all_attr_ids, all_attrs):
+        _, attr = k["index"].split("/")
+        attrs[attr] = v
     ret = []
     relative = bool(align_time and "relative" in align_time)
-    for graph_id, prev_figure, attrs in zip(graph_ids, prev_figures, all_attrs):
+    for graph_id, prev_figure in zip(graph_ids, prev_figures):
         tab = graph_id["index"]
         traces = []
         for ds in datastores:
             if ds == {}:
                 continue
             if tab == "all":
-                # Only plot attributes the driver marked status=True (or measured
-                # quantities like `temperature` that aren't in attrs_status at all) -
-                # not every data_var the driver happens to record, e.g. duty_cycle.
-                y_vars = [v for v in ds["data_vars"] if attrs["status"]]
+                all_y_vars = list(ds["data_vars"])
             else:
-                y_vars = group_by_unit(ds).get(unit_tab_label(tab), [])
+                all_y_vars = group_by_unit(ds).get(unit_tab_label(tab), [])
+            y_vars = [v for v in all_y_vars if attrs.get(v, {}).get("status", True)]
             traces.extend(plotting.build_traces(ds, "uts", y_vars, relative=relative))
         ret.append(plotting.patch_traces(prev_figure, traces))
     return ret
