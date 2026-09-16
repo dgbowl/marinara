@@ -54,7 +54,10 @@ def layout(port: int, name: str, **_) -> list:
 
     for k, v in attrs_dict.items():
         val = avals_dict.get(k)
-        init_attrs_vals[k] = str(val.m if isinstance(val, pint.Quantity) else val)
+        m = val.m if isinstance(val, pint.Quantity) else val
+        if isinstance(m, float):
+            m = round(m, 3)
+        init_attrs_vals[k] = str(m)
         init_attrs_units[k] = v.units
         init_attrs_rw[k] = v.rw
         init_attrs_status[k] = v.status
@@ -179,6 +182,7 @@ def layout(port: int, name: str, **_) -> list:
                     children=[
                         html.Div(f"{k}:", className="attr-label"),
                         control,
+                        html.Div(style={"width": "66px", "flex-shrink": "0"}),
                         html.Span(
                             f" {unit_str}{constraints_str}", className="attr-unit"
                         ),

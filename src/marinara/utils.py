@@ -58,7 +58,7 @@ def format_constraint(val: Any, base_unit: str) -> str:
                 val = val.to(base_unit)
             except pint.errors.DimensionalityError:
                 logger.error("could not convert val '%s' to unit '%s'", val, base_unit)
-        mag = val
+        mag = val.magnitude
         u_str = get_unit_str(val.units)
         return f"{mag} {u_str}" if u_str else str(mag)
     else:
