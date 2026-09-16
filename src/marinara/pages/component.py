@@ -148,7 +148,9 @@ def layout(port: int, name: str, **_) -> list:
         )
         attr_param_store = dcc.Store(
             id={"type": "attrs", "index": f"{name}/{k}"},
-            data=v.model_dump(include={"rw", "units", "options"}, mode="json"),
+            data=v.model_dump(
+                include={"rw", "units", "options", "status"}, mode="json"
+            ),
         )
 
         if v.rw:
@@ -564,6 +566,7 @@ def render_component_data_graph_layout(
     State("checkbox-align-time", "value"),
     State({"type": "data-graph", "index": ALL}, "id"),
     State({"type": "data-graph", "index": ALL}, "figure"),
+    State({"type": "attrs", "index": ALL}, "data"),
     prevent_initial_call="initial_duplicate",
 )
 def render_component_data_graph_traces(
@@ -571,17 +574,21 @@ def render_component_data_graph_traces(
     align_time: list[str],
     graph_ids: list[dict[str, str]],
     prev_figures: list[dict],
+    all_attrs: list[dict],
 ) -> list[dash.Patch]:
     ret = []
     relative = bool(align_time and "relative" in align_time)
-    for graph_id, prev_figure in zip(graph_ids, prev_figures):
+    for graph_id, prev_figure, attrs in zip(graph_ids, prev_figures, all_attrs):
         tab = graph_id["index"]
         traces = []
         for ds in datastores:
             if ds == {}:
                 continue
             if tab == "all":
-                y_vars = list(ds["data_vars"])
+                # Only plot attributes the driver marked status=True (or measured
+                # quantities like `temperature` that aren't in attrs_status at all) -
+                # not every data_var the driver happens to record, e.g. duty_cycle.
+                y_vars = [v for v in ds["data_vars"] if attrs["status"]]
             else:
                 y_vars = group_by_unit(ds).get(unit_tab_label(tab), [])
             traces.extend(plotting.build_traces(ds, "uts", y_vars, relative=relative))

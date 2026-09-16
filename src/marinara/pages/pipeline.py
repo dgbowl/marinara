@@ -407,8 +407,14 @@ def create_content_div(port: int, name: str) -> list[html.Div]:
                 },
             )
         ]
+        # Only list attributes the driver marked status=True (or measured
+        # quantities like `temperature` that aren't in `attrs` at all) - not
+        # every data_var the driver happens to record, e.g. duty_cycle.
+        attrs_status = {k: v.status for k, v in attrs.items()}
         if data is not None:
             for key in data.data_vars:
+                if not attrs_status.get(key, True):
+                    continue
                 units = data[key].attrs.get("units", "")
                 units_str = utils.get_unit_str(units)
                 div_data_ch.append(
