@@ -228,9 +228,7 @@ def attr_checkbox_disable_status():
                 ret.append(dash.no_update)
                 continue
             disable = not attr["rw"] or status
-            ret.append(
-                [{"label": "", "value": utils.CHECKBOX_ON, "disabled": disable}]
-            )
+            ret.append([{"label": "", "value": utils.CHECKBOX_ON, "disabled": disable}])
         return ret
 
 
