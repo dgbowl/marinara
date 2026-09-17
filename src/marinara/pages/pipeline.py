@@ -11,8 +11,6 @@ from marinara.utils import TOUT
 logger = logging.getLogger(__name__)
 dash.register_page(__name__, path_template="/pipelines/<port>/<name>")
 
-ERRORRET = [html.Div("Failed to load pipeline.", className="card")]
-
 
 def layout(port: int, name: str, **_) -> list[html.Div | dcc.Store]:
     header = utils.create_header("pipeline", name)

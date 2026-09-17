@@ -15,7 +15,6 @@ def layout(port: int, name: str, **_) -> list[html.Div | dcc.Store]:
     header = utils.create_header("component", name)
     stores = html.Div(
         children=[
-            dcc.Store(id="component-name", data=name),
             dcc.Store(id={"type": "data-store", "index": name}, data={}),
             dcc.Store(id={"type": "status-store", "index": name}, data=False),
             dcc.Store(id="data-graph-tab-store", data=["all"]),
