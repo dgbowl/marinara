@@ -122,7 +122,12 @@ def layout(port: int, name: str, **_) -> list:
 
         # Build widget based on read-write / options
         if v.rw:
-            if v.options:
+            if v.type is bool:
+                control = utils.checkbox_control(
+                    {"type": "component-attr-checkbox", "index": k},
+                    val == "True",
+                )
+            elif v.options:
                 control = dcc.Dropdown(
                     id={"type": "component-attr-input", "index": k},
                     options=sorted(v.options),
@@ -155,9 +160,14 @@ def layout(port: int, name: str, **_) -> list:
         constraints_str = f" ({', '.join(constraints)})" if constraints else ""
 
         if v.rw:
+            apply_btn_type = (
+                "component-attr-checkbox-apply-btn"
+                if v.type is bool
+                else "component-attr-apply-btn"
+            )
             apply_btn = html.Button(
                 "Apply",
-                id={"type": "component-attr-apply-btn", "index": k},
+                id={"type": apply_btn_type, "index": k},
                 className="attr-apply-btn",
             )
             attr_rows.append(
@@ -414,6 +424,37 @@ def set_component_attribute(
     # If set_attr returned success=False, fetch current value to revert
     current = utils.get_attrs_vals(port=port, name=name, attrs=[k]).get(k)
     return current
+
+
+# Checkbox handler for read-write boolean attribute updates via Apply button.
+# Uses utils.checklist_to_bool / utils.bool_to_checklist (shared with every
+# other page that renders boolean attribute controls) to convert between
+# the dcc.Checklist's checked-values list and a real bool, and sends that
+# real bool to passata.set_attr rather than the string "True"/"False"
+# (tomato performs no type coercion on this path, so the string "False"
+# would otherwise be truthy).
+@callback(
+    Output({"type": "component-attr-checkbox", "index": MATCH}, "value"),
+    Input({"type": "component-attr-checkbox-apply-btn", "index": MATCH}, "n_clicks"),
+    State({"type": "component-attr-checkbox", "index": MATCH}, "value"),
+    State({"type": "component-attr-checkbox", "index": MATCH}, "id"),
+    State("tomato-port-store", "data"),
+    State("component-name-store", "data"),
+    prevent_initial_call=True,
+)
+def set_component_boolean_attribute(
+    n_clicks: int, value: list[str], id: dict[str, str], port: int, name: str
+) -> list[str] | dash.NoUpdate:
+    if n_clicks is None:
+        return dash.no_update
+    k = id["index"]
+    checked = utils.checklist_to_bool(value)
+    ret = passata.set_attr(port=port, name=name, attr=k, val=checked, timeout=TOUT)
+    if ret.success:
+        return utils.bool_to_checklist(ret.data)
+    # If set_attr returned success=False, fetch current value to revert
+    current = utils.get_attrs_vals(port=port, name=name, attrs=[k]).get(k)
+    return utils.bool_to_checklist(current)
 
 
 # Data Store Updater
