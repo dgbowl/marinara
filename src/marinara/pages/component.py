@@ -1,8 +1,6 @@
-import json
 import logging
 
 import dash
-import pint
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
 from tomato import passata
 
@@ -13,24 +11,24 @@ logger = logging.getLogger(__name__)
 dash.register_page(__name__, path_template="/components/<port>/<name>")
 
 
-def triggered_pattern_index(ctx):
-    """Extracts the "index" field from a pattern-matching Input's triggered id."""
-    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
-    return json.loads(trigger_id)["index"]
-
-
-def layout(port: int, name: str, **_) -> list:
-    port = int(port)
+def layout(port: int, name: str, **_) -> list[html.Div | dcc.Store]:
+    header = utils.create_header("component", name)
+    stores = html.Div(
+        children=[
+            dcc.Store(id="component-name", data=name),
+            dcc.Store(id={"type": "data-store", "index": name}, data={}),
+            dcc.Store(id={"type": "status-store", "index": name}, data=False),
+            dcc.Store(id="data-graph-tab-store", data=["all"]),
+            dcc.Store(id="data-graph-units-store", data=None),
+            dcc.Store(id="custom-graphs-list-store", data=[]),
+        ]
+    )
 
     # Safely fetch initial state of the component
-    try:
-        status_ret = passata.status(port=port, name=name, timeout=TOUT)
-        if status_ret.success:
-            running = utils.is_component_running(status_ret.data)
-        else:
-            running = False
-    except Exception as e:
-        logger.warning("Exception during passata.status:", exc_info=e)
+    status_ret = passata.status(port=port, name=name, timeout=TOUT)
+    if status_ret.success and status_ret.data is not None:
+        running = utils.is_component_running(status_ret.data)
+    else:
         running = False
 
     try:
@@ -45,155 +43,22 @@ def layout(port: int, name: str, **_) -> list:
 
     avals = utils.get_attrs_vals(port=port, name=name, attrs=list(attrs))
 
-    # Status Badge
-    if isinstance(running, bool):
-        running_bool = running
-        task_name = None
-    else:
-        running_bool = bool(running)
-        if isinstance(running, dict):
-            task_name = running.get("technique_name")
-        else:
-            task_name = getattr(running, "technique_name", None)
-
-    status_badge_class = (
-        "badge badge-success" if running_bool else "badge badge-secondary"
-    )
-    status_badge_text = (
-        f"RUNNING ({task_name})"
-        if task_name
-        else ("RUNNING" if running_bool else "STOPPED")
-    )
-
-    header = html.Div(
-        children=[
-            html.Div(
-                children=[
-                    dcc.Link(
-                        "← Back to Components",
-                        href="/components",
-                        className="btn inline-block",
-                        style={
-                            "margin-right": "20px",
-                            "text-decoration": "none",
-                            "background-color": "var(--accent-color)",
-                            "color": "white",
-                            "padding": "8px 16px",
-                            "border-radius": "4px",
-                        },
-                    ),
-                    html.H2(
-                        f"Component: {name}",
-                        className="inline",
-                        style={"margin": 0, "font-size": "22px"},
-                    ),
-                    html.Span(
-                        status_badge_text,
-                        id="status-badge",
-                        className=status_badge_class,
-                        style={"margin-left": "15px"},
-                    ),
-                ],
-                style={"display": "flex", "align-items": "center"},
-            )
-        ],
-        className="theme-header",
-    )
-
     # Build attribute row layout
-    attr_rows = []
-    for k, v in attrs.items():
-        raw_val = avals.get(k)
-        val = raw_val.m if isinstance(raw_val, pint.Quantity) else raw_val
-        unit_str = utils.get_unit_str(v.units)
+    attr_rows = utils.build_attr_rows(attrs, avals, name)
 
-        # Build widget based on read-write / options
-        if v.rw:
-            if v.options:
-                control = dcc.Dropdown(
-                    id={"type": "attr-input", "index": f"{name}/{k}"},
-                    options=sorted(v.options),
-                    value=str(val),
-                    clearable=False,
-                    searchable=False,
-                    className="attr-control mutable-input",
-                )
-            else:
-                control = dcc.Input(
-                    id={"type": "attr-input", "index": f"{name}/{k}"},
-                    type="text",
-                    value=str(val),
-                    debounce=True,
-                    className="attr-control mutable-input",
-                )
-        else:
-            control = dcc.Input(
-                id={"type": "attr-display", "index": f"{name}/{k}"},
-                value=str(val),
-                disabled=True,
-                className="attr-control immutable-input",
-            )
-
-        # Display constraints helper
-        constraints = []
-        if v.minimum is not None:
-            constraints.append(f"min: {utils.format_constraint(v.minimum, v.units)}")
-        if v.maximum is not None:
-            constraints.append(f"max: {utils.format_constraint(v.maximum, v.units)}")
-        constraints_str = f" ({', '.join(constraints)})" if constraints else ""
-
-        attr_val_store = dcc.Store(
-            id={"type": "attr-val", "index": f"{name}/{k}"},
-            data=val,
-        )
-        attr_param_store = dcc.Store(
-            id={"type": "attrs", "index": f"{name}/{k}"},
-            data=v.model_dump(
-                include={"rw", "units", "options", "status"}, mode="json"
-            ),
-        )
-
-        if v.rw:
-            apply_btn = html.Button(
-                "Apply",
-                id={"type": "attr-apply-btn", "index": f"{name}/{k}"},
-                className="attr-apply-btn",
-            )
-            attr_rows.append(
-                html.Div(
-                    children=[
-                        html.Div(f"{k}:", className="attr-label"),
-                        control,
-                        apply_btn,
-                        html.Span(
-                            f" {unit_str}{constraints_str}", className="attr-unit"
-                        ),
-                        attr_val_store,
-                        attr_param_store,
-                    ],
-                    className="attr-row",
-                )
-            )
-        else:
-            attr_rows.append(
-                html.Div(
-                    children=[
-                        html.Div(f"{k}:", className="attr-label"),
-                        control,
-                        html.Span(
-                            f" {unit_str}{constraints_str}", className="attr-unit"
-                        ),
-                        attr_val_store,
-                        attr_param_store,
-                    ],
-                    className="attr-row",
-                )
-            )
+    badge_class = "badge badge-success" if running else "badge badge-secondary"
+    badge_text = "RUNNING" if running else "STOPPED"
+    badge = html.Span(
+        badge_text,
+        id={"type": "badge", "index": f"{name}"},
+        className=badge_class,
+        style={"margin-left": "10px"},
+    )
 
     attrs_card = html.Div(
         children=[
             html.H3(
-                "Attributes & Controls",
+                ["Attributes & Controls", badge],
                 style={
                     "margin-top": 0,
                     "border-bottom": "1px solid var(--border-color)",
@@ -298,12 +163,7 @@ def layout(port: int, name: str, **_) -> list:
     )
 
     layout_children = [
-        # Dashboard Stores
-        dcc.Store(id="component-name", data=name),
-        dcc.Store(id={"type": "data-store", "index": name}, data={}),
-        dcc.Store(id="data-graph-tab-store", data=["all"]),
-        dcc.Store(id="data-graph-units-store", data=None),
-        dcc.Store(id="custom-graphs-list-store", data=[]),
+        stores,
         header,
         # Row 1: Attributes & Controls (Left) and Data Graph (Right)
         html.Div(
@@ -317,48 +177,6 @@ def layout(port: int, name: str, **_) -> list:
     ]
 
     return layout_children
-
-
-# Periodic updates for Store values
-@callback(
-    Output("status-badge", "children"),
-    Output("status-badge", "className"),
-    Input("interval", "n_intervals"),
-    State("tomato-port", "data"),
-    State("component-name", "data"),
-    prevent_initial_call=True,
-)
-def periodic_status_badge_update(
-    _: int,
-    port: int,
-    name: str,
-) -> tuple[str, str]:
-    status_ret = passata.status(port=port, name=name, timeout=TOUT)
-    if status_ret.success:
-        running = utils.is_component_running(status_ret.data)
-    else:
-        running = False
-
-    if isinstance(running, bool):
-        running_bool = running
-        task_name = None
-    else:
-        running_bool = bool(running)
-        if isinstance(running, dict):
-            task_name = running.get("technique_name")
-        else:
-            task_name = getattr(running, "technique_name", None)
-
-    status_badge_class = (
-        "badge badge-success" if running_bool else "badge badge-secondary"
-    )
-    status_badge_text = (
-        f"RUNNING ({task_name})"
-        if task_name
-        else ("RUNNING" if running_bool else "STOPPED")
-    )
-
-    return status_badge_text, status_badge_class
 
 
 def group_by_unit(ds: dict) -> dict[str, list[str]]:
@@ -383,10 +201,12 @@ def unit_tab_label(tab: str) -> str:
     return tab.removeprefix("unit:")
 
 
-callbacks.data_store_update()
+callbacks.periodic_data_store_update()
 callbacks.periodic_attr_val_update()
-callbacks.update_readwrite_attr()
-callbacks.set_component_attribute()
+callbacks.periodic_status_store_update()
+callbacks.attr_apply_btn_update()
+callbacks.attr_input_action_update_value()
+callbacks.attr_input_disable_status()
 
 
 # Tracks the set of distinct unit labels present in the data. Only changes
@@ -566,8 +386,8 @@ def render_component_data_graph_layout(
     State("checkbox-align-time", "value"),
     State({"type": "data-graph", "index": ALL}, "id"),
     State({"type": "data-graph", "index": ALL}, "figure"),
-    State({"type": "attrs", "index": ALL}, "data"),
-    State({"type": "attrs", "index": ALL}, "id"),
+    State({"type": "attr-param", "index": ALL}, "data"),
+    State({"type": "attr-param", "index": ALL}, "id"),
     prevent_initial_call="initial_duplicate",
 )
 def render_component_data_graph_traces(
@@ -622,7 +442,7 @@ def manage_custom_graphs(
         return active_ids + [next_id]
     else:
         try:
-            remove_idx = triggered_pattern_index(ctx)
+            remove_idx = utils.triggered_pattern_index(ctx)
             return [i for i in active_ids if i != remove_idx]
         except Exception as e:
             logger.warning("Exception during manage_custom_graphs:", exc_info=e)
