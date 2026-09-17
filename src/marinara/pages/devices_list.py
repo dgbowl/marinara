@@ -64,7 +64,6 @@ def update_devices(n_clicks: int, port: int) -> html.Div:
             devs = devs_ret.data
         else:
             devs = {}
-        print(f"{devs=}")
         return utils.format_obj(
             obj=devs,
             headers=["Device Name", "Driver", "Address", "Channels"],
