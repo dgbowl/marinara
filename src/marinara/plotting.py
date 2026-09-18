@@ -100,6 +100,8 @@ def build_traces(
     namespaces trace names (e.g. by component name) for call sites that plot
     several datasets together, where the same variable name could otherwise
     collide across datasets."""
+    if "coords" not in ds:
+        return []
     x = ds["coords"][x_var]["data"]
     times, _ = format_timeseries_x(
         ds["coords"]["uts"]["data"],
