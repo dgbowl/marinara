@@ -490,7 +490,10 @@ def render_custom_graphs_list(
 
         title_val = meta.get("title") or f"Custom Graph #{i}"
         yvar_val = meta.get("y_vars") or []
-        options_val = meta.get("options") or ["lines"]
+        # `options` is stored as a dict(mode) - `mode` mirrors what the
+        # single "Connect points" checkbox can express.
+        graph_opts = meta.get("options") or {"mode": "lines+markers"}
+        options_val = ["lines"] if graph_opts.get("mode") == "lines+markers" else []
 
         card = html.Div(
             id={"type": "custom-graph-card", "index": i},
@@ -668,7 +671,13 @@ def update_custom_graph_meta(
         "custom-graphs-list-store" in t["prop_id"] for t in ctx.triggered
     ):
         return current_data
-    return {"title": title, "y_vars": y_vars or [], "options": options or []}
+
+    mode = "lines+markers" if options and "lines" in options else "markers"
+    return {
+        "title": title,
+        "y_vars": y_vars or [],
+        "options": {"mode": mode},
+    }
 
 
 @callback(
