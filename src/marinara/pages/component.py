@@ -493,6 +493,7 @@ def render_custom_graphs_list(
         # `options` is stored as a dict(mode) - `mode` mirrors what the
         # single "Connect points" checkbox can express.
         graph_opts = meta.get("options") or {"mode": "lines+markers"}
+        options_val = ["lines"] if graph_opts.get("mode") == "lines+markers" else []
 
         card = html.Div(
             id={"type": "custom-graph-card", "index": i},
