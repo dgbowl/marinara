@@ -54,6 +54,19 @@ def periodic_attr_val_update():
         return new
 
 
+def attr_display_val_update():
+    # Keeps a read-only attribute's displayed value in sync with its
+    # periodically-refreshed attr-val store, with rounding (per #50).
+    @callback(
+        Output({"type": "attr-display", "index": MATCH}, "value"),
+        Input({"type": "attr-val", "index": MATCH}, "data"),
+    )
+    def attr_display_val_update(val: Any) -> str:
+        if isinstance(val, float):
+            val = round(val, 3)
+        return str(val)
+
+
 def attr_apply_btn_update():
     # Change style of attr-apply-btn when attr-input does not match attr-val
     @callback(
