@@ -206,9 +206,6 @@ callbacks.periodic_status_store_update()
 callbacks.attr_apply_btn_update()
 callbacks.attr_input_action_update_value()
 callbacks.attr_input_disable_status()
-callbacks.attr_checkbox_apply_btn_update()
-callbacks.attr_checkbox_input_action_update_value()
-callbacks.attr_checkbox_disable_status()
 
 
 # Tracks the set of distinct unit labels present in the data. Only changes

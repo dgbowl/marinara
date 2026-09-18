@@ -312,7 +312,7 @@ def object_from_attrs(
     if attr.rw:
         if attr.type is bool:
             obj = checkbox_control(
-                {"type": "attr-checkbox", "index": f"{cname}/{aname}"},
+                {"type": "attr-input", "index": f"{cname}/{aname}"},
                 value == "True",
             )
         elif attr.options is not None:
@@ -403,26 +403,15 @@ def build_attr_rows(attrs: dict[str, Attr], avals: dict[str, Any], cname: str) -
         )
         attr_param_store = dcc.Store(
             id={"type": "attr-param", "index": f"{cname}/{aname}"},
-            data={
-                **attr.model_dump(
-                    include={"rw", "units", "options", "status"}, mode="json"
-                ),
-                # Lets the disable-status callbacks tell a checkbox-rendered
-                # attribute apart from a text/dropdown one without guessing -
-                # attr.type itself isn't in this store, since it's a raw
-                # Python type object rather than something model_dump can
-                # serialize.
-                "is_checkbox": attr.type is bool,
-            },
+            data=attr.model_dump(
+                include={"rw", "units", "options", "status"}, mode="json"
+            ),
         )
 
         if attr.rw:
-            apply_btn_type = (
-                "attr-checkbox-apply-btn" if attr.type is bool else "attr-apply-btn"
-            )
             apply_btn = html.Button(
                 "Apply",
-                id={"type": apply_btn_type, "index": f"{cname}/{aname}"},
+                id={"type": "attr-apply-btn", "index": f"{cname}/{aname}"},
                 className="attr-apply-btn",
             )
         else:
