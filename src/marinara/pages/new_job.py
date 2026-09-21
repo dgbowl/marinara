@@ -508,6 +508,19 @@ def build_method(tasks_meta):
     return method
 
 
+def validate_form(sample_id, method):
+    """Raises ValueError with a user-facing message for the first missing field."""
+    if not (sample_id or "").strip():
+        raise ValueError("Sample identifier is required.")
+    if not method:
+        raise ValueError("Add at least one task.")
+    for i, task in enumerate(method):
+        if not task["component_role"] or not task["technique_name"]:
+            raise ValueError(f"Task {i + 1}: select a component role and a technique.")
+        if task["max_duration"] is None or task["sampling_interval"] is None:
+            raise ValueError(f"Task {i + 1}: set max duration and sampling interval.")
+
+
 def assemble_payload_dict(sample_id, is_parent, method, output_path=None, user=None):
     """Builds the payload_2_2-shaped dict shared by the YAML preview and submit callbacks."""
     payload_dict = {
@@ -640,6 +653,7 @@ def submit_new_job(
 ):
     try:
         method = build_method(tasks_meta)
+        validate_form(sample_id, method)
     except ValueError as e:
         return html.Div(
             str(e),
@@ -661,8 +675,11 @@ def submit_new_job(
     try:
         payload = Payload(**payload_dict)
     except ValidationError as e:
+        problems = "; ".join(
+            f"{'.'.join(map(str, err['loc']))}: {err['msg']}" for err in e.errors()
+        )
         return html.Div(
-            f"Invalid payload: {e}",
+            f"Invalid payload: {problems}",
             className="text-secondary",
             style={"text-align": "center", "padding": "20px"},
         )
