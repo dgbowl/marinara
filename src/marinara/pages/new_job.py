@@ -1,5 +1,4 @@
 import getpass
-import json
 import logging
 import os
 import tempfile
@@ -17,16 +16,11 @@ from marinara.utils import (
     list_subfolders,
     parent_folder,
     start_folder,
+    triggered_pattern_index,
 )
 
 logger = logging.getLogger(__name__)
 dash.register_page(__name__, path="/jobs/new", title="New Job")
-
-
-def triggered_pattern_index(ctx):
-    """Extracts the "index" field from a pattern-matching Input's triggered id."""
-    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
-    return json.loads(trigger_id)["index"]
 
 
 layout = html.Div(

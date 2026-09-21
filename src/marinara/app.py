@@ -21,6 +21,7 @@ app.layout = html.Div(
         dcc.Store(id="app-theme-store", storage_type="local", data="light"),
         dcc.Store(id="tomato-port", storage_type="local", data=1234),
         dcc.Store(id="sidebar-state-store", storage_type="local", data="expanded"),
+        dcc.Interval(id="interval", interval=1000),
         html.Div(
             className="main-layout",
             children=[

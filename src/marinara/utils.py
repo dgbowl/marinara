@@ -1,4 +1,5 @@
 import ctypes
+import json
 import logging
 import os
 import sys
@@ -10,27 +11,32 @@ import dash
 import pint
 from dash import dcc, html
 from tomato import passata
+from tomato.driverinterface_3_0 import Attr, Status
 
 PORT = 1234
 TOUT = 1000
 logger = logging.getLogger(__name__)
 
 
-def is_component_running(status_data: Any) -> bool:
+def is_component_running(status: dict | Status) -> bool:
     """
     Returns whether a component is actively running, supporting both the
     driverinterface_2_1 dict-based status (with a plain "running" key) and the
     driverinterface_3_0 Status object (with "state" and "connected" fields).
     """
-    if isinstance(status_data, dict):
-        return bool(status_data.get("running", False))
-    state = getattr(status_data, "state", None)
-    if state is not None:
-        return state in ("meas", "task")
-    return bool(getattr(status_data, "connected", False))
+    if isinstance(status, dict):
+        return bool(status.get("running", False))
+    else:
+        return status.state in {"meas", "task"}
 
 
-def get_unit_str(units: str | Any | None) -> str:
+def triggered_pattern_index(ctx):
+    """Extracts the "index" field from a pattern-matching Input's triggered id."""
+    trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
+    return json.loads(trigger_id)["index"]
+
+
+def get_unit_str(units: str | None) -> str:
     """Formats unit names for human-friendly display using Pint."""
     if units is None or units == "":
         return ""
@@ -46,7 +52,7 @@ def get_unit_str(units: str | Any | None) -> str:
         return str(units)
 
 
-def format_constraint(val: Any, base_unit: str) -> str:
+def format_constraint(val: Any, base_unit: str | None) -> str:
     """
     Formats constraint values (min/max) with their respective units.
 
@@ -56,14 +62,14 @@ def format_constraint(val: Any, base_unit: str) -> str:
     """
     if val is None:
         return ""
-    if hasattr(val, "magnitude") and hasattr(val, "units"):
+    if isinstance(val, pint.Quantity):
         if base_unit:
             try:
                 # Convert to base_unit to keep it consistent if compatible
                 val = val.to(base_unit)
             except pint.errors.DimensionalityError:
                 logger.error("could not convert val '%s' to unit '%s'", val, base_unit)
-        mag = val
+        mag = val.m
         u_str = get_unit_str(val.units)
         return f"{mag} {u_str}" if u_str else str(mag)
     else:
@@ -255,23 +261,21 @@ def pretty(val: Any, prec: bool = True) -> str:
 def update_datastore(
     port: int,
     name: str,
-    datastore: dict | None,
+    datastore: dict,
     cap: int | None = None,
-) -> dict | dash.NoUpdate | None:
+) -> dict | dash.NoUpdate:
     ret = passata.get_last_data(port=port, name=name, timeout=TOUT)
     logger.debug("ret=%s", str(ret))
     if not ret.success:
         return dash.no_update
-    if datastore is None and ret.data is None:
-        return dash.no_update
-    elif ret.data is None:
+    if ret.data is None:
         logger.warning("passata.get_last_data returned no data, erasing data store")
-        return None
+        return {}
 
     ndata = ret.data.to_dict()
     logger.debug("ndata=%s", str(ndata))
     # Simply return data if first load.
-    if datastore is None:
+    if "coords" not in datastore:
         return ndata
     # Do not update if timestamp is already present.
     uts = ndata["coords"]["uts"]["data"][0]
@@ -352,3 +356,128 @@ def parent_folder(path: str | None) -> str | None:
     if parent != path:
         return parent
     return "" if sys.platform == "win32" else path
+
+
+def object_from_attrs(
+    cname: str,
+    aname: str,
+    attr: Attr,
+    value: str,
+) -> dcc.Dropdown | dcc.Input:
+    if attr.rw:
+        if attr.options is not None:
+            obj = dcc.Dropdown(
+                id={"type": "attr-input", "index": f"{cname}/{aname}"},
+                options=sorted(attr.options),
+                value=value,
+                clearable=False,
+                className="attr-control mutable-input",
+            )
+        else:
+            obj = dcc.Input(
+                id={"type": "attr-input", "index": f"{cname}/{aname}"},
+                debounce=True,
+                value=value,
+                type="text",
+                className="attr-control mutable-input",
+            )
+    else:
+        obj = dcc.Input(
+            id={"type": "attr-display", "index": f"{cname}/{aname}"},
+            value=value,
+            disabled=True,
+            className="attr-control immutable-input",
+        )
+    return obj
+
+
+def get_constraint_str(attr: Attr):
+    constraints = []
+    if attr.minimum is not None:
+        constraints.append(f"min: {format_constraint(attr.minimum, attr.units)}")
+    if attr.maximum is not None:
+        constraints.append(f"man: {format_constraint(attr.maximum, attr.units)}")
+    return f" ({', '.join(constraints)})" if constraints else ""
+
+
+def create_header(otype: str, oname: str, badge: html.Div | None = None) -> html.Div:
+    header = html.Div(
+        children=[
+            html.Div(
+                children=[
+                    dcc.Link(
+                        f"← Back to {otype.capitalize()}s",
+                        href=f"/{otype}s",
+                        className="btn inline-block",
+                        style={
+                            "margin-right": "20px",
+                            "text-decoration": "none",
+                            "background-color": "var(--accent-color)",
+                            "color": "white",
+                            "padding": "8px 16px",
+                            "border-radius": "4px",
+                        },
+                    ),
+                    html.H2(
+                        f"{otype.capitalize()}: {oname}",
+                        className="inline",
+                        style={"margin": 0, "font-size": "22px"},
+                    ),
+                    badge if badge is not None else html.Div(),
+                ],
+                style={"display": "flex", "align-items": "center"},
+            )
+        ],
+        className="theme-header",
+    )
+
+    return html.Div(
+        children=[header],
+        className="header-wrapper",
+    )
+
+
+def build_attr_rows(attrs: dict[str, Attr], avals: dict[str, Any], cname: str) -> list:
+    attr_rows = []
+    for aname, attr in attrs.items():
+        raw_val = avals.get(aname)
+        val = raw_val.m if isinstance(raw_val, pint.Quantity) else raw_val
+        control = object_from_attrs(cname, aname, attr, str(val))
+
+        unit_str = get_unit_str(attr.units)
+        constraints_str = get_constraint_str(attr)
+
+        attr_val_store = dcc.Store(
+            id={"type": "attr-val", "index": f"{cname}/{aname}"},
+            data=val,
+        )
+        attr_param_store = dcc.Store(
+            id={"type": "attr-param", "index": f"{cname}/{aname}"},
+            data=attr.model_dump(
+                include={"rw", "units", "options", "status"}, mode="json"
+            ),
+        )
+
+        if attr.rw:
+            apply_btn = html.Button(
+                "Apply",
+                id={"type": "attr-apply-btn", "index": f"{cname}/{aname}"},
+                className="attr-apply-btn",
+            )
+        else:
+            apply_btn = html.Div(className="attr-apply-btn")
+
+        attr_rows.append(
+            html.Div(
+                children=[
+                    html.Div(f"{aname}:", className="attr-label"),
+                    control,
+                    apply_btn,
+                    html.Span(f" {unit_str}{constraints_str}", className="attr-unit"),
+                    attr_val_store,
+                    attr_param_store,
+                ],
+                className="attr-row",
+            )
+        )
+    return attr_rows
