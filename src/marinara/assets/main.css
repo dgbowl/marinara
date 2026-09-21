@@ -1256,3 +1256,109 @@ div.attr-control input:disabled {
 #component-graph-tab-checklist .graph-tab-input {
     display: none;
 }
+
+/* Folder picker entries (new job form) */
+.folder-entry {
+    display: block;
+    width: 100%;
+    padding: 8px 14px;
+    font-family: inherit;
+    font-size: 14px;
+    background: none;
+    border: none;
+    text-align: left;
+    color: var(--text-color);
+    cursor: pointer;
+    word-break: break-all;
+}
+
+.folder-entry:hover {
+    background-color: rgba(128, 128, 128, 0.15);
+}
+
+.folder-current,
+.folder-list {
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.folder-current {
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    font-family: monospace;
+    font-size: 13px;
+    word-break: break-all;
+    background-color: rgba(128, 128, 128, 0.08);
+}
+
+.folder-list {
+    height: 340px;
+    margin-bottom: 18px;
+    overflow-y: auto;
+}
+
+.folder-message {
+    padding: 10px;
+}
+
+.folder-message-error {
+    color: var(--danger-color);
+}
+
+/* Modal shell; toggled through the hidden attribute */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.4);
+}
+
+.modal-overlay[hidden] {
+    display: none;
+}
+
+.modal-card {
+    display: flex;
+    flex-direction: column;
+    width: min(680px, 92vw);
+    max-height: 85vh;
+    margin: 0;
+    padding: 24px;
+}
+
+/* First action sits left, the rest are pushed right */
+.modal-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.modal-actions > :first-child {
+    margin-right: auto;
+}
+
+/* No spacing while the submit result is empty */
+.submit-result:not(:empty) {
+    margin-top: 15px;
+}
+
+/* Button matching .attr-control height */
+.attr-btn {
+    height: 36px;
+    padding: 0 16px;
+}
+
+/* Error text under an attr row, aligned with the control (label width + row gap) */
+.attr-error {
+    margin: -4px 0 12px calc(130px + 12px);
+    color: var(--danger-color);
+    font-size: 13px;
+}
+
+/* Wider control for long values such as paths */
+.attr-control-wide {
+    width: 360px !important;
+    max-width: 100% !important;
+}

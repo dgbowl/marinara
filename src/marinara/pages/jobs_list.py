@@ -116,8 +116,10 @@ def update_jobs_list(n_clicks, port):
             techniques = sorted(
                 {task.technique_name for task in getattr(payload, "method", [])}
             )
-            jobs[job.id] = {
-                "name": f"Job {job.id}" + (f" ({job.jobname})" if job.jobname else ""),
+            # format_obj titles each card by its key, so key on the display name
+            name = f"Job {job.id}" + (f" ({job.jobname})" if job.jobname else "")
+            jobs[name] = {
+                "name": name,
                 "status": job.status,
                 "sample": getattr(sample, "identifier", "-"),
                 "techniques": techniques,
@@ -151,6 +153,8 @@ def update_jobs_list(n_clicks, port):
             otype="jobs",
             port=port,
             formatters={"status": job_status_badge},
+            full_width_attrs=["respath"],
+            align_columns=True,
         )
     except Exception as e:
         logger.warning("Exception during update_jobs_list:", exc_info=e)

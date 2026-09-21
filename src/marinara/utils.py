@@ -1,5 +1,9 @@
+import ctypes
 import logging
+import os
+import sys
 from collections.abc import Callable
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 import dash
@@ -75,6 +79,8 @@ def format_obj(
     otype,
     port,
     formatters: dict[str, Callable[[Any], Any]] | None = None,
+    full_width_attrs: list[str] | None = None,
+    align_columns: bool = False,
 ) -> html.Div:
     if not obj:
         return html.Div(
@@ -82,6 +88,20 @@ def format_obj(
             className="text-secondary",
             style={"text-align": "center", "padding": "20px"},
         )
+
+    full_width = set(full_width_attrs or [])
+    # align_columns puts items on a grid, where full_width_attrs span the whole row
+    if align_columns:
+        item_style = {"min-width": "0", "overflow-wrap": "anywhere"}
+        row_style = {
+            "display": "grid",
+            "grid-template-columns": "repeat(auto-fill, minmax(240px, 1fr))",
+            "gap": "10px 35px",
+            "align-items": "baseline",
+        }
+    else:
+        item_style = {"margin-right": "35px"}
+        row_style = {"display": "flex", "flex-wrap": "wrap", "gap": "10px"}
 
     cards = []
     for k, v in obj.items():
@@ -134,22 +154,20 @@ def format_obj(
 
             formatter = (formatters or {}).get(attr)
             val_el = formatter(val) if formatter else html.Span(val_str)
+            style = (
+                {**item_style, "grid-column": "1 / -1"}
+                if attr in full_width
+                else item_style
+            )
             metadata_items.append(
                 html.Div(
-                    children=[html.Strong(f"{header_label}: "), val_el],
-                    style={"margin-right": "35px"},
+                    children=[html.Strong(f"{header_label}: "), val_el], style=style
                 )
             )
 
         details_row = html.Div(
             children=metadata_items,
-            style={
-                "display": "flex",
-                "flex-wrap": "wrap",
-                "margin-bottom": "10px",
-                "font-size": "14px",
-                "gap": "10px",
-            },
+            style={**row_style, "margin-bottom": "10px", "font-size": "14px"},
         )
 
         card_children = [
@@ -274,3 +292,63 @@ def update_datastore(
         datastore["dims"]["uts"] = cap
     logger.debug("datastore=%s", str(datastore))
     return datastore
+
+
+def is_relative_path(path: str | None) -> bool:
+    """Whether path is non-empty and absolute on neither Windows nor POSIX."""
+    path = (path or "").strip()
+    return bool(path) and not (
+        PureWindowsPath(path).is_absolute() or PurePosixPath(path).is_absolute()
+    )
+
+
+def list_drives() -> list[str]:
+    """Lists the Windows drive roots; empty elsewhere."""
+    if sys.platform != "win32":
+        return []
+    mask = ctypes.windll.kernel32.GetLogicalDrives()
+    return [f"{chr(65 + i)}:\\" for i in range(26) if mask >> i & 1]
+
+
+def is_dir_entry(entry: os.DirEntry) -> bool:
+    try:
+        return entry.is_dir()
+    except OSError:
+        return False
+
+
+def list_subfolders(path: str) -> tuple[list[tuple[str, str]], str | None]:
+    """Returns ([(label, full path)], error); an empty path lists the drives."""
+    if not path:
+        return [(d, d) for d in list_drives()], None
+    try:
+        with os.scandir(path) as it:
+            names = [e.name for e in it if is_dir_entry(e)]
+    except OSError as e:
+        return [], str(e)
+    return [(n, os.path.join(path, n)) for n in sorted(names, key=str.lower)], None
+
+
+def start_folder(path: str | None) -> str:
+    """Nearest existing folder of path, else the home folder."""
+    path = (path or "").strip()
+    if path and not is_relative_path(path):
+        path = os.path.normpath(path)
+        while not os.path.isdir(path):
+            parent = os.path.dirname(path)
+            if parent == path:
+                break
+            path = parent
+        if os.path.isdir(path):
+            return path
+    return str(Path.home())
+
+
+def parent_folder(path: str | None) -> str | None:
+    """Parent of path; a Windows drive root has the drive list ("") as its parent."""
+    if not path:
+        return path
+    parent = os.path.dirname(path)
+    if parent != path:
+        return parent
+    return "" if sys.platform == "win32" else path

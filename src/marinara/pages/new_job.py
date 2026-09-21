@@ -11,7 +11,13 @@ from dgbowl_schemas.tomato.payload_2_2 import Payload
 from pydantic import ValidationError
 from tomato import ketchup, tomato
 
-from marinara.utils import TOUT
+from marinara.utils import (
+    TOUT,
+    is_relative_path,
+    list_subfolders,
+    parent_folder,
+    start_folder,
+)
 
 logger = logging.getLogger(__name__)
 dash.register_page(__name__, path="/jobs/new", title="New Job")
@@ -109,11 +115,18 @@ layout = html.Div(
                         dcc.Input(
                             id="new-job-output-path",
                             type="text",
-                            className="attr-control",
-                            placeholder="defaults to tomato server's working directory",
+                            className="attr-control attr-control-wide",
+                            debounce=True,
+                            placeholder="defaults to marinara's working directory",
+                        ),
+                        html.Button(
+                            "Browse",
+                            id="new-job-browse-btn",
+                            className="btn attr-btn",
                         ),
                     ],
                 ),
+                html.Div(id="new-job-output-path-warning"),
             ],
         ),
         html.Div(
@@ -156,19 +169,52 @@ layout = html.Div(
                         "margin": 0,
                     },
                 ),
-            ],
-        ),
-        html.Div(
-            className="card",
-            children=[
                 html.Button(
                     "Submit Job",
                     id="new-job-submit-btn",
-                    style={"padding": "10px 20px"},
+                    style={"padding": "10px 20px", "margin-top": "15px"},
                 ),
-                html.Div(id="new-job-submit-result", style={"margin-top": "15px"}),
+                html.Div(id="new-job-submit-result", className="submit-result"),
             ],
         ),
+        html.Div(
+            id="new-job-folder-modal",
+            className="modal-overlay",
+            hidden=True,
+            children=[
+                html.Div(
+                    className="card modal-card",
+                    children=[
+                        html.H3("Select Output Folder", style={"margin-top": 0}),
+                        html.Div(
+                            id="new-job-folder-current", className="folder-current"
+                        ),
+                        html.Div(id="new-job-folder-list", className="folder-list"),
+                        html.Div(
+                            className="modal-actions",
+                            children=[
+                                html.Button(
+                                    "↑ Up",
+                                    id="new-job-folder-up-btn",
+                                    className="btn",
+                                ),
+                                html.Button(
+                                    "Cancel",
+                                    id="new-job-folder-cancel-btn",
+                                    className="btn btn-danger",
+                                ),
+                                html.Button(
+                                    "Select this folder",
+                                    id="new-job-folder-select-btn",
+                                    className="btn btn-success",
+                                ),
+                            ],
+                        ),
+                    ],
+                ),
+            ],
+        ),
+        dcc.Store(id="new-job-folder-cwd", data=None),
         dcc.Store(id="new-job-tasks-list-store", data=[]),
         dcc.Store(id="new-job-roles-store", data={}),
         dcc.Store(id="new-job-components-store", data={}),
@@ -478,11 +524,91 @@ def assemble_payload_dict(sample_id, is_parent, method, output_path=None, user=N
         },
         "method": method,
     }
+    output_path = (output_path or "").strip()
     if output_path:
         payload_dict["settings"] = {"output": {"path": output_path}}
     if user:
         payload_dict["user"] = {"identifier": user}
     return payload_dict
+
+
+RELATIVE_PATH_MSG = "Output path must be absolute (tomato resolves relative paths against its own working directory)."
+
+
+# Flags a relative output path, which submit_new_job rejects
+@callback(
+    Output("new-job-output-path-warning", "children"),
+    Input("new-job-output-path", "value"),
+)
+def warn_relative_output_path(output_path):
+    if not is_relative_path(output_path):
+        return None
+    return html.Div(RELATIVE_PATH_MSG, className="attr-error")
+
+
+# Sets the picker's folder (None = closed); selecting also writes the output path
+@callback(
+    Output("new-job-folder-cwd", "data"),
+    Output("new-job-output-path", "value"),
+    Input("new-job-browse-btn", "n_clicks"),
+    Input("new-job-folder-up-btn", "n_clicks"),
+    Input("new-job-folder-select-btn", "n_clicks"),
+    Input("new-job-folder-cancel-btn", "n_clicks"),
+    Input({"type": "new-job-folder-entry", "index": ALL}, "n_clicks"),
+    State("new-job-output-path", "value"),
+    State("new-job-folder-cwd", "data"),
+    prevent_initial_call=True,
+)
+def navigate_folder_picker(browse, up, select, cancel, entries, output_path, cwd):
+    ctx = dash.callback_context
+    value = ctx.triggered[0]["value"] if ctx.triggered else None
+    # ignore triggers that carry no click (None or the ALL list)
+    if not value or isinstance(value, list):
+        return dash.no_update, dash.no_update
+
+    trigger = ctx.triggered_id
+    if trigger == "new-job-browse-btn":
+        return start_folder(output_path), dash.no_update
+    if trigger == "new-job-folder-cancel-btn":
+        return None, dash.no_update
+    if trigger == "new-job-folder-select-btn" and cwd:
+        return None, cwd
+    if trigger == "new-job-folder-up-btn":
+        return parent_folder(cwd), dash.no_update
+    if isinstance(trigger, dict) and os.path.isdir(trigger["index"]):
+        return trigger["index"], dash.no_update
+    return dash.no_update, dash.no_update
+
+
+# Shows the picker while a folder is set and lists its subfolders
+@callback(
+    Output("new-job-folder-modal", "hidden"),
+    Output("new-job-folder-current", "children"),
+    Output("new-job-folder-list", "children"),
+    Output("new-job-folder-up-btn", "disabled"),
+    Output("new-job-folder-select-btn", "disabled"),
+    Input("new-job-folder-cwd", "data"),
+)
+def render_folder_list(cwd):
+    if cwd is None:
+        return True, "", [], True, True
+
+    folders, err = list_subfolders(cwd)
+    if err:
+        children = html.Div(err, className="folder-message folder-message-error")
+    elif not folders:
+        children = html.Div("No subfolders.", className="folder-message text-secondary")
+    else:
+        children = [
+            html.Button(
+                label,
+                id={"type": "new-job-folder-entry", "index": full},
+                className="folder-entry",
+            )
+            for label, full in folders
+        ]
+    at_top = not cwd or parent_folder(cwd) == cwd
+    return False, cwd or "Drives", children, at_top, not cwd or bool(err)
 
 
 # Renders a best-effort live preview of the payload as YAML
@@ -523,6 +649,13 @@ def submit_new_job(
     except ValueError as e:
         return html.Div(
             str(e),
+            className="text-secondary",
+            style={"text-align": "center", "padding": "20px"},
+        )
+
+    if is_relative_path(output_path):
+        return html.Div(
+            RELATIVE_PATH_MSG,
             className="text-secondary",
             style={"text-align": "center", "padding": "20px"},
         )
