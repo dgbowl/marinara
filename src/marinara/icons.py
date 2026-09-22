@@ -339,6 +339,23 @@ def get_icon(
             ],
         )
 
+    elif name == "folder":
+        return Svg(
+            viewBox="0 0 24 24",
+            className=className,
+            style=svg_style,
+            children=[
+                Path(
+                    d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z",
+                    fill=fill,
+                    stroke=stroke,
+                    strokeWidth=str(stroke_width),
+                    strokeLinecap="round",
+                    strokeLinejoin="round",
+                )
+            ],
+        )
+
     elif name == "chevron-left":
         return Svg(
             viewBox="0 0 24 24",

@@ -1,6 +1,10 @@
+import ctypes
 import json
 import logging
+import os
+import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import dash
@@ -281,6 +285,70 @@ def update_datastore(
         datastore["dims"]["uts"] = cap
     logger.debug("datastore=%s", str(datastore))
     return datastore
+
+
+def is_relative_path(path: str | None) -> bool:
+    """Whether path is non-empty and not absolute."""
+    path = (path or "").strip()
+    return bool(path) and not Path(path).is_absolute()
+
+
+def list_drives() -> list[str]:
+    """Lists the Windows drive roots; empty elsewhere."""
+    if sys.platform != "win32":
+        return []
+    mask = ctypes.windll.kernel32.GetLogicalDrives()
+    return [f"{chr(65 + i)}:\\" for i in range(26) if mask >> i & 1]
+
+
+def is_dir_entry(entry: os.DirEntry) -> bool:
+    try:
+        return entry.is_dir()
+    except OSError:
+        return False
+
+
+def list_subfolders(path: str) -> tuple[list[tuple[str, str]], str | None]:
+    """Returns ([(label, full path)], error); an empty path lists the drives."""
+    if not path:
+        return [(d, d) for d in list_drives()], None
+    try:
+        with os.scandir(path) as it:
+            names = [e.name for e in it if is_dir_entry(e)]
+    except OSError as e:
+        return [], str(e)
+    return [(n, os.path.join(path, n)) for n in sorted(names, key=str.lower)], None
+
+
+def start_folder(path: str | None) -> str:
+    """Nearest existing folder of path, else the home folder."""
+    path = (path or "").strip()
+    if path and not is_relative_path(path):
+        path = os.path.normpath(path)
+        while not os.path.isdir(path):
+            parent = os.path.dirname(path)
+            if parent == path:
+                break
+            path = parent
+        if os.path.isdir(path):
+            return path
+    return str(Path.home())
+
+
+def parent_folder(path: str | None) -> str | None:
+    """Parent of path; a Windows drive root has the drive list ("") as its parent."""
+    if not path:
+        return path
+    parent = os.path.dirname(path)
+    if parent != path:
+        return parent
+    return "" if sys.platform == "win32" else path
+
+
+def breadcrumb_parts(path: str) -> list[tuple[str, str]]:
+    """Splits an absolute path into (label, cumulative full path) segments, root first."""
+    parts = Path(path).parts
+    return [(part, str(Path(*parts[: i + 1]))) for i, part in enumerate(parts)]
 
 
 def object_from_attrs(
