@@ -746,7 +746,7 @@ def render_custom_graph_layout(
 @callback(
     Output({"type": "custom-graph", "index": ALL}, "figure", allow_duplicate=True),
     Input({"type": "data-store", "index": ALL}, "data"),
-    Input({"type": "custom-graph-options", "index": ALL}, "value"),
+    Input({"type": "component-custom-graph", "index": ALL}, "data"),
     State({"type": "custom-graph-x-selector", "index": ALL}, "value"),
     State({"type": "custom-graph-y-selector", "index": ALL}, "value"),
     State({"type": "custom-graph", "index": ALL}, "figure"),
@@ -754,14 +754,14 @@ def render_custom_graph_layout(
 )
 def render_custom_graph_traces(
     datastores: list[dict],
-    all_opt: list[str],
+    all_meta: list[dict],
     all_x_var: list[str],
     all_y_var: list[str | list[str]],
     all_p_fig: list[dict | None],
 ) -> list[dash.Patch]:
     ret = []
-    for options_val, x_var, y_var, prev_figure in zip(
-        all_opt, all_x_var, all_y_var, all_p_fig
+    for meta, x_var, y_var, prev_figure in zip(
+        all_meta, all_x_var, all_y_var, all_p_fig
     ):
         y_vars = [y_var] if isinstance(y_var, str) else y_var or []
         patch = dash.Patch()
@@ -770,9 +770,7 @@ def render_custom_graph_traces(
             ret.append(patch)
             continue
 
-        connect_lines = "lines" in options_val
-        mode = "lines+markers" if connect_lines else "markers"
-
+        mode = meta.get("options", {}).get("mode", "lines+markers")
         traces = []
         for ds in datastores:
             consistent, _ = plotting.dims_consistency(x_var, y_vars, ds)
