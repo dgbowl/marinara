@@ -1,5 +1,10 @@
+import ctypes
 import json
 import logging
+import os
+import sys
+from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import dash
@@ -73,7 +78,22 @@ def format_constraint(val: Any, base_unit: str | None) -> str:
         return f"{mag} {u_str}" if u_str else str(mag)
 
 
-def format_obj(obj: dict, headers, attrs, otype, port) -> html.Div:
+def labeled_row(label: str, value_el, style: dict | None = None) -> html.Div:
+    """A "Label: value" row; shared by format_obj's metadata cards and job.py's detail cards."""
+    return html.Div(
+        children=[html.Strong(f"{label}: "), value_el],
+        style={"margin-right": "35px", **(style or {})},
+    )
+
+
+def format_obj(
+    obj: dict,
+    headers,
+    attrs,
+    otype,
+    port,
+    formatters: dict[str, Callable[[Any], Any]] | None = None,
+) -> html.Div:
     if not obj:
         return html.Div(
             "No registered elements found.",
@@ -81,22 +101,28 @@ def format_obj(obj: dict, headers, attrs, otype, port) -> html.Div:
             style={"text-align": "center", "padding": "20px"},
         )
 
+    row_style = {"display": "flex", "flex-wrap": "wrap", "gap": "10px"}
+
     cards = []
     for k, v in obj.items():
         name_str = str(k)
+        # The dict key doubles as the detail-page link target, so it may
+        # differ from the human-readable title (e.g. jobs key on id, title
+        # on "Job <id> (<jobname>)").
+        display_title = str(v.get(attrs[0], name_str)) if attrs else name_str
 
-        # Determine plurality/path type for links
-        path_type = otype
-        if otype == "device":
-            path_type = "devices"
-        elif otype == "driver":
-            path_type = "drivers"
+        # Title as a link to detail page (only for jobs and components)
+        if otype == "jobs":
+            href = f"/jobs/{name_str}"
+        elif otype == "components":
+            href = f"/components/{port}/{name_str}"
+        else:
+            href = None
 
-        # Title as a link to detail page (only for components and pipelines)
-        if otype in ["pipelines", "components"]:
+        if href:
             title_el = dcc.Link(
-                name_str,
-                href=f"/{path_type}/{port}/{name_str}",
+                display_title,
+                href=href,
                 className="entity-link",
                 style={
                     "font-size": "18px",
@@ -106,7 +132,7 @@ def format_obj(obj: dict, headers, attrs, otype, port) -> html.Div:
         else:
             # Not a link, so use the plain text color instead of the accent color
             title_el = html.Span(
-                name_str,
+                display_title,
                 style={
                     "font-size": "18px",
                     "font-weight": "700",
@@ -130,22 +156,13 @@ def format_obj(obj: dict, headers, attrs, otype, port) -> html.Div:
             if attr == "capabilities":
                 continue
 
-            metadata_items.append(
-                html.Div(
-                    children=[html.Strong(f"{header_label}: "), html.Span(val_str)],
-                    style={"margin-right": "35px"},
-                )
-            )
+            formatter = (formatters or {}).get(attr)
+            val_el = formatter(val) if formatter else html.Span(val_str)
+            metadata_items.append(labeled_row(header_label, val_el))
 
         details_row = html.Div(
             children=metadata_items,
-            style={
-                "display": "flex",
-                "flex-wrap": "wrap",
-                "margin-bottom": "10px",
-                "font-size": "14px",
-                "gap": "10px",
-            },
+            style={**row_style, "margin-bottom": "10px", "font-size": "14px"},
         )
 
         card_children = [
@@ -270,6 +287,70 @@ def update_datastore(
     return datastore
 
 
+def is_relative_path(path: str | None) -> bool:
+    """Whether path is non-empty and not absolute."""
+    path = (path or "").strip()
+    return bool(path) and not Path(path).is_absolute()
+
+
+def list_drives() -> list[str]:
+    """Lists the Windows drive roots; empty elsewhere."""
+    if sys.platform != "win32":
+        return []
+    mask = ctypes.windll.kernel32.GetLogicalDrives()
+    return [f"{chr(65 + i)}:\\" for i in range(26) if mask >> i & 1]
+
+
+def is_dir_entry(entry: os.DirEntry) -> bool:
+    try:
+        return entry.is_dir()
+    except OSError:
+        return False
+
+
+def list_subfolders(path: str) -> tuple[list[tuple[str, str]], str | None]:
+    """Returns ([(label, full path)], error); an empty path lists the drives."""
+    if not path:
+        return [(d, d) for d in list_drives()], None
+    try:
+        with os.scandir(path) as it:
+            names = [e.name for e in it if is_dir_entry(e)]
+    except OSError as e:
+        return [], str(e)
+    return [(n, os.path.join(path, n)) for n in sorted(names, key=str.lower)], None
+
+
+def start_folder(path: str | None) -> str:
+    """Nearest existing folder of path, else the home folder."""
+    path = (path or "").strip()
+    if path and not is_relative_path(path):
+        path = os.path.normpath(path)
+        while not os.path.isdir(path):
+            parent = os.path.dirname(path)
+            if parent == path:
+                break
+            path = parent
+        if os.path.isdir(path):
+            return path
+    return str(Path.home())
+
+
+def parent_folder(path: str | None) -> str | None:
+    """Parent of path; a Windows drive root has the drive list ("") as its parent."""
+    if not path:
+        return path
+    parent = os.path.dirname(path)
+    if parent != path:
+        return parent
+    return "" if sys.platform == "win32" else path
+
+
+def breadcrumb_parts(path: str) -> list[tuple[str, str]]:
+    """Splits an absolute path into (label, cumulative full path) segments, root first."""
+    parts = Path(path).parts
+    return [(part, str(Path(*parts[: i + 1]))) for i, part in enumerate(parts)]
+
+
 def object_from_attrs(
     cname: str,
     aname: str,
@@ -310,6 +391,34 @@ def get_constraint_str(attr: Attr):
     if attr.maximum is not None:
         constraints.append(f"man: {format_constraint(attr.maximum, attr.units)}")
     return f" ({', '.join(constraints)})" if constraints else ""
+
+
+JOB_STATUS_LABELS = {
+    "q": "Queued",
+    "qw": "Queued (waiting)",
+    "r": "Running",
+    "rd": "Cancelling",
+    "c": "Completed",
+    "cd": "Cancelled",
+    "ce": "Completed (error)",
+}
+
+
+def job_status_badge(status: str) -> html.Span:
+    """Renders a tomato job status code as a colored badge."""
+    if status == "c":
+        badge_class = "badge-success"
+    elif status == "r":
+        badge_class = "badge-primary"
+    elif status in ("ce", "cd"):
+        badge_class = "badge-danger"
+    elif status == "rd":
+        badge_class = "badge-warning"
+    else:
+        badge_class = "badge-secondary"
+    return html.Span(
+        JOB_STATUS_LABELS.get(status, status), className=f"badge {badge_class}"
+    )
 
 
 def create_header(otype: str, oname: str, badge: html.Div | None = None) -> html.Div:

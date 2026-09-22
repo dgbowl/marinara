@@ -266,7 +266,7 @@ table.stgrp tr:hover {
 }
 
 /* Form Elements */
-input, select, .dash-dropdown {
+input, textarea, select, .dash-dropdown {
     background-color: var(--card-bg) !important;
     color: var(--text-color) !important;
     border: 1px solid var(--border-color) !important;
@@ -432,7 +432,7 @@ input, select, .dash-dropdown {
     display: inline-block;
 }
 
-input:focus, select:focus {
+input:focus, textarea:focus, select:focus {
     border-color: var(--accent-color) !important;
 }
 
@@ -459,6 +459,42 @@ button:hover {
 
 button:active {
     transform: scale(0.98);
+}
+
+/* Solid action buttons - covers dcc.Link elements styled as buttons (which
+   don't inherit the button{} rule above). */
+.btn {
+    display: inline-block;
+    text-decoration: none;
+    background-color: var(--accent-color);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.btn:hover {
+    background-color: var(--accent-hover);
+}
+
+.btn:active {
+    transform: scale(0.98);
+}
+
+.btn-success {
+    background-color: var(--success-color);
+}
+
+.btn-danger {
+    background-color: var(--danger-color);
+}
+
+.btn-sm {
+    padding: 4px 12px;
+    font-size: 12px;
 }
 
 /* Badges and labels */
@@ -1241,4 +1277,141 @@ div.attr-control input:disabled {
 
 #component-graph-tab-checklist .graph-tab-input {
     display: none;
+}
+
+/* Folder picker entries (new job form) */
+.folder-entry {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 14px;
+    font-family: inherit;
+    font-size: 14px;
+    background: none;
+    border: none;
+    text-align: left;
+    color: var(--text-color);
+    cursor: pointer;
+    word-break: break-all;
+}
+
+.folder-entry:hover {
+    background-color: rgba(128, 128, 128, 0.15);
+}
+
+.folder-entry svg {
+    flex-shrink: 0;
+}
+
+.folder-current,
+.folder-list {
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.folder-current {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+    margin-bottom: 12px;
+    padding: 6px 8px;
+    font-size: 13px;
+    background-color: rgba(128, 128, 128, 0.08);
+}
+
+.breadcrumb-entry {
+    padding: 3px 7px;
+    font-family: inherit;
+    font-size: 13px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-color);
+    cursor: pointer;
+}
+
+.breadcrumb-entry:hover {
+    background-color: rgba(128, 128, 128, 0.15);
+}
+
+.breadcrumb-entry:last-of-type {
+    font-weight: 600;
+}
+
+.breadcrumb-sep {
+    color: var(--text-secondary);
+}
+
+.folder-list {
+    height: 340px;
+    margin-bottom: 18px;
+    overflow-y: auto;
+}
+
+.folder-message {
+    padding: 10px;
+}
+
+.folder-message-error {
+    color: var(--danger-color);
+}
+
+/* Modal shell; toggled through the hidden attribute */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.4);
+}
+
+.modal-overlay[hidden] {
+    display: none;
+}
+
+.modal-card {
+    display: flex;
+    flex-direction: column;
+    width: min(680px, 92vw);
+    max-height: 85vh;
+    margin: 0;
+    padding: 24px;
+}
+
+/* First action sits left, the rest are pushed right */
+.modal-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.modal-actions > :first-child {
+    margin-right: auto;
+}
+
+/* No spacing while the submit result is empty */
+.submit-result:not(:empty) {
+    margin-top: 15px;
+}
+
+/* Button matching .attr-control height */
+.attr-btn {
+    height: 36px;
+    padding: 0 16px;
+}
+
+/* Error text under an attr row, aligned with the control (label width + row gap) */
+.attr-error {
+    margin: -4px 0 12px calc(130px + 12px);
+    color: var(--danger-color);
+    font-size: 13px;
+}
+
+/* Wider control for long values such as paths */
+.attr-control-wide {
+    width: 360px !important;
+    max-width: 100% !important;
 }
