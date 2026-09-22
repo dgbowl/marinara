@@ -243,6 +243,120 @@ layout = html.Div(
                     ],
                 ),
                 html.Div(id="new-job-output-path-warning"),
+                html.Div(
+                    className="attr-row",
+                    children=[
+                        html.Div("Output Prefix:", className="attr-label"),
+                        dcc.Input(
+                            id="new-job-output-prefix",
+                            type="text",
+                            className="attr-control",
+                            placeholder="optional",
+                        ),
+                    ],
+                ),
+                html.Div(
+                    className="attr-row",
+                    children=[
+                        html.Div("Output Repositories:", className="attr-label"),
+                        dcc.Dropdown(
+                            id="new-job-output-repositories",
+                            className="attr-control",
+                            multi=True,
+                            value=[],
+                            placeholder="default",
+                        ),
+                    ],
+                ),
+                html.Div(
+                    className="attr-row",
+                    children=[
+                        html.Div("Verbosity:", className="attr-label"),
+                        dcc.Dropdown(
+                            id="new-job-verbosity",
+                            className="attr-control",
+                            options=["CRITICAL", "DEBUG", "ERROR", "INFO", "WARNING"],
+                            placeholder="select",
+                        ),
+                    ],
+                ),
+                html.Div(
+                    className="attr-row",
+                    children=[
+                        html.Div("", className="attr-label"),
+                        dcc.Checklist(
+                            id="new-job-unlock-when-done",
+                            options=[
+                                {
+                                    "label": " Unlock pipeline when done",
+                                    "value": "unlock",
+                                }
+                            ],
+                            value=[],
+                        ),
+                    ],
+                ),
+                html.H4(
+                    "Auto-Snapshot",
+                    style={
+                        "margin-top": "20px",
+                        "margin-bottom": "10px",
+                        "border-top": "1px solid var(--border-color)",
+                        "padding-top": "15px",
+                    },
+                ),
+                html.Div(
+                    className="attr-row",
+                    children=[
+                        html.Div("", className="attr-label"),
+                        dcc.Checklist(
+                            id="new-job-snapshot-enabled",
+                            options=[
+                                {
+                                    "label": " Enable periodic snapshots",
+                                    "value": "enabled",
+                                }
+                            ],
+                            value=[],
+                        ),
+                    ],
+                ),
+                html.Div(
+                    className="attr-row",
+                    children=[
+                        html.Div("Snapshot Path:", className="attr-label"),
+                        dcc.Input(
+                            id="new-job-snapshot-path",
+                            type="text",
+                            className="attr-control",
+                            placeholder="defaults to output path",
+                        ),
+                    ],
+                ),
+                html.Div(
+                    className="attr-row",
+                    children=[
+                        html.Div("Snapshot Prefix:", className="attr-label"),
+                        dcc.Input(
+                            id="new-job-snapshot-prefix",
+                            type="text",
+                            className="attr-control",
+                            placeholder="optional",
+                        ),
+                    ],
+                ),
+                html.Div(
+                    className="attr-row",
+                    children=[
+                        html.Div("Snapshot Interval (s):", className="attr-label"),
+                        dcc.Input(
+                            id="new-job-snapshot-interval",
+                            type="number",
+                            className="attr-control",
+                            value=3600,
+                        ),
+                    ],
+                ),
             ],
         ),
         html.Div(
@@ -322,6 +436,7 @@ layout = html.Div(
     Output("new-job-pipeline-dropdown", "options"),
     Output("new-job-components-store", "data"),
     Output("new-job-pipelines-store", "data"),
+    Output("new-job-output-repositories", "options"),
     Input("tomato-port", "data"),
 )
 def populate_new_job_options(port):
@@ -344,10 +459,18 @@ def populate_new_job_options(port):
         pipelines_roles = {
             name: dict(pip.components) for name, pip in pipelines.items()
         }
-        return sorted(pipelines), components, pipelines_roles
+        # "default" is always a valid repository even when absent from the
+        # daemon's own configured list (see tomato.ketchup.submit)
+        repositories = (
+            cfg_ret.data.settings.get("repositories", {})
+            if cfg_ret.success and cfg_ret.data is not None
+            else {}
+        )
+        repo_options = sorted({"default", *repositories})
+        return sorted(pipelines), components, pipelines_roles, repo_options
     except Exception as e:
         logger.warning("Exception during populate_new_job_options:", exc_info=e)
-        return [], {}, {}
+        return [], {}, {}, ["default"]
 
 
 # Resolves the selected pipeline's role -> component_name mapping from the store
@@ -673,7 +796,53 @@ def validate_form(sample_id, method):
             raise ValueError(f"Task {i + 1}: set max duration and sampling interval.")
 
 
-def assemble_payload_dict(sample_id, is_parent, method, output_path=None, user=None):
+def build_settings_dict(
+    output_path,
+    output_prefix,
+    output_repositories,
+    verbosity,
+    unlock_when_done,
+    snapshot_enabled,
+    snapshot_path,
+    snapshot_prefix,
+    snapshot_interval,
+):
+    """Builds the payload_2_2.Settings-shaped dict from the shared Job Settings fields."""
+    output = {}
+    output_path = (output_path or "").strip()
+    if output_path:
+        output["path"] = output_path
+    output_prefix = (output_prefix or "").strip()
+    if output_prefix:
+        output["prefix"] = output_prefix
+    repositories = [r for r in (output_repositories or []) if r]
+    if repositories:
+        output["repositories"] = repositories
+
+    settings = {}
+    if output:
+        settings["output"] = output
+    if verbosity:
+        settings["verbosity"] = verbosity
+    if unlock_when_done and "unlock" in unlock_when_done:
+        settings["unlock_when_done"] = True
+
+    if snapshot_enabled and "enabled" in snapshot_enabled:
+        snapshot = {}
+        snapshot_path = (snapshot_path or "").strip()
+        if snapshot_path:
+            snapshot["path"] = snapshot_path
+        snapshot_prefix = (snapshot_prefix or "").strip()
+        if snapshot_prefix:
+            snapshot["prefix"] = snapshot_prefix
+        if snapshot_interval is not None:
+            snapshot["interval"] = snapshot_interval
+        settings["snapshot"] = snapshot
+
+    return settings
+
+
+def assemble_payload_dict(sample_id, is_parent, method, settings=None, user=None):
     """Builds the payload_2_2-shaped dict shared by the YAML preview and submit callbacks."""
     payload_dict = {
         "version": "2.2",
@@ -683,24 +852,24 @@ def assemble_payload_dict(sample_id, is_parent, method, output_path=None, user=N
         },
         "method": method,
     }
-    output_path = (output_path or "").strip()
-    if output_path:
-        payload_dict["settings"] = {"output": {"path": output_path}}
+    if settings:
+        payload_dict["settings"] = settings
     if user:
         payload_dict["user"] = {"identifier": user}
     return payload_dict
 
 
-def apply_uploaded_overrides(payload_dict, sample_id, is_parent, output_path=None, user=None):
-    """Overlays the Select Payload tab's sample/output path/user onto an uploaded payload dict."""
+def apply_uploaded_overrides(
+    payload_dict, sample_id, is_parent, settings=None, user=None
+):
+    """Overlays the Select Payload tab's sample/settings/user onto an uploaded payload dict."""
     payload_dict = dict(payload_dict or {})
     payload_dict["sample"] = {
         "identifier": sample_id,
         "sample_is_parent": bool(is_parent and "parent" in is_parent),
     }
-    output_path = (output_path or "").strip()
-    if output_path:
-        payload_dict["settings"] = {"output": {"path": output_path}}
+    if settings:
+        payload_dict["settings"] = settings
     if user:
         payload_dict["user"] = {"identifier": user}
     return payload_dict
@@ -814,6 +983,14 @@ def render_folder_list(cwd):
     Input("new-job-upload-sample-identifier", "value"),
     Input("new-job-upload-sample-is-parent", "value"),
     Input("new-job-output-path", "value"),
+    Input("new-job-output-prefix", "value"),
+    Input("new-job-output-repositories", "value"),
+    Input("new-job-verbosity", "value"),
+    Input("new-job-unlock-when-done", "value"),
+    Input("new-job-snapshot-enabled", "value"),
+    Input("new-job-snapshot-path", "value"),
+    Input("new-job-snapshot-prefix", "value"),
+    Input("new-job-snapshot-interval", "value"),
 )
 def render_new_job_yaml_preview(
     tab,
@@ -824,19 +1001,38 @@ def render_new_job_yaml_preview(
     up_sample_id,
     up_is_parent,
     output_path,
+    output_prefix,
+    output_repositories,
+    verbosity,
+    unlock_when_done,
+    snapshot_enabled,
+    snapshot_path,
+    snapshot_prefix,
+    snapshot_interval,
 ):
+    settings = build_settings_dict(
+        output_path,
+        output_prefix,
+        output_repositories,
+        verbosity,
+        unlock_when_done,
+        snapshot_enabled,
+        snapshot_path,
+        snapshot_prefix,
+        snapshot_interval,
+    )
     if tab == "select-payload":
         if not uploaded:
             return "# Upload a payload file to preview it here."
         payload_dict = apply_uploaded_overrides(
-            uploaded, up_sample_id, up_is_parent, output_path
+            uploaded, up_sample_id, up_is_parent, settings
         )
     else:
         try:
             method = build_method(tasks_meta)
         except ValueError as e:
             method = [{"<error>": str(e)}]
-        payload_dict = assemble_payload_dict(sample_id, is_parent, method, output_path)
+        payload_dict = assemble_payload_dict(sample_id, is_parent, method, settings)
     return yaml.safe_dump(payload_dict, sort_keys=False)
 
 
@@ -853,6 +1049,14 @@ def render_new_job_yaml_preview(
     State("new-job-upload-sample-is-parent", "value"),
     State("new-job-name", "value"),
     State("new-job-output-path", "value"),
+    State("new-job-output-prefix", "value"),
+    State("new-job-output-repositories", "value"),
+    State("new-job-verbosity", "value"),
+    State("new-job-unlock-when-done", "value"),
+    State("new-job-snapshot-enabled", "value"),
+    State("new-job-snapshot-path", "value"),
+    State("new-job-snapshot-prefix", "value"),
+    State("new-job-snapshot-interval", "value"),
     State("tomato-port", "data"),
     prevent_initial_call=True,
 )
@@ -867,8 +1071,28 @@ def submit_new_job(
     up_is_parent,
     jobname,
     output_path,
+    output_prefix,
+    output_repositories,
+    verbosity,
+    unlock_when_done,
+    snapshot_enabled,
+    snapshot_path,
+    snapshot_prefix,
+    snapshot_interval,
     port,
 ):
+    settings = build_settings_dict(
+        output_path,
+        output_prefix,
+        output_repositories,
+        verbosity,
+        unlock_when_done,
+        snapshot_enabled,
+        snapshot_path,
+        snapshot_prefix,
+        snapshot_interval,
+    )
+
     if tab == "select-payload":
         if not uploaded:
             return html.Div(
@@ -883,7 +1107,7 @@ def submit_new_job(
                 style={"text-align": "center", "padding": "20px"},
             )
         payload_dict = apply_uploaded_overrides(
-            uploaded, up_sample_id, up_is_parent, output_path, user=getpass.getuser()
+            uploaded, up_sample_id, up_is_parent, settings, user=getpass.getuser()
         )
     else:
         try:
@@ -896,7 +1120,7 @@ def submit_new_job(
                 style={"text-align": "center", "padding": "20px"},
             )
         payload_dict = assemble_payload_dict(
-            sample_id, is_parent, method, output_path, user=getpass.getuser()
+            sample_id, is_parent, method, settings, user=getpass.getuser()
         )
 
     if is_relative_path(output_path):

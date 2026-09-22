@@ -952,6 +952,13 @@ label {
     border: 1px solid var(--border-color) !important;
 }
 
+/* Dash's own grid adds a second 12px left padding on top of the button's
+   10px (from the shared input/select/.dash-dropdown rule), so dropdown text
+   starts further right than a plain input's - drop it so both align. */
+.dash-dropdown-grid-container {
+    padding-left: 0 !important;
+}
+
 .dash-dropdown-content {
     background-color: var(--card-bg) !important;
     border: 1px solid var(--border-color) !important;
@@ -1028,6 +1035,8 @@ label {
 
 .dash-dropdown-placeholder {
     color: var(--text-secondary) !important;
+    font-weight: 400 !important;
+    font-size: 16px !important;
 }
 
 .dash-dropdown-trigger-icon {
