@@ -691,7 +691,9 @@ def assemble_payload_dict(sample_id, is_parent, method, output_path=None, user=N
     return payload_dict
 
 
-def apply_uploaded_overrides(payload_dict, sample_id, is_parent, output_path=None, user=None):
+def apply_uploaded_overrides(
+    payload_dict, sample_id, is_parent, output_path=None, user=None
+):
     """Overlays the Select Payload tab's sample/output path/user onto an uploaded payload dict."""
     payload_dict = dict(payload_dict or {})
     payload_dict["sample"] = {
