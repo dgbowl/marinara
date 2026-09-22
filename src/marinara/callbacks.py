@@ -64,10 +64,10 @@ def attr_apply_btn_update():
     def attr_apply_btn_update(val: Any, input: str | list[str]) -> str:
         if isinstance(input, list):
             match = utils.checklist_to_bool(input) == bool(val)
+        elif isinstance(val, (float, int)) and float(input) == val or input == str(val):
+            match = True
         else:
-            match = (
-                isinstance(val, (float, int)) and float(input) == val
-            ) or input == str(val)
+            match = False
         return "attr-apply-btn" if match else "attr-apply-btn-danger"
 
 
@@ -93,10 +93,11 @@ def attr_input_action_update_value():
         else:
             set_val = value
         passata.set_attr(port=port, name=cname, attr=attr, val=set_val, timeout=TOUT)
+
         val = utils.get_attrs_vals(port=port, name=cname, attrs=[attr]).get(attr)
         if isinstance(value, list):
             return utils.bool_to_checklist(val)
-        if isinstance(val, pint.Quantity):
+        elif isinstance(val, pint.Quantity):
             return str(val.m)
         else:
             return str(val)

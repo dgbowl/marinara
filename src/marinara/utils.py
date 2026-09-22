@@ -73,38 +73,18 @@ def format_constraint(val: Any, base_unit: str | None) -> str:
         return f"{mag} {u_str}" if u_str else str(mag)
 
 
-# Boolean attribute checkbox control. Shared by every page that renders
-# attribute controls, so a boolean attribute always gets the same widget
-# and the same True/False handling everywhere, instead of each page
-# deciding this on its own (which is how the underlying bug happened:
-# every page independently fell back to a plain text box for booleans,
-# stringifying the value to "True"/"False").
+# Sentinel value for the boolean-attribute checkbox (a single-option
+# dcc.Checklist).
 CHECKBOX_ON = "on"
 
-
-def checkbox_control(
-    id_dict: dict[str, Any], checked: bool, *, disabled: bool = False
-) -> dcc.Checklist:
-    """Builds the single-option dcc.Checklist used to represent a boolean
-    attribute as a checkbox."""
-    return dcc.Checklist(
-        id=id_dict,
-        options=[{"label": "", "value": CHECKBOX_ON, "disabled": disabled}],
-        value=[CHECKBOX_ON] if checked else [],
-        className="attr-control attr-checkbox"
-        + (" immutable-input" if disabled else " mutable-input"),
-    )
-
-
 def checklist_to_bool(value: list[str] | None) -> bool:
-    """Converts a checkbox_control's checked-values list back to bool."""
+    """Converts a boolean-checkbox's checked-values list back to bool."""
     return CHECKBOX_ON in (value or [])
 
 
 def bool_to_checklist(value: bool | None) -> list[str]:
-    """Converts a bool (or bool-like) into a checkbox_control value."""
+    """Converts a bool (or bool-like) into a boolean-checkbox value."""
     return [CHECKBOX_ON] if value else []
-
 
 def format_obj(obj: dict, headers, attrs, otype, port) -> html.Div:
     if not obj:
@@ -311,9 +291,11 @@ def object_from_attrs(
 ) -> dcc.Dropdown | dcc.Input | dcc.Checklist:
     if attr.rw:
         if attr.type is bool:
-            obj = checkbox_control(
-                {"type": "attr-input", "index": f"{cname}/{aname}"},
-                value == "True",
+            obj = dcc.Checklist(
+                id={"type": "attr-input", "index": f"{cname}/{aname}"},
+                options=[{"label": "", "value": CHECKBOX_ON}],
+                value=[CHECKBOX_ON] if value == "True" else [],
+                className="attr-control attr-checkbox mutable-input",
             )
         elif attr.options is not None:
             obj = dcc.Dropdown(
