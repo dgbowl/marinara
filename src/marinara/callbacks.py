@@ -63,7 +63,7 @@ def attr_display_val_update():
     )
     def attr_display_val_update(val: Any) -> str:
         if isinstance(val, float):
-            val = round(val, 3)
+            return f"{val:.3f}"
         return str(val)
 
 
