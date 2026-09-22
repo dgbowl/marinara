@@ -77,6 +77,7 @@ def format_constraint(val: Any, base_unit: str | None) -> str:
 # dcc.Checklist).
 CHECKBOX_ON = "on"
 
+
 def checklist_to_bool(value: list[str] | None) -> bool:
     """Converts a boolean-checkbox's checked-values list back to bool."""
     return CHECKBOX_ON in (value or [])
@@ -85,6 +86,7 @@ def checklist_to_bool(value: list[str] | None) -> bool:
 def bool_to_checklist(value: bool | None) -> list[str]:
     """Converts a bool (or bool-like) into a boolean-checkbox value."""
     return [CHECKBOX_ON] if value else []
+
 
 def format_obj(obj: dict, headers, attrs, otype, port) -> html.Div:
     if not obj:
