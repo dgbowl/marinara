@@ -253,6 +253,7 @@ def layout(port: int, name: str, **_) -> list[html.Div | dcc.Store]:
 
 callbacks.periodic_data_store_update()
 callbacks.periodic_attr_val_update()
+callbacks.attr_display_val_update()
 callbacks.periodic_status_store_update()
 
 

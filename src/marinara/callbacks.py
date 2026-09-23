@@ -54,6 +54,19 @@ def periodic_attr_val_update():
         return new
 
 
+def attr_display_val_update():
+    # Keeps a read-only attribute's displayed value in sync with its
+    # periodically-refreshed attr-val store, with rounding (per #50).
+    @callback(
+        Output({"type": "attr-display", "index": MATCH}, "value"),
+        Input({"type": "attr-val", "index": MATCH}, "data"),
+    )
+    def attr_display_val_update(val: Any) -> str:
+        if isinstance(val, float):
+            return f"{val:.3f}"
+        return str(val)
+
+
 def attr_apply_btn_update():
     # Change style of attr-apply-btn when attr-input does not match attr-val
     @callback(
@@ -61,11 +74,14 @@ def attr_apply_btn_update():
         Input({"type": "attr-val", "index": MATCH}, "data"),
         Input({"type": "attr-input", "index": MATCH}, "value"),
     )
-    def attr_apply_btn_update(val: Any, input: str) -> str:
-        if (isinstance(val, (float, int)) and float(input) == val) or input == str(val):
-            return "attr-apply-btn"
+    def attr_apply_btn_update(val: Any, input: str | list[str]) -> str:
+        if isinstance(input, list):
+            match = utils.checklist_to_bool(input) == bool(val)
+        elif isinstance(val, (float, int)) and float(input) == val or input == str(val):
+            match = True
         else:
-            return "attr-apply-btn-danger"
+            match = False
+        return "attr-apply-btn" if match else "attr-apply-btn-danger"
 
 
 def attr_input_action_update_value():
@@ -80,14 +96,21 @@ def attr_input_action_update_value():
     )
     def attr_input_action_update_value(
         _: int,
-        value: str,
+        value: str | list[str],
         id: dict[str, str],
         port: int,
-    ) -> str:
+    ) -> str | list[str]:
         cname, attr = id["index"].split("/")
-        passata.set_attr(port=port, name=cname, attr=attr, val=value, timeout=TOUT)
+        if isinstance(value, list):
+            set_val = utils.checklist_to_bool(value)
+        else:
+            set_val = value
+        passata.set_attr(port=port, name=cname, attr=attr, val=set_val, timeout=TOUT)
+
         val = utils.get_attrs_vals(port=port, name=cname, attrs=[attr]).get(attr)
-        if isinstance(val, pint.Quantity):
+        if isinstance(value, list):
+            return utils.bool_to_checklist(val)
+        elif isinstance(val, pint.Quantity):
             return str(val.m)
         else:
             return str(val)
