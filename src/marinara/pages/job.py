@@ -18,11 +18,11 @@ def layout(id: str, **_) -> list[html.Div | dcc.Store]:
         # Kept outside job-detail-container, which update_job_detail regenerates
         # every second - a result shown there would get wiped within a second.
         html.Div(
+            className="card",
             children=[
                 html.Button("Take Snapshot", id="job-snapshot-btn", className="btn"),
                 html.Span(id="job-snapshot-result", style={"margin-left": "12px"}),
             ],
-            style={"margin-bottom": "20px"},
         ),
         html.Div(
             id="job-detail-container",
