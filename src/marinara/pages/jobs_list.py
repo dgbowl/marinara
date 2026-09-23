@@ -85,13 +85,15 @@ def update_jobs_list(n_clicks, port):
         for job in sorted(jobs_list, key=lambda j: j.id, reverse=True):
             # format_obj links each card's title to /jobs/<key>, so key on the id
             name = f"Job {job.id}" + (f" ({job.jobname})" if job.jobname else "")
+            if job.completed_at:
+                completed_at = str(job.completed_at).split(".")[0]
+            else:
+                completed_at = "-"
             jobs[str(job.id)] = {
                 "name": name,
                 "status": job.status,
                 "submitted_at": str(job.submitted_at).split(".")[0],
-                "completed_at": str(job.completed_at).split(".")[0]
-                if job.completed_at
-                else "-",
+                "completed_at": completed_at,
             }
 
         return format_obj(

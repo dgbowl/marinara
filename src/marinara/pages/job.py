@@ -37,8 +37,9 @@ def detail_row(label: str, value) -> html.Div:
 
 
 # Requests an up-to-date snapshot of the job's data from tomato; the resulting
-# file lands wherever the daemon process resolves "snapshot.<id>.nc" (tomato
-# doesn't report the resolved path back), so we can only surface its message.
+# "snapshot.<id>.nc" lands in the cwd of the ketchup process (i.e. wherever
+# marinara was launched from), and tomato doesn't report that path back, so we
+# can only surface its message.
 @callback(
     Output("job-snapshot-result", "children"),
     Input("job-snapshot-btn", "n_clicks"),
