@@ -1,5 +1,6 @@
 import json
 import logging
+from collections.abc import Callable
 from typing import Any
 
 import dash
@@ -73,6 +74,14 @@ def format_constraint(val: Any, base_unit: str | None) -> str:
         return f"{mag} {u_str}" if u_str else str(mag)
 
 
+def labeled_row(label: str, value_el, style: dict | None = None) -> html.Div:
+    """A "Label: value" row; shared by format_obj's metadata cards and job.py's detail cards."""
+    return html.Div(
+        children=[html.Strong(f"{label}: "), value_el],
+        style={"margin-right": "35px", **(style or {})},
+    )
+
+
 # Sentinel value for the boolean-attribute checkbox (a single-option
 # dcc.Checklist).
 CHECKBOX_ON = "on"
@@ -88,7 +97,29 @@ def bool_to_checklist(value: bool | None) -> list[str]:
     return [CHECKBOX_ON] if value else []
 
 
-def format_obj(obj: dict, headers, attrs, otype, port) -> html.Div:
+def format_obj(
+    obj: dict[str, dict],
+    headers: list[str],
+    attrs: list[str],
+    otype: str,
+    port: int,
+    formatters: dict[str, Callable[[Any], Any]] | None = None,
+) -> html.Div:
+    """
+    Renders a dict of objects (jobs, components, ...) as a grid of cards.
+
+    obj: mapping of object key (used as the detail-page link target) to its
+        attribute dict.
+    headers: display labels for each attr, in the same order as attrs; headers[0]
+        is used as the card title.
+    attrs: attribute names to read from each object in obj, in display order;
+        attrs[0] is used as the card title.
+    otype: object type, e.g. "jobs" or "components"; controls the detail-page
+        link target and whether cards are laid out in a grid.
+    port: tomato daemon port, used to build the detail-page link for components.
+    formatters: optional per-attr callables that convert a raw attr value into
+        the Dash element to render for it, e.g. a badge for "status".
+    """
     if not obj:
         return html.Div(
             "No registered elements found.",
@@ -99,19 +130,23 @@ def format_obj(obj: dict, headers, attrs, otype, port) -> html.Div:
     cards = []
     for k, v in obj.items():
         name_str = str(k)
+        # The dict key doubles as the detail-page link target, so it may
+        # differ from the human-readable title (e.g. jobs key on id, title
+        # on "Job <id> (<jobname>)").
+        display_title = str(v.get(attrs[0], name_str)) if attrs else name_str
 
-        # Determine plurality/path type for links
-        path_type = otype
-        if otype == "device":
-            path_type = "devices"
-        elif otype == "driver":
-            path_type = "drivers"
+        # Title as a link to detail page (only for jobs and components)
+        if otype == "jobs":
+            href = f"/jobs/{name_str}"
+        elif otype == "components":
+            href = f"/components/{port}/{name_str}"
+        else:
+            href = None
 
-        # Title as a link to detail page (only for components and pipelines)
-        if otype in ["pipelines", "components"]:
+        if href:
             title_el = dcc.Link(
-                name_str,
-                href=f"/{path_type}/{port}/{name_str}",
+                display_title,
+                href=href,
                 className="entity-link",
                 style={
                     "font-size": "18px",
@@ -121,7 +156,7 @@ def format_obj(obj: dict, headers, attrs, otype, port) -> html.Div:
         else:
             # Not a link, so use the plain text color instead of the accent color
             title_el = html.Span(
-                name_str,
+                display_title,
                 style={
                     "font-size": "18px",
                     "font-weight": "700",
@@ -145,21 +180,18 @@ def format_obj(obj: dict, headers, attrs, otype, port) -> html.Div:
             if attr == "capabilities":
                 continue
 
-            metadata_items.append(
-                html.Div(
-                    children=[html.Strong(f"{header_label}: "), html.Span(val_str)],
-                    style={"margin-right": "35px"},
-                )
-            )
+            formatter = (formatters or {}).get(attr)
+            val_el = formatter(val) if formatter else html.Span(val_str)
+            metadata_items.append(labeled_row(header_label, val_el))
 
         details_row = html.Div(
             children=metadata_items,
             style={
                 "display": "flex",
                 "flex-wrap": "wrap",
+                "gap": "10px",
                 "margin-bottom": "10px",
                 "font-size": "14px",
-                "gap": "10px",
             },
         )
 
@@ -332,6 +364,34 @@ def get_constraint_str(attr: Attr):
     if attr.maximum is not None:
         constraints.append(f"man: {format_constraint(attr.maximum, attr.units)}")
     return f" ({', '.join(constraints)})" if constraints else ""
+
+
+JOB_STATUS_LABELS = {
+    "q": "Queued",
+    "qw": "Queued (waiting)",
+    "r": "Running",
+    "rd": "Cancelling",
+    "c": "Completed",
+    "cd": "Cancelled",
+    "ce": "Completed (error)",
+}
+
+
+def job_status_badge(status: str) -> html.Span:
+    """Renders a tomato job status code as a colored badge."""
+    if status == "c":
+        badge_class = "badge-success"
+    elif status == "r":
+        badge_class = "badge-primary"
+    elif status in ("ce", "cd"):
+        badge_class = "badge-danger"
+    elif status == "rd":
+        badge_class = "badge-warning"
+    else:
+        badge_class = "badge-secondary"
+    return html.Span(
+        JOB_STATUS_LABELS.get(status, status), className=f"badge {badge_class}"
+    )
 
 
 def create_header(otype: str, oname: str, badge: html.Div | None = None) -> html.Div:
