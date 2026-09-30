@@ -491,15 +491,15 @@ def render_custom_graphs_list(
 
         title_val = meta.get("title") or f"Custom Graph #{i}"
         yvar_val = meta.get("y_vars") or []
-        # `options` is stored as a dict(mode) - `mode` mirrors what the
-        # single "Connect points" checkbox can express.
-        graph_opts = meta.get("options") or {"mode": "lines+markers"}
-        options_val = ["lines"] if graph_opts.get("mode") == "lines+markers" else []
+        options = meta.get("options") or {"mode": "lines"}
 
         card = html.Div(
             id={"type": "custom-graph-card", "index": i},
             children=[
                 dcc.Store(id={"type": "component-custom-graph", "index": i}, data=meta),
+                dcc.Store(
+                    id={"type": "custom-graph-options", "index": i}, data=options
+                ),
                 html.Div(
                     children=[
                         dcc.Input(
@@ -592,38 +592,6 @@ def render_custom_graphs_list(
                             ],
                             style={"flex": "2", "min-width": "250px"},
                         ),
-                        html.Div(
-                            children=[
-                                html.Label(
-                                    "Graph Options:",
-                                    style={
-                                        "font-weight": "600",
-                                        "font-size": "13px",
-                                        "margin-bottom": "5px",
-                                        "display": "block",
-                                        "color": "var(--text-color)",
-                                    },
-                                ),
-                                dcc.Checklist(
-                                    id={"type": "custom-graph-options", "index": i},
-                                    options=[
-                                        {
-                                            "label": " Connect points (Lines)",
-                                            "value": "lines",
-                                        },
-                                    ],
-                                    value=options_val,
-                                    labelStyle={
-                                        "display": "inline-block",
-                                        "margin-right": "15px",
-                                        "font-size": "13px",
-                                        "color": "var(--text-color)",
-                                    },
-                                    style={"padding": "6px 0"},
-                                ),
-                            ],
-                            style={"flex": "1.5", "min-width": "250px"},
-                        ),
                     ],
                     style={
                         "display": "flex",
@@ -655,7 +623,7 @@ def render_custom_graphs_list(
     Output({"type": "component-custom-graph", "index": MATCH}, "data"),
     Input({"type": "custom-graph-title-input", "index": MATCH}, "value"),
     Input({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
-    Input({"type": "custom-graph-options", "index": MATCH}, "value"),
+    Input({"type": "custom-graph-options", "index": MATCH}, "data"),
     Input("custom-graphs-list-store", "data"),
     State({"type": "component-custom-graph", "index": MATCH}, "data"),
     prevent_initial_call=True,
@@ -663,7 +631,7 @@ def render_custom_graphs_list(
 def update_custom_graph_meta(
     title: str | None,
     y_vars: list[str] | None,
-    options: list[str] | None,
+    options: dict,
     active_ids: list[int],
     current_data: dict,
 ) -> dict:
@@ -672,13 +640,7 @@ def update_custom_graph_meta(
         "custom-graphs-list-store" in t["prop_id"] for t in ctx.triggered
     ):
         return current_data
-
-    mode = "lines+markers" if options and "lines" in options else "markers"
-    return {
-        "title": title,
-        "y_vars": y_vars or [],
-        "options": {"mode": mode},
-    }
+    return {"title": title, "y_vars": y_vars or [], "options": options}
 
 
 @callback(
@@ -747,7 +709,7 @@ def render_custom_graph_layout(
 @callback(
     Output({"type": "custom-graph", "index": ALL}, "figure", allow_duplicate=True),
     Input({"type": "data-store", "index": ALL}, "data"),
-    Input({"type": "component-custom-graph", "index": ALL}, "data"),
+    Input({"type": "custom-graph-options", "index": ALL}, "data"),
     State({"type": "custom-graph-x-selector", "index": ALL}, "value"),
     State({"type": "custom-graph-y-selector", "index": ALL}, "value"),
     State({"type": "custom-graph", "index": ALL}, "figure"),
@@ -755,14 +717,14 @@ def render_custom_graph_layout(
 )
 def render_custom_graph_traces(
     datastores: list[dict],
-    all_meta: list[dict],
+    all_opt: list[dict],
     all_x_var: list[str],
     all_y_var: list[str | list[str]],
     all_p_fig: list[dict | None],
 ) -> list[dash.Patch]:
     ret = []
-    for meta, x_var, y_var, prev_figure in zip(
-        all_meta, all_x_var, all_y_var, all_p_fig
+    for options, x_var, y_var, prev_figure in zip(
+        all_opt, all_x_var, all_y_var, all_p_fig
     ):
         y_vars = [y_var] if isinstance(y_var, str) else y_var or []
         patch = dash.Patch()
@@ -771,27 +733,21 @@ def render_custom_graph_traces(
             ret.append(patch)
             continue
 
-        mode = meta.get("options", {}).get("mode", "lines+markers")
         traces = []
         for ds in datastores:
             consistent, _ = plotting.dims_consistency(x_var, y_vars, ds)
             if not consistent:
                 ret.append(patch)
-            traces.extend(plotting.build_traces(ds, x_var, y_vars, mode))
+            traces.extend(plotting.build_traces(ds, x_var, y_vars, options["mode"]))
         ret.append(plotting.patch_traces(prev_figure, traces))
     return ret
 
 
 @callback(
-    Output({"type": "custom-graph-options", "index": MATCH}, "value"),
+    Output({"type": "custom-graph-options", "index": MATCH}, "data"),
     Input({"type": "custom-graph-x-selector", "index": MATCH}, "value"),
     Input({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
     prevent_initial_call=True,
 )
-def auto_configure_graph_options(
-    x_var: str, y_var: str | list[str]
-) -> list[str] | dash.NoUpdate:
-    # Non-"uts" means this is Dash's stale mount echo, not a real change
-    if x_var != "uts":
-        return dash.no_update
-    return ["lines"]
+def auto_configure_graph_options(x_var: str, y_var: str | list[str]) -> dict:
+    return {"mode": "lines" if x_var == "uts" else "markers"}
