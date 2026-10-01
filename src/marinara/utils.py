@@ -111,9 +111,9 @@ def format_obj(
     obj: mapping of object key (used as the detail-page link target) to its
         attribute dict.
     headers: display labels for each attr, in the same order as attrs; headers[0]
-        is used as the card title.
+        is not rendered, as the card title is the value of attrs[0].
     attrs: attribute names to read from each object in obj, in display order;
-        attrs[0] is used as the card title.
+        the value of attrs[0] is used as the card title.
     otype: object type, e.g. "jobs" or "components"; controls the detail-page
         link target and whether cards are laid out in a grid.
     port: tomato daemon port, used to build the detail-page link for components.
