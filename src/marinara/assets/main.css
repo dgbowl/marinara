@@ -383,11 +383,13 @@ input, select, .dash-dropdown {
     transition: all 0.2s ease;
 }
 
-/* Clickable entity titles (components/pipelines) - underline on hover so
-   they read as links, distinguishing them from same-colored plain text. */
+/* Clickable entity titles and links (components, jobs, snapshot download) -
+   underline on hover so they read as links, distinguishing them from
+   same-colored plain text. */
 .entity-link {
     color: var(--accent-color);
     text-decoration: none;
+    cursor: pointer;
 }
 
 .entity-link:hover {
@@ -458,6 +460,36 @@ button:hover {
 }
 
 button:active {
+    transform: scale(0.98);
+}
+
+/* Solid action buttons - covers dcc.Link elements styled as buttons (which
+   don't inherit the button{} rule above). */
+.btn {
+    display: inline-block;
+    text-decoration: none;
+    background-color: var(--accent-color);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn:hover {
+    background-color: var(--accent-hover);
+}
+
+.btn:active {
     transform: scale(0.98);
 }
 
