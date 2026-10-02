@@ -86,22 +86,50 @@ def labeled_row(label: str, value_el, style: dict | None = None) -> html.Div:
     )
 
 
+# Sentinel value for the boolean-attribute checkbox (a single-option
+# dcc.Checklist).
+CHECKBOX_ON = "on"
+
+
+def checklist_to_bool(value: list[str] | None) -> bool:
+    """Converts a boolean-checkbox's checked-values list back to bool."""
+    return CHECKBOX_ON in (value or [])
+
+
+def bool_to_checklist(value: bool | None) -> list[str]:
+    """Converts a bool (or bool-like) into a boolean-checkbox value."""
+    return [CHECKBOX_ON] if value else []
+
+
 def format_obj(
-    obj: dict,
-    headers,
-    attrs,
-    otype,
-    port,
+    obj: dict[str, dict],
+    headers: list[str],
+    attrs: list[str],
+    otype: str,
+    port: int,
     formatters: dict[str, Callable[[Any], Any]] | None = None,
 ) -> html.Div:
+    """
+    Renders a dict of objects (jobs, components, ...) as a grid of cards.
+
+    obj: mapping of object key (used as the detail-page link target) to its
+        attribute dict.
+    headers: display labels for each attr, in the same order as attrs; headers[0]
+        is not rendered, as the card title is the value of attrs[0].
+    attrs: attribute names to read from each object in obj, in display order;
+        the value of attrs[0] is used as the card title.
+    otype: object type, e.g. "jobs" or "components"; controls the detail-page
+        link target and whether cards are laid out in a grid.
+    port: tomato daemon port, used to build the detail-page link for components.
+    formatters: optional per-attr callables that convert a raw attr value into
+        the Dash element to render for it, e.g. a badge for "status".
+    """
     if not obj:
         return html.Div(
             "No registered elements found.",
             className="text-secondary",
             style={"text-align": "center", "padding": "20px"},
         )
-
-    row_style = {"display": "flex", "flex-wrap": "wrap", "gap": "10px"}
 
     cards = []
     for k, v in obj.items():
@@ -162,7 +190,13 @@ def format_obj(
 
         details_row = html.Div(
             children=metadata_items,
-            style={**row_style, "margin-bottom": "10px", "font-size": "14px"},
+            style={
+                "display": "flex",
+                "flex-wrap": "wrap",
+                "gap": "10px",
+                "margin-bottom": "10px",
+                "font-size": "14px",
+            },
         )
 
         card_children = [
@@ -356,9 +390,16 @@ def object_from_attrs(
     aname: str,
     attr: Attr,
     value: str,
-) -> dcc.Dropdown | dcc.Input:
+) -> dcc.Dropdown | dcc.Input | dcc.Checklist:
     if attr.rw:
-        if attr.options is not None:
+        if attr.type is bool:
+            obj = dcc.Checklist(
+                id={"type": "attr-input", "index": f"{cname}/{aname}"},
+                options=[{"label": "", "value": CHECKBOX_ON}],
+                value=[CHECKBOX_ON] if value == "True" else [],
+                className="attr-control attr-checkbox mutable-input",
+            )
+        elif attr.options is not None:
             obj = dcc.Dropdown(
                 id={"type": "attr-input", "index": f"{cname}/{aname}"},
                 options=sorted(attr.options),

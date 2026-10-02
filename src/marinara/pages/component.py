@@ -202,6 +202,7 @@ def unit_tab_label(tab: str) -> str:
 
 callbacks.periodic_data_store_update()
 callbacks.periodic_attr_val_update()
+callbacks.attr_display_val_update()
 callbacks.periodic_status_store_update()
 callbacks.attr_apply_btn_update()
 callbacks.attr_input_action_update_value()
