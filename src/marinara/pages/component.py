@@ -592,6 +592,36 @@ def render_custom_graphs_list(
                             ],
                             style={"flex": "2", "min-width": "250px"},
                         ),
+                        html.Div(
+                            children=[
+                                html.Label(
+                                    "Graph Options:",
+                                    style={
+                                        "font-weight": "600",
+                                        "font-size": "13px",
+                                        "margin-bottom": "5px",
+                                        "display": "block",
+                                        "color": "var(--text-color)",
+                                    },
+                                ),
+                                dcc.RadioItems(
+                                    id={"type": "custom-graph-mode", "index": i},
+                                    options=[
+                                        {"label": " Lines", "value": "lines"},
+                                        {"label": " Points", "value": "markers"},
+                                    ],
+                                    value=options["mode"],
+                                    labelStyle={
+                                        "display": "inline-block",
+                                        "margin-right": "15px",
+                                        "font-size": "13px",
+                                        "color": "var(--text-color)",
+                                    },
+                                    style={"padding": "6px 0"},
+                                ),
+                            ],
+                            style={"flex": "1.5", "min-width": "250px"},
+                        ),
                     ],
                     style={
                         "display": "flex",
@@ -745,9 +775,8 @@ def render_custom_graph_traces(
 
 @callback(
     Output({"type": "custom-graph-options", "index": MATCH}, "data"),
-    Input({"type": "custom-graph-x-selector", "index": MATCH}, "value"),
-    Input({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
+    Input({"type": "custom-graph-mode", "index": MATCH}, "value"),
     prevent_initial_call=True,
 )
-def auto_configure_graph_options(x_var: str, y_var: str | list[str]) -> dict:
-    return {"mode": "lines" if x_var == "uts" else "markers"}
+def update_custom_graph_options(mode: str) -> dict:
+    return {"mode": mode}
