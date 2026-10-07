@@ -481,7 +481,9 @@ def render_custom_graphs_list(
 
     vars_list = sorted(ds.get("data_vars", {})) if ds else []
     vars_options = [{"label": v, "value": v} for v in vars_list]
+    coords_list = sorted(ds.get("coords", {})) if ds else []
     coords_options = [{"label": "Time(uts)", "value": "uts"}]
+    coords_options += [{"label": c, "value": c} for c in coords_list if c != "uts"]
 
     meta_by_id = {m["index"]: v for m, v in zip(meta_ids, meta_values)}
 
