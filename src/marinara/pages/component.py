@@ -493,6 +493,7 @@ def render_custom_graphs_list(
         xvar_val = meta.get("x_var")
         yvar_val = meta.get("y_vars") or []
         options = meta.get("options") or {"mode": "lines"}
+        modes = [m for m in options["mode"].split("+") if m != "none"]
 
         card = html.Div(
             id={"type": "custom-graph-card", "index": i},
@@ -606,13 +607,14 @@ def render_custom_graphs_list(
                                         "color": "var(--text-color)",
                                     },
                                 ),
-                                dcc.RadioItems(
+                                dcc.Checklist(
                                     id={"type": "custom-graph-mode", "index": i},
                                     options=[
                                         {"label": " Lines", "value": "lines"},
                                         {"label": " Points", "value": "markers"},
                                     ],
-                                    value=options["mode"],
+                                    value=modes,
+                                    inline=True,
                                     labelStyle={
                                         "display": "inline-block",
                                         "margin-right": "15px",
@@ -787,5 +789,8 @@ def render_custom_graph_traces(
     Input({"type": "custom-graph-mode", "index": MATCH}, "value"),
     prevent_initial_call=True,
 )
-def update_custom_graph_options(mode: str) -> dict:
-    return {"mode": mode}
+def update_custom_graph_options(modes: list[str]) -> dict:
+    """Converts the ticked "Graph Options" boxes into the options dict that the
+    plotter in `render_custom_graph_traces` can use, e.g. ["lines", "markers"]
+    becomes {"mode": "lines+markers"}. No ticked box gives Plotly's "none"."""
+    return {"mode": "+".join(modes) or "none"}
