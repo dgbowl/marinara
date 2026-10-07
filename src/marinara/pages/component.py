@@ -490,6 +490,7 @@ def render_custom_graphs_list(
         meta = meta_by_id.get(i) or {}
 
         title_val = meta.get("title") or f"Custom Graph #{i}"
+        xvar_val = meta.get("x_var")
         yvar_val = meta.get("y_vars") or []
         options = meta.get("options") or {"mode": "lines"}
 
@@ -563,6 +564,7 @@ def render_custom_graphs_list(
                                 dcc.Dropdown(
                                     id={"type": "custom-graph-x-selector", "index": i},
                                     options=coords_options,
+                                    value=xvar_val,
                                     placeholder="Select variable",
                                     style={"width": "100%"},
                                 ),
@@ -652,6 +654,7 @@ def render_custom_graphs_list(
 @callback(
     Output({"type": "component-custom-graph", "index": MATCH}, "data"),
     Input({"type": "custom-graph-title-input", "index": MATCH}, "value"),
+    Input({"type": "custom-graph-x-selector", "index": MATCH}, "value"),
     Input({"type": "custom-graph-y-selector", "index": MATCH}, "value"),
     Input({"type": "custom-graph-options", "index": MATCH}, "data"),
     Input("custom-graphs-list-store", "data"),
@@ -660,6 +663,7 @@ def render_custom_graphs_list(
 )
 def update_custom_graph_meta(
     title: str | None,
+    x_var: str | None,
     y_vars: list[str] | None,
     options: dict,
     active_ids: list[int],
@@ -670,7 +674,12 @@ def update_custom_graph_meta(
         "custom-graphs-list-store" in t["prop_id"] for t in ctx.triggered
     ):
         return current_data
-    return {"title": title, "y_vars": y_vars or [], "options": options}
+    return {
+        "title": title,
+        "x_var": x_var,
+        "y_vars": y_vars or [],
+        "options": options,
+    }
 
 
 @callback(

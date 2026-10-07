@@ -1,16 +1,15 @@
-import json
 import logging
 
 import dash
-from dash import Input, Output, State, callback, html
+from dash import Input, Output, State, callback, dcc, html
 from tomato import ketchup, tomato
 
 from marinara.icons import get_icon
+from marinara.utils import TOUT, format_obj, job_status_badge
 
 logger = logging.getLogger(__name__)
 dash.register_page(__name__, path="/jobs", title="Jobs")
 
-# Layout with only a single card for raw jobs data
 layout = html.Div(
     className="dashboard-container",
     children=[
@@ -20,7 +19,7 @@ layout = html.Div(
                 html.Div(
                     children=[
                         html.H2(
-                            "Jobs Queue (Raw Data)",
+                            "Jobs",
                             className="inline",
                             style={"margin": 0, "font-size": "22px"},
                         ),
@@ -32,25 +31,19 @@ layout = html.Div(
                         ),
                     ],
                     style={"display": "flex", "align-items": "center"},
-                )
+                ),
+                dcc.Link("+ New Job", href="/jobs/new", className="btn"),
             ],
         ),
         html.Div(
-            className="card",
-            children=[
-                html.Div(
-                    id="tomato-list-jobs",
-                    className="text-secondary",
-                    style={"padding": "15px"},
-                    children="Loading...",
-                )
-            ],
+            id="tomato-list-jobs",
+            className="text-secondary",
+            children="Loading data...",
         ),
     ],
 )
 
 
-# Callback to render the full raw JSON of all jobs
 @callback(
     Output("tomato-list-jobs", "children"),
     Input("tomato-status", "n_clicks"),
@@ -58,7 +51,7 @@ layout = html.Div(
 )
 def update_jobs_list(n_clicks, port):
     try:
-        daemon_ret = tomato.status(stgrp="tomato", port=port, timeout=1000)
+        daemon_ret = tomato.status(stgrp="tomato", port=port, timeout=TOUT)
         if not daemon_ret.success:
             return html.Div(
                 f"Tomato status error: {daemon_ret.msg}",
@@ -88,23 +81,28 @@ def update_jobs_list(n_clicks, port):
                 style={"text-align": "center", "padding": "20px"},
             )
 
-        # Convert jobs list to list of clean dictionaries
-        cleaned_jobs = []
-        for job in jobs_list:
-            v_dict = job.model_dump() if hasattr(job, "model_dump") else job
-            cleaned_jobs.append(str(v_dict))
+        jobs = {}
+        for job in sorted(jobs_list, key=lambda j: j.id, reverse=True):
+            # format_obj links each card's title to /jobs/<key>, so key on the id
+            name = f"Job {job.id}" + (f" ({job.jobname})" if job.jobname else "")
+            if job.completed_at:
+                completed_at = str(job.completed_at).split(".")[0]
+            else:
+                completed_at = "-"
+            jobs[str(job.id)] = {
+                "name": name,
+                "status": job.status,
+                "submitted_at": str(job.submitted_at).split(".")[0],
+                "completed_at": completed_at,
+            }
 
-        return html.Pre(
-            json.dumps(cleaned_jobs, indent=2),
-            style={
-                "font-family": "monospace",
-                "font-size": "13px",
-                "overflow-x": "auto",
-                "padding": "15px",
-                "background-color": "rgba(0,0,0,0.01)",
-                "border-radius": "6px",
-                "margin": 0,
-            },
+        return format_obj(
+            obj=jobs,
+            headers=["Job", "Status", "Submitted At", "Completed At"],
+            attrs=["name", "status", "submitted_at", "completed_at"],
+            otype="jobs",
+            port=port,
+            formatters={"status": job_status_badge},
         )
     except Exception as e:
         logger.warning("Exception during update_jobs_list:", exc_info=e)
