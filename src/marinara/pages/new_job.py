@@ -3,6 +3,7 @@ import getpass
 import logging
 import os
 import tempfile
+from pathlib import Path
 
 import dash
 import yaml
@@ -11,16 +12,7 @@ from dgbowl_schemas.tomato.payload_2_2 import Payload
 from pydantic import ValidationError
 from tomato import ketchup, tomato
 
-from marinara.icons import get_icon
-from marinara.utils import (
-    TOUT,
-    breadcrumb_parts,
-    is_relative_path,
-    list_subfolders,
-    parent_folder,
-    start_folder,
-    triggered_pattern_index,
-)
+from marinara.utils import TOUT, triggered_pattern_index
 
 logger = logging.getLogger(__name__)
 # order=0: dash.page_registry is checked in registry order, and without it
@@ -235,11 +227,6 @@ layout = html.Div(
                             debounce=True,
                             placeholder="defaults to tomato's working directory",
                         ),
-                        html.Button(
-                            "Browse",
-                            id="new-job-browse-btn",
-                            className="btn attr-btn",
-                        ),
                     ],
                 ),
                 html.Div(id="new-job-output-path-warning"),
@@ -269,44 +256,7 @@ layout = html.Div(
                 html.Div(id="new-job-submit-result", className="submit-result"),
             ],
         ),
-        html.Div(
-            id="new-job-folder-modal",
-            className="modal-overlay",
-            hidden=True,
-            children=[
-                html.Div(
-                    className="card modal-card",
-                    children=[
-                        html.H3("Select Output Folder", style={"margin-top": 0}),
-                        html.Div(
-                            id="new-job-folder-current", className="folder-current"
-                        ),
-                        html.Div(id="new-job-folder-list", className="folder-list"),
-                        html.Div(
-                            className="modal-actions",
-                            children=[
-                                html.Button(
-                                    "↑ Up",
-                                    id="new-job-folder-up-btn",
-                                    className="btn",
-                                ),
-                                html.Button(
-                                    "Cancel",
-                                    id="new-job-folder-cancel-btn",
-                                    className="btn btn-danger",
-                                ),
-                                html.Button(
-                                    "Select this folder",
-                                    id="new-job-folder-select-btn",
-                                    className="btn btn-success",
-                                ),
-                            ],
-                        ),
-                    ],
-                ),
-            ],
-        ),
-        dcc.Store(id="new-job-folder-cwd", data=None),
+        dcc.ConfirmDialog(id="new-job-submit-error-dialog"),
         dcc.Store(id="new-job-tasks-list-store", data=[]),
         dcc.Store(id="new-job-roles-store", data={}),
         dcc.Store(id="new-job-components-store", data={}),
@@ -717,92 +667,10 @@ RELATIVE_PATH_MSG = "Output path must be absolute (tomato resolves relative path
     Input("new-job-output-path", "value"),
 )
 def warn_relative_output_path(output_path):
-    if not is_relative_path(output_path):
+    output_path = (output_path or "").strip()
+    if not output_path or Path(output_path).is_absolute():
         return None
     return html.Div(RELATIVE_PATH_MSG, className="attr-error")
-
-
-# Sets the picker's folder (None = closed); selecting also writes the output path
-@callback(
-    Output("new-job-folder-cwd", "data"),
-    Output("new-job-output-path", "value"),
-    Input("new-job-browse-btn", "n_clicks"),
-    Input("new-job-folder-up-btn", "n_clicks"),
-    Input("new-job-folder-select-btn", "n_clicks"),
-    Input("new-job-folder-cancel-btn", "n_clicks"),
-    Input({"type": "new-job-folder-entry", "index": ALL}, "n_clicks"),
-    State("new-job-output-path", "value"),
-    State("new-job-folder-cwd", "data"),
-    prevent_initial_call=True,
-)
-def navigate_folder_picker(browse, up, select, cancel, entries, output_path, cwd):
-    ctx = dash.callback_context
-    value = ctx.triggered[0]["value"] if ctx.triggered else None
-    # ignore triggers that carry no click (None or the ALL list)
-    if not value or isinstance(value, list):
-        return dash.no_update, dash.no_update
-
-    trigger = ctx.triggered_id
-    if trigger == "new-job-browse-btn":
-        return start_folder(output_path), dash.no_update
-    if trigger == "new-job-folder-cancel-btn":
-        return None, dash.no_update
-    if trigger == "new-job-folder-select-btn" and cwd:
-        return None, cwd
-    if trigger == "new-job-folder-up-btn":
-        return parent_folder(cwd), dash.no_update
-    if isinstance(trigger, dict) and os.path.isdir(trigger["index"]):
-        return trigger["index"], dash.no_update
-    return dash.no_update, dash.no_update
-
-
-# Shows the picker while a folder is set and lists its subfolders
-@callback(
-    Output("new-job-folder-modal", "hidden"),
-    Output("new-job-folder-current", "children"),
-    Output("new-job-folder-list", "children"),
-    Output("new-job-folder-up-btn", "disabled"),
-    Output("new-job-folder-select-btn", "disabled"),
-    Input("new-job-folder-cwd", "data"),
-)
-def render_folder_list(cwd):
-    if cwd is None:
-        return True, "", [], True, True
-
-    folders, err = list_subfolders(cwd)
-    if err:
-        children = html.Div(err, className="folder-message folder-message-error")
-    elif not folders:
-        children = html.Div("No subfolders.", className="folder-message text-secondary")
-    else:
-        children = [
-            html.Button(
-                [get_icon("folder", size=15), html.Span(label)],
-                id={"type": "new-job-folder-entry", "index": full},
-                className="folder-entry",
-            )
-            for label, full in folders
-        ]
-
-    if cwd:
-        # Each crumb reuses the same folder-entry pattern id as the list buttons
-        # above, so navigate_folder_picker's existing click handling covers it too.
-        current = []
-        for i, (label, full) in enumerate(breadcrumb_parts(cwd)):
-            if i:
-                current.append(html.Span("›", className="breadcrumb-sep"))
-            current.append(
-                html.Button(
-                    label,
-                    id={"type": "new-job-folder-entry", "index": full},
-                    className="breadcrumb-entry",
-                )
-            )
-    else:
-        current = html.Span("This PC")
-
-    at_top = not cwd or parent_folder(cwd) == cwd
-    return False, current, children, at_top, not cwd or bool(err)
 
 
 # Renders a best-effort live preview of the effective payload as YAML, for whichever tab is active
@@ -842,9 +710,16 @@ def render_new_job_yaml_preview(
     return yaml.safe_dump(payload_dict, sort_keys=False)
 
 
+def submit_error(msg):
+    """Clears the submit result and pops msg up in the error dialog."""
+    return None, msg, True
+
+
 # Builds and submits the job via ketchup, after validating against payload_2_2.Payload
 @callback(
     Output("new-job-submit-result", "children"),
+    Output("new-job-submit-error-dialog", "message"),
+    Output("new-job-submit-error-dialog", "displayed"),
     Input("new-job-submit-btn", "n_clicks"),
     State("new-job-tabs", "value"),
     State("new-job-sample-identifier", "value"),
@@ -871,54 +746,37 @@ def submit_new_job(
     output_path,
     port,
 ):
-    if tab == "select-payload":
-        if not uploaded:
-            return html.Div(
-                "Upload a payload file first.",
-                className="text-secondary",
-                style={"text-align": "center", "padding": "20px"},
+    output_path = (output_path or "").strip()
+    try:
+        if tab == "select-payload":
+            if not uploaded:
+                raise ValueError("Upload a payload file first.")
+            if not (up_sample_id or "").strip():
+                raise ValueError("Sample identifier is required.")
+            payload_dict = apply_uploaded_overrides(
+                uploaded,
+                up_sample_id,
+                up_is_parent,
+                output_path,
+                user=getpass.getuser(),
             )
-        if not (up_sample_id or "").strip():
-            return html.Div(
-                "Sample identifier is required.",
-                className="text-secondary",
-                style={"text-align": "center", "padding": "20px"},
-            )
-        payload_dict = apply_uploaded_overrides(
-            uploaded, up_sample_id, up_is_parent, output_path, user=getpass.getuser()
-        )
-    else:
-        try:
+        else:
             method = build_method(tasks_meta)
             validate_form(sample_id, method)
-        except ValueError as e:
-            return html.Div(
-                str(e),
-                className="text-secondary",
-                style={"text-align": "center", "padding": "20px"},
+            payload_dict = assemble_payload_dict(
+                sample_id, is_parent, method, output_path, user=getpass.getuser()
             )
-        payload_dict = assemble_payload_dict(
-            sample_id, is_parent, method, output_path, user=getpass.getuser()
-        )
-
-    if is_relative_path(output_path):
-        return html.Div(
-            RELATIVE_PATH_MSG,
-            className="text-secondary",
-            style={"text-align": "center", "padding": "20px"},
-        )
-
-    try:
+        if output_path and not Path(output_path).is_absolute():
+            raise ValueError(RELATIVE_PATH_MSG)
         payload = Payload(**payload_dict)
+    # ValidationError subclasses ValueError, so it has to be caught first
     except ValidationError as e:
         problems = "; ".join(
             f"{'.'.join(map(str, err['loc']))}: {err['msg']}" for err in e.errors()
         )
-        return html.Div(
-            f"Invalid payload: {problems}",
-            className="text-secondary",
-            style={"text-align": "center", "padding": "20px"},
-        )
+        return submit_error(f"Invalid payload: {problems}")
+    except ValueError as e:
+        return submit_error(str(e))
 
     tmp_path = None
     try:
@@ -928,33 +786,25 @@ def submit_new_job(
 
         daemon_ret = tomato.status(stgrp="tomato", port=port, timeout=TOUT)
         if not daemon_ret.success:
-            return html.Div(
-                f"Tomato status error: {daemon_ret.msg}",
-                className="text-secondary",
-                style={"text-align": "center", "padding": "20px"},
-            )
+            return submit_error(f"Tomato status error: {daemon_ret.msg}")
 
         ret = ketchup.submit(
             payload=tmp_path, jobname=jobname or None, daemon=daemon_ret.data
         )
         if not ret.success:
-            return html.Div(
-                f"Submit failed: {ret.msg}",
-                className="text-secondary",
-                style={"text-align": "center", "padding": "20px"},
-            )
-        return html.Div(
-            f"Job submitted successfully (jobid {ret.data.id}).",
-            className="badge badge-success",
-            style={"padding": "10px"},
+            return submit_error(f"Submit failed: {ret.msg}")
+        return (
+            html.Div(
+                f"Job submitted successfully (jobid {ret.data.id}).",
+                className="badge badge-success",
+                style={"padding": "10px"},
+            ),
+            dash.no_update,
+            dash.no_update,
         )
     except Exception as e:
         logger.warning("Exception during submit_new_job:", exc_info=e)
-        return html.Div(
-            f"Error submitting job: {e!s}",
-            className="text-secondary",
-            style={"padding": "20px"},
-        )
+        return submit_error(f"Error submitting job: {e!s}")
     finally:
         if tmp_path:
             try:
