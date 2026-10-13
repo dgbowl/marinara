@@ -383,7 +383,7 @@ def render_component_data_graph_layout(
 @callback(
     Output({"type": "data-graph", "index": ALL}, "figure", allow_duplicate=True),
     Input({"type": "data-store", "index": ALL}, "data"),
-    State("checkbox-align-time", "value"),
+    Input("checkbox-align-time", "value"),
     State({"type": "data-graph", "index": ALL}, "id"),
     State({"type": "data-graph", "index": ALL}, "figure"),
     State({"type": "attr-param", "index": ALL}, "data"),
