@@ -363,7 +363,5 @@ def render_dashboard_graph_traces(
             continue
         status_map = {k: v["status"] for k, v in attrs_map.get(id["index"], {}).items()}
         keys = [k for k in ds["data_vars"] if status_map.get(k, True)]
-        traces.extend(
-            plotting.build_traces(ds, "uts", keys, compact=True, prefix=id["index"])
-        )
+        traces.extend(plotting.build_traces(ds, "uts", keys, prefix=id["index"]))
     return plotting.patch_traces(prev_figure, traces)
