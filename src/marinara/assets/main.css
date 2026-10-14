@@ -888,7 +888,7 @@ input[type=number] {
     font-family: monospace;
     font-size: 14px;
     font-weight: 700;
-    color: var(--accent-color);
+    color: var(--text-secondary);
 }
 
 /* Checklist & Checkbox Styling */
