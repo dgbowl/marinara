@@ -15,23 +15,13 @@ def format_timeseries_x(
     formatted_x = []
     if relative:
         start_uts = raw_x[0] if len(raw_x) > 0 else 0
-        start_dt = datetime.fromtimestamp(start_uts, UTC)
         for t in raw_x:
-            try:
-                dt = datetime.fromtimestamp(t, UTC)
-                formatted_x.append((dt - start_dt).total_seconds())
-            except Exception as e:
-                logger.warning("Exception during time formatting:", exc_info=e)
-                formatted_x.append(t)
+            formatted_x.append(t - start_uts)
         return formatted_x, "Elapsed Time (Seconds)"
-
-    for t in raw_x:
-        try:
+    else:
+        for t in raw_x:
             formatted_x.append(datetime.fromtimestamp(t, UTC).astimezone())
-        except Exception as e:
-            logger.warning("Exception during time formatting:", exc_info=e)
-            formatted_x.append(t)
-    return formatted_x, "Local Time"
+        return formatted_x, "Local Time"
 
 
 def build_1d(
