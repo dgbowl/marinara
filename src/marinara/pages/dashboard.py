@@ -307,7 +307,7 @@ def update_attrs_list(cnames: list[str], port: int):
     return children
 
 
-callbacks.periodic_data_store_update()
+callbacks.periodic_data_store_update(cap=50)
 callbacks.periodic_attr_val_update()
 callbacks.attr_display_val_update()
 
