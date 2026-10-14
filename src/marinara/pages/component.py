@@ -753,8 +753,8 @@ def render_custom_graph_layout(
     Output({"type": "custom-graph", "index": ALL}, "figure", allow_duplicate=True),
     Input({"type": "data-store", "index": ALL}, "data"),
     Input({"type": "custom-graph-options", "index": ALL}, "data"),
-    State({"type": "custom-graph-x-selector", "index": ALL}, "value"),
-    State({"type": "custom-graph-y-selector", "index": ALL}, "value"),
+    Input({"type": "custom-graph-x-selector", "index": ALL}, "value"),
+    Input({"type": "custom-graph-y-selector", "index": ALL}, "value"),
     State({"type": "custom-graph", "index": ALL}, "figure"),
     prevent_initial_call="initial_duplicate",
 )
@@ -777,11 +777,15 @@ def render_custom_graph_traces(
             continue
 
         traces = []
+        consistent = True
         for ds in datastores:
             consistent, _ = plotting.dims_consistency(x_var, y_vars, ds)
             if not consistent:
-                ret.append(patch)
+                break
             traces.extend(plotting.build_traces(ds, x_var, y_vars, options["mode"]))
+        if not consistent:
+            ret.append(patch)
+            continue
         ret.append(plotting.patch_traces(prev_figure, traces))
     return ret
 
