@@ -335,6 +335,7 @@ def render_component_data_graph_layout(
     graph_id: dict[str, str],
 ) -> dict | dash.Patch:
     active_tabs = active_tabs or ["all"]
+    tab = graph_id["index"]
     is_last = tab == active_tabs[-1]
 
     has_data = False
