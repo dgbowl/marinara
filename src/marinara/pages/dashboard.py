@@ -335,7 +335,9 @@ def render_dashboard_graph_layout(
     Output("live-graph", "figure", allow_duplicate=True),
     Input("component-names", "data"),
     Input({"type": "data-store", "index": ALL}, "data"),
-    Input({"type": "data-store", "index": ALL}, "id"),
+    State({"type": "data-store", "index": ALL}, "id"),
+    State({"type": "attr-param", "index": ALL}, "data"),
+    State({"type": "attr-param", "index": ALL}, "id"),
     State("live-graph", "figure"),
     prevent_initial_call="initial_duplicate",
 )
@@ -343,15 +345,23 @@ def render_dashboard_graph_traces(
     cnames: list[str],
     all_datastores: list[dict],
     all_datastore_ids: list[dict],
+    all_attrs: list[dict],
+    all_attr_ids: list[dict],
     prev_figure: dict | None,
 ) -> dash.Patch:
+    attrs_map = {}
+    for k, v in zip(all_attr_ids, all_attrs):
+        cmp, attr = k["index"].split("/")
+        if cmp not in attrs_map:
+            attrs_map[cmp] = {}
+        attrs_map[cmp][attr] = v
     traces = []
     for id, ds in zip(all_datastore_ids, all_datastores):
         if id["index"] not in cnames:
             continue
         if ds == {}:
             continue
-        status_map = {}  # component_status.get(cname, {})
+        status_map = {k: v["status"] for k, v in attrs_map.get(id["index"], {}).items()}
         keys = [k for k in ds["data_vars"] if status_map.get(k, True)]
         traces.extend(
             plotting.build_traces(ds, "uts", keys, compact=True, prefix=id["index"])
