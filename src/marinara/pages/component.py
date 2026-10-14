@@ -367,13 +367,13 @@ def render_component_data_graph_layout(
         legend={
             "orientation": "h",
             "x": 0.5,
-            "y": 1.18,
+            "y": 1.02,
             "xanchor": "center",
             "yanchor": "bottom",
         },
         margin={
-            "t": 60 if len(active_tabs) <= 1 else 70,
-            "b": 90 if is_last else 20,
+            "t": 60 if len(active_tabs) <= 1 else 40,
+            "b": 90 if is_last else 10,
             "l": 50,
             "r": 20,
         },
