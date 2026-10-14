@@ -300,11 +300,9 @@ def render_component_data_graph_shells(
     theme: str,
 ) -> list[dcc.Graph]:
     active_tabs = active_tabs or ["all"]
-    # Shrink each graph when several are stacked so more fit on screen at once,
-    # and give stacked graphs extra breathing room so one graph's legend
-    # doesn't crowd against the next graph's title.
+    # Shrink each graph when several are stacked so more fit on screen at once.
     graph_height = "400px" if len(active_tabs) <= 1 else "280px"
-    graph_gap = "15px" if len(active_tabs) <= 1 else "40px"
+    graph_gap = "15px"
     return [
         dcc.Graph(
             id={"type": "data-graph", "index": tab},
@@ -374,7 +372,7 @@ def render_component_data_graph_layout(
             "yanchor": "bottom",
         },
         margin={
-            "t": 60 if len(active_tabs) <= 1 else 90,
+            "t": 60 if len(active_tabs) <= 1 else 70,
             "b": 90 if is_last else 20,
             "l": 50,
             "r": 20,
