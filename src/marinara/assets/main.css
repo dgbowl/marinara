@@ -173,8 +173,7 @@ input[disabled], select[disabled], .Select.is-disabled .Select-control {
     border: 1px solid var(--border-color);
     padding: 20px;
     margin-bottom: 20px;
-    /* value (200px) + unit + Apply; if less room, move below the label */
-    min-width: 300px;
+    min-width: 0;
 }
 
 .component-grid {
@@ -704,7 +703,15 @@ input.Select__input,
     align-items: center;
     gap: 8px;
     flex: 1 1 0;
-    min-width: 0;
+/* smallest value box (120px) + unit + Apply; if less room, move below the label */
+    min-width: 240px;
+}
+
+/* Inside an attribute row, the value box may shrink before anything wraps. */
+.attr-controls .attr-control {
+    flex: 0 1 200px;
+    min-width: 120px;
+    width: auto !important;
 }
 
 .attr-constraints {
