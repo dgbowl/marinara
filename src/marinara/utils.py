@@ -465,15 +465,16 @@ def build_attr_rows(
 
         # Value, unit and Apply stay together; min/max wraps below the value
         # when the row is too narrow, instead of below the label.
-        controls = [control, html.Span(unit_str, className="attr-unit")]
+        main = [control, html.Span(unit_str, className="attr-unit")]
         if attr.rw and rw:
-            controls.append(
+            main.append(
                 html.Button(
                     "Apply",
                     id={"type": "attr-apply-btn", "index": f"{cname}/{aname}"},
                     className="attr-apply-btn",
                 )
             )
+        controls = [html.Div(main, className="attr-main")]
         if constraints_str:
             controls.append(html.Span(constraints_str, className="attr-constraints"))
 
