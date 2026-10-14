@@ -335,7 +335,7 @@ def render_component_data_graph_layout(
     graph_id: dict[str, str],
 ) -> dict | dash.Patch:
     active_tabs = active_tabs or ["all"]
-    tab = graph_id["index"]
+    is_last = tab == active_tabs[-1]
 
     has_data = False
     for ds in datastores:
@@ -357,9 +357,9 @@ def render_component_data_graph_layout(
     _, x_title = plotting.format_timeseries_x([], relative=relative)
     layout = plotting.build_layout(
         theme,
-        x_title=x_title,
+        x_title=x_title if is_last else None,
         y_title=y_title,
-        xaxis_extra={"tickangle": -30},
+        xaxis_extra={"tickangle": -30, "showticklabels": is_last},
         # Legend sits above the plot rather than below: with rotated x-axis
         # tick labels, a bottom-anchored legend collides with the axis title
         # (Plotly positions the title right after the tick labels, so a
@@ -372,7 +372,12 @@ def render_component_data_graph_layout(
             "xanchor": "center",
             "yanchor": "bottom",
         },
-        margin={"t": 60 if len(active_tabs) <= 1 else 90, "b": 90, "l": 50, "r": 20},
+        margin={
+            "t": 60 if len(active_tabs) <= 1 else 90,
+            "b": 90 if is_last else 20,
+            "l": 50,
+            "r": 20,
+        },
     )
     patch = dash.Patch()
     patch["layout"] = layout
