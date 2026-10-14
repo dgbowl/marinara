@@ -371,8 +371,8 @@ def get_constraint_str(attr: Attr):
     if attr.minimum is not None:
         constraints.append(f"min: {format_constraint(attr.minimum, attr.units)}")
     if attr.maximum is not None:
-        constraints.append(f"man: {format_constraint(attr.maximum, attr.units)}")
-    return f" ({', '.join(constraints)})" if constraints else ""
+        constraints.append(f"max: {format_constraint(attr.maximum, attr.units)}")
+    return ", ".join(constraints)
 
 
 JOB_STATUS_LABELS = {
@@ -463,22 +463,25 @@ def build_attr_rows(
             ),
         )
 
+        # Value, unit and Apply stay together; min/max wraps below the value
+        # when the row is too narrow, instead of below the label.
+        controls = [control, html.Span(unit_str, className="attr-unit")]
         if attr.rw and rw:
-            apply_btn = html.Button(
-                "Apply",
-                id={"type": "attr-apply-btn", "index": f"{cname}/{aname}"},
-                className="attr-apply-btn",
+            controls.append(
+                html.Button(
+                    "Apply",
+                    id={"type": "attr-apply-btn", "index": f"{cname}/{aname}"},
+                    className="attr-apply-btn",
+                )
             )
-        else:
-            apply_btn = html.Div()
+        if constraints_str:
+            controls.append(html.Span(constraints_str, className="attr-constraints"))
 
         attr_rows.append(
             html.Div(
                 children=[
                     html.Div(f"{aname}:", className="attr-label"),
-                    control,
-                    apply_btn,
-                    html.Span(f" {unit_str}{constraints_str}", className="attr-unit"),
+                    html.Div(controls, className="attr-controls"),
                     attr_val_store,
                     attr_param_store,
                 ],

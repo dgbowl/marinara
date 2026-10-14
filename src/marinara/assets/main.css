@@ -689,12 +689,26 @@ input.Select__input,
 }
 
 .attr-unit {
-    flex: 1 1 auto;
-    min-width: 0;
+    flex: 0 0 auto;
+    min-width: 24px;
     color: var(--text-secondary);
     font-size: 13px;
-    margin-left: 4px;
-    overflow-wrap: break-word;
+}
+
+/* Value, unit, Apply and min/max of one attribute. Wraps below the value,
+   not below the label, when the row is too narrow. */
+.attr-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.attr-constraints {
+    color: var(--text-secondary);
+    font-size: 13px;
 }
 
 /* Chrome, Safari, Edge, Opera - Hide Spin Buttons */
