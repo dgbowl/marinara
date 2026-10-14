@@ -6,6 +6,7 @@ from typing import Any
 import dash
 import pint
 from dash import dcc, html
+from dash_svg.Svg import Svg
 from tomato import passata
 from tomato.driverinterface_3_0 import Attr, Status
 
@@ -322,8 +323,9 @@ def object_from_attrs(
     aname: str,
     attr: Attr,
     value: str,
+    rw: bool,
 ) -> dcc.Dropdown | dcc.Input | dcc.Checklist:
-    if attr.rw:
+    if attr.rw and rw:
         if attr.type is bool:
             obj = dcc.Checklist(
                 id={"type": "attr-input", "index": f"{cname}/{aname}"},
@@ -347,12 +349,19 @@ def object_from_attrs(
                 type="text",
                 className="attr-control mutable-input",
             )
-    else:
+    elif rw:
         obj = dcc.Input(
             id={"type": "attr-display", "index": f"{cname}/{aname}"},
             value=value,
             disabled=True,
             className="attr-control immutable-input",
+        )
+    else:
+        obj = dcc.Input(
+            id={"type": "attr-display", "index": f"{cname}/{aname}"},
+            value=value,
+            disabled=True,
+            className="param-item-val attr-label",
         )
     return obj
 
@@ -431,15 +440,17 @@ def create_header(otype: str, oname: str, badge: html.Div | None = None) -> html
     )
 
 
-def build_attr_rows(attrs: dict[str, Attr], avals: dict[str, Any], cname: str) -> list:
+def build_attr_rows(
+    attrs: dict[str, Attr], avals: dict[str, Any], cname: str, rw: bool = True
+) -> list:
     attr_rows = []
     for aname, attr in attrs.items():
         raw_val = avals.get(aname)
         val = raw_val.m if isinstance(raw_val, pint.Quantity) else raw_val
-        control = object_from_attrs(cname, aname, attr, str(val))
+        control = object_from_attrs(cname, aname, attr, str(val), rw)
 
         unit_str = get_unit_str(attr.units)
-        constraints_str = get_constraint_str(attr)
+        constraints_str = get_constraint_str(attr) if rw else ""
 
         attr_val_store = dcc.Store(
             id={"type": "attr-val", "index": f"{cname}/{aname}"},
@@ -452,14 +463,14 @@ def build_attr_rows(attrs: dict[str, Attr], avals: dict[str, Any], cname: str) -
             ),
         )
 
-        if attr.rw:
+        if attr.rw and rw:
             apply_btn = html.Button(
                 "Apply",
                 id={"type": "attr-apply-btn", "index": f"{cname}/{aname}"},
                 className="attr-apply-btn",
             )
         else:
-            apply_btn = html.Div(className="attr-apply-btn")
+            apply_btn = html.Div()
 
         attr_rows.append(
             html.Div(
@@ -475,3 +486,16 @@ def build_attr_rows(attrs: dict[str, Attr], avals: dict[str, Any], cname: str) -
             )
         )
     return attr_rows
+
+
+def create_kpi_card(title: str, id: str, value: str, icon: Svg) -> html.Div:
+    return html.Div(
+        className="kpi-card",
+        children=[
+            html.Div(
+                className="kpi-details",
+                children=[html.H4(title), html.H2(value, id=id)],
+            ),
+            html.Div(icon, className="kpi-icon"),
+        ],
+    )
