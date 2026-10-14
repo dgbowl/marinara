@@ -173,7 +173,8 @@ input[disabled], select[disabled], .Select.is-disabled .Select-control {
     border: 1px solid var(--border-color);
     padding: 20px;
     margin-bottom: 20px;
-    min-width: 0;
+    /* value (200px) + unit + Apply; if less room, move below the label */
+    min-width: 300px;
 }
 
 .component-grid {
