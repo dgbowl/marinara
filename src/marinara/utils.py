@@ -478,11 +478,12 @@ def build_attr_rows(
         if constraints_str:
             controls.append(html.Span(constraints_str, className="attr-constraints"))
 
+        controls_class = "attr-controls" if rw else "attr-controls attr-readonly"
         attr_rows.append(
             html.Div(
                 children=[
                     html.Div(f"{aname}:", className="attr-label"),
-                    html.Div(controls, className="attr-controls"),
+                    html.Div(controls, className=controls_class),
                     attr_val_store,
                     attr_param_store,
                 ],

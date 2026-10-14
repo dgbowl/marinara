@@ -707,6 +707,11 @@ input.Select__input,
     min-width: 240px;
 }
 
+/* Read-only rows (dashboard) have no Apply button, so they need less room. */
+.attr-readonly {
+    min-width: 0;
+}
+
 /* Value, unit and Apply never wrap apart; the value box shrinks instead. */
 .attr-main {
     display: flex;
