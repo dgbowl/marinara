@@ -224,6 +224,8 @@ def update_available_units(
     # Deterministic order: units alphabetically, unitless variables last
     labels = set()
     for ds in datastores:
+        if ds == {}:
+            continue
         labels.update(sorted(group_by_unit(ds), key=lambda u: (u == "", u)))
     if labels == current_labels:
         return dash.no_update
@@ -726,6 +728,8 @@ def render_custom_graph_layout(
             "Select variables above to view custom plot", theme
         )
     for ds in datastores:
+        if ds == {}:
+            continue
         consistent, msg = plotting.dims_consistency(x_var, y_vars, ds)
         if not consistent:
             return plotting.empty_figure(msg, theme)
@@ -779,6 +783,8 @@ def render_custom_graph_traces(
         traces = []
         consistent = True
         for ds in datastores:
+            if ds == {}:
+                continue
             consistent, _ = plotting.dims_consistency(x_var, y_vars, ds)
             if not consistent:
                 break
