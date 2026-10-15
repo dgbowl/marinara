@@ -689,12 +689,48 @@ input.Select__input,
 }
 
 .attr-unit {
-    flex: 1 1 auto;
-    min-width: 0;
+    flex: 0 0 auto;
+    min-width: 24px;
     color: var(--text-secondary);
     font-size: 13px;
-    margin-left: 4px;
-    overflow-wrap: break-word;
+}
+
+/* Value, unit, Apply and min/max of one attribute. Wraps below the value,
+   not below the label, when the row is too narrow. */
+.attr-controls {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 0;
+    /* smallest value box (120px) + unit + Apply; if less room, move below the label */
+    min-width: 240px;
+}
+
+/* Read-only rows (dashboard) have no Apply button, so they need less room:
+   the read-only value box (130px, it uses .attr-label) + gap + unit. */
+.attr-readonly {
+    min-width: 162px;
+}
+
+/* Value, unit and Apply never wrap apart; the value box shrinks instead. */
+.attr-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+/* Inside an attribute row, the value box may shrink before anything wraps. */
+.attr-controls .attr-control {
+    flex: 0 1 200px;
+    min-width: 120px;
+    width: auto !important;
+}
+
+.attr-constraints {
+    color: var(--text-secondary);
+    font-size: 13px;
 }
 
 /* Chrome, Safari, Edge, Opera - Hide Spin Buttons */

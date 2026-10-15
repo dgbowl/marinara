@@ -299,7 +299,6 @@ def populate_data_container(
                         className="attr-control",
                         style={"width": "200px"},
                     ),
-                    html.Div(style={"width": "66px", "flex-shrink": "0"}),
                     html.Span(f" {units_str}", className="attr-unit"),
                 ],
                 id={"type": "component-data-key", "index": f"{cname}/{key}"},
