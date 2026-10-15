@@ -708,9 +708,9 @@ input.Select__input,
 }
 
 /* Read-only rows (dashboard) have no Apply button, so they need less room:
-   smallest value box (120px) + gap + unit. */
+   the read-only value box (130px, it uses .attr-label) + gap + unit. */
 .attr-readonly {
-    min-width: 152px;
+    min-width: 162px;
 }
 
 /* Value, unit and Apply never wrap apart; the value box shrinks instead. */
