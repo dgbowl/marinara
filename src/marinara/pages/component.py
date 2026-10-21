@@ -228,9 +228,10 @@ def update_available_units(
         if ds == {}:
             continue
         labels.update(sorted(group_by_unit(ds), key=lambda u: (u == "", u)))
-    if labels == current_labels:
+    ordered = sorted(labels, key=lambda u: (u == "", u))
+    if ordered == current_labels:
         return dash.no_update
-    return list(labels)
+    return ordered
 
 
 # Renders the "All" / per-unit tab picker's options as a checklist styled
