@@ -1,5 +1,6 @@
 from dash import Input, Output, State, callback, dcc, html
 from dash_svg.Svg import Svg
+from tomato import tomato
 
 from marinara.icons import get_icon
 
@@ -119,13 +120,14 @@ def create_sidebar(version: str = "0.0.1") -> html.Div:
                         children=[
                             html.Div(
                                 className="system-status-container",
+                                id="system-status-container",
                                 children=[
                                     html.Span(className="status-dot"),
                                     html.Span(
                                         "System: Connected",
                                         className="system-status-text",
+                                        id="system-status-text",
                                         style={
-                                            "color": "#10b981",
                                             "font-weight": "600",
                                             "font-size": "13px",
                                         },
@@ -324,3 +326,18 @@ def apply_sidebar_state(state: str) -> tuple[str, Svg, str]:
             "Open the sidebar",
         )
     return "sidebar", get_icon("chevron-left", size=18), "Close the sidebar"
+
+
+@callback(
+    Output("system-status-container", "className"),
+    Output("system-status-text", "children"),
+    Input("interval", "n_intervals"),
+    State("tomato-port", "data"),
+)
+def update_system_status(_: int, port: int) -> tuple[str, str]:
+    # Shorter than the 1 s interval, so the reply arrives before the next
+    # tick; otherwise Dash drops it and "Disconnected" never shows.
+    ret = tomato.status(port=port, timeout=500)
+    if ret.success:
+        return "system-status-container", "System: Connected"
+    return "system-status-container status-off", "System: Disconnected"

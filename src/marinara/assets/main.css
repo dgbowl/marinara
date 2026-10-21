@@ -434,6 +434,20 @@ input, select, .dash-dropdown {
     display: inline-block;
 }
 
+.system-status-text {
+    color: #10b981;
+}
+
+/* tomato does not answer on the selected port */
+.status-off .status-dot {
+    background-color: var(--danger-color);
+    box-shadow: 0 0 8px var(--danger-color);
+}
+
+.status-off .system-status-text {
+    color: var(--danger-color);
+}   
+
 input:focus, select:focus {
     border-color: var(--accent-color) !important;
 }
