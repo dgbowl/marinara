@@ -403,7 +403,12 @@ def job_status_badge(status: str) -> html.Span:
     )
 
 
-def create_header(otype: str, oname: str, badge: html.Div | None = None) -> html.Div:
+def create_header(
+    otype: str,
+    oname: str = "",
+    badge: html.Div | None = None,
+    title: str | None = None,
+) -> html.Div:
     header = html.Div(
         children=[
             html.Div(
@@ -422,7 +427,7 @@ def create_header(otype: str, oname: str, badge: html.Div | None = None) -> html
                         },
                     ),
                     html.H2(
-                        f"{otype.capitalize()}: {oname}",
+                        title or f"{otype.capitalize()}: {oname}",
                         className="inline",
                         style={"margin": 0, "font-size": "22px"},
                     ),
