@@ -182,10 +182,11 @@ def group_by_unit(ds: dict) -> dict[str, list[str]]:
     """Groups data_var keys by their pint-normalized unit label ("" bucket for
     unitless vars), so equivalent units (e.g. "s" and "sec") share one tab."""
     groups = {}
-    for key in ds["data_vars"]:
-        raw_unit: str = ds["data_vars"][key].get("attrs", {}).get("units", "")
-        label = utils.get_unit_str(raw_unit)
-        groups.setdefault(label, []).append(key)
+    if "data_vars" in ds:
+        for key in ds["data_vars"]:
+            raw_unit: str = ds["data_vars"][key].get("attrs", {}).get("units", "")
+            label = utils.get_unit_str(raw_unit)
+            groups.setdefault(label, []).append(key)
     return groups
 
 
@@ -341,7 +342,6 @@ def render_component_data_graph_layout(
     for ds in datastores:
         if ds == {}:
             continue
-
         if tab == "all":
             has_data = bool(ds["data_vars"])
             y_title = "Value"
