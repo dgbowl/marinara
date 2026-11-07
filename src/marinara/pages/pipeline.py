@@ -5,7 +5,7 @@ import dash
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
 from tomato import passata, tomato
 
-from marinara import callbacks, utils
+from marinara import utils
 from marinara.utils import TOUT
 
 logger = logging.getLogger(__name__)
@@ -251,12 +251,6 @@ def layout(port: int, name: str, **_) -> list[html.Div | dcc.Store]:
     return layout_children
 
 
-callbacks.periodic_data_store_update()
-callbacks.periodic_attr_val_update()
-callbacks.attr_display_val_update()
-callbacks.periodic_status_store_update()
-
-
 @callback(
     Output({"type": "data-container", "index": MATCH}, "children"),
     Input({"type": "data-store", "index": MATCH}, "data"),
@@ -310,12 +304,6 @@ def populate_data_container(
     if len(old_children) == len(div_data_ch):
         return dash.no_update
     return div_data_ch
-
-
-callbacks.attr_apply_btn_update()
-callbacks.attr_input_action_update_value()
-callbacks.attr_input_disable_status()
-callbacks.badge_update()
 
 
 @callback(

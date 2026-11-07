@@ -4,7 +4,7 @@ import dash
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
 from tomato import passata
 
-from marinara import callbacks, plotting, utils
+from marinara import plotting, utils
 from marinara.utils import TOUT
 
 logger = logging.getLogger(__name__)
@@ -199,15 +199,6 @@ def unit_tab_id(label: str) -> str:
 def unit_tab_label(tab: str) -> str:
     """Decodes a unit-tab token (as produced by unit_tab_id) back to its label."""
     return tab.removeprefix("unit:")
-
-
-callbacks.periodic_data_store_update()
-callbacks.periodic_attr_val_update()
-callbacks.attr_display_val_update()
-callbacks.periodic_status_store_update()
-callbacks.attr_apply_btn_update()
-callbacks.attr_input_action_update_value()
-callbacks.attr_input_disable_status()
 
 
 # Tracks the set of distinct unit labels present in the data. Only changes
