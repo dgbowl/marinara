@@ -273,6 +273,8 @@ def populate_data_container(
     aids: dict,
     old_children: list,
 ) -> list[html.Div] | dash.NoUpdate:
+    if ds == {}:
+        return dash.no_update
     cname = id["index"]
     attrs = {}
     for aid, attr in zip(aids, adicts):
@@ -425,6 +427,8 @@ def live_data_update_display(
     vids: dict,
 ) -> list[Any | dash.NoUpdate]:
     nvals: list[Any | dash.NoUpdate] = [dash.no_update for v in vals]
+    if cdata == {}:
+        return nvals
     cname = cid["index"]
     for vi, vid in enumerate(vids):
         vcname, vattr = vid["index"].split("/")
