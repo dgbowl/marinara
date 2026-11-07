@@ -176,6 +176,12 @@ input[disabled], select[disabled], .Select.is-disabled .Select-control {
     min-width: 0;
 }
 
+/* Content that sits directly on a tab's background, without a card's surface */
+.tab-section {
+    padding: 10px 0;
+    min-width: 0;
+}
+
 .component-grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -266,7 +272,7 @@ table.stgrp tr:hover {
 }
 
 /* Form Elements */
-input, select, .dash-dropdown {
+input, textarea, select, .dash-dropdown {
     background-color: var(--card-bg) !important;
     color: var(--text-color) !important;
     border: 1px solid var(--border-color) !important;
@@ -434,7 +440,7 @@ input, select, .dash-dropdown {
     display: inline-block;
 }
 
-input:focus, select:focus {
+input:focus, textarea:focus, select:focus {
     border-color: var(--accent-color) !important;
 }
 
@@ -491,6 +497,19 @@ button:active {
 
 .btn:active {
     transform: scale(0.98);
+}
+
+.btn-success {
+    background-color: var(--success-color);
+}
+
+.btn-danger {
+    background-color: var(--danger-color);
+}
+
+.btn-sm {
+    padding: 4px 12px;
+    font-size: 12px;
 }
 
 /* Badges and labels */
@@ -1273,4 +1292,22 @@ div.attr-control input:disabled {
 
 #component-graph-tab-checklist .graph-tab-input {
     display: none;
+}
+
+/* No spacing while the submit result is empty */
+.submit-result:not(:empty) {
+    margin-top: 15px;
+}
+
+/* Error text under an attr row, aligned with the control (label width + row gap) */
+.attr-error {
+    margin: -4px 0 12px calc(130px + 12px);
+    color: var(--danger-color);
+    font-size: 13px;
+}
+
+/* Wider control for long values such as paths */
+.attr-control-wide {
+    width: 360px !important;
+    max-width: 100% !important;
 }
