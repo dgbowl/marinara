@@ -225,6 +225,8 @@ def update_available_units(
     # Deterministic order: units alphabetically, unitless variables last
     labels = set()
     for ds in datastores:
+        if ds == {}:
+            continue
         labels.update(sorted(group_by_unit(ds), key=lambda u: (u == "", u)))
     if labels == current_labels:
         return dash.no_update
@@ -301,11 +303,9 @@ def render_component_data_graph_shells(
     theme: str,
 ) -> list[dcc.Graph]:
     active_tabs = active_tabs or ["all"]
-    # Shrink each graph when several are stacked so more fit on screen at once,
-    # and give stacked graphs extra breathing room so one graph's legend
-    # doesn't crowd against the next graph's title.
+    # Shrink each graph when several are stacked so more fit on screen at once.
     graph_height = "400px" if len(active_tabs) <= 1 else "280px"
-    graph_gap = "15px" if len(active_tabs) <= 1 else "40px"
+    graph_gap = "15px"
     return [
         dcc.Graph(
             id={"type": "data-graph", "index": tab},
@@ -337,6 +337,7 @@ def render_component_data_graph_layout(
 ) -> dict | dash.Patch:
     active_tabs = active_tabs or ["all"]
     tab = graph_id["index"]
+    is_last = tab == active_tabs[-1]
 
     has_data = False
     for ds in datastores:
@@ -357,9 +358,9 @@ def render_component_data_graph_layout(
     _, x_title = plotting.format_timeseries_x([], relative=relative)
     layout = plotting.build_layout(
         theme,
-        x_title=x_title,
+        x_title=x_title if is_last else None,
         y_title=y_title,
-        xaxis_extra={"tickangle": -30},
+        xaxis_extra={"tickangle": -30, "showticklabels": is_last},
         # Legend sits above the plot rather than below: with rotated x-axis
         # tick labels, a bottom-anchored legend collides with the axis title
         # (Plotly positions the title right after the tick labels, so a
@@ -368,11 +369,16 @@ def render_component_data_graph_layout(
         legend={
             "orientation": "h",
             "x": 0.5,
-            "y": 1.18,
+            "y": 1.02,
             "xanchor": "center",
             "yanchor": "bottom",
         },
-        margin={"t": 60 if len(active_tabs) <= 1 else 90, "b": 90, "l": 50, "r": 20},
+        margin={
+            "t": 60 if len(active_tabs) <= 1 else 40,
+            "b": 90 if is_last else 10,
+            "l": 50,
+            "r": 20,
+        },
     )
     patch = dash.Patch()
     patch["layout"] = layout
@@ -726,6 +732,8 @@ def render_custom_graph_layout(
             "Select variables above to view custom plot", theme
         )
     for ds in datastores:
+        if ds == {}:
+            continue
         consistent, msg = plotting.dims_consistency(x_var, y_vars, ds)
         if not consistent:
             return plotting.empty_figure(msg, theme)
@@ -779,6 +787,8 @@ def render_custom_graph_traces(
         traces = []
         consistent = True
         for ds in datastores:
+            if ds == {}:
+                continue
             consistent, _ = plotting.dims_consistency(x_var, y_vars, ds)
             if not consistent:
                 break
