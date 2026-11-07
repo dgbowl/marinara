@@ -6,33 +6,18 @@ from dash import Patch
 logger = logging.getLogger(__name__)
 
 
-def format_timeseries_x(
-    raw_x: list, relative: bool = False, compact: bool = False
-) -> tuple[list, str]:
-    """Returns (formatted_x, x_axis_title) for a uts coordinate array.
-    `compact` selects a short HH:MM:SS format instead of a full date, for
-    small multi-series widgets where a full timestamp would crowd the axis."""
+def format_timeseries_x(raw_x: list, relative: bool = False) -> tuple[list, str]:
+    """Returns (formatted_x, x_axis_title) for a uts coordinate array."""
     formatted_x = []
     if relative:
-        start_t = raw_x[0] if len(raw_x) > 0 else 0
+        start_uts = raw_x[0] if len(raw_x) > 0 else 0
         for t in raw_x:
-            try:
-                formatted_x.append(f"+{round(t - start_t, 1)}s")
-            except Exception as e:
-                logger.warning("Exception during time formatting:", exc_info=e)
-                formatted_x.append(t)
-        return formatted_x, "Relative Time (Seconds)"
-
-    fmt = "%H:%M:%S" if compact else "%Y-%m-%d %H:%M:%S"
-    for t in raw_x:
-        try:
-            formatted_x.append(
-                datetime.fromtimestamp(t, UTC).astimezone().strftime(fmt)
-            )
-        except Exception as e:
-            logger.warning("Exception during time formatting:", exc_info=e)
-            formatted_x.append(t)
-    return formatted_x, "Time (Local)"
+            formatted_x.append(t - start_uts)
+        return formatted_x, "Elapsed Time (Seconds)"
+    else:
+        for t in raw_x:
+            formatted_x.append(datetime.fromtimestamp(t, UTC).astimezone())
+        return formatted_x, "Local Time"
 
 
 def build_1d(
@@ -92,7 +77,6 @@ def build_traces(
     y_vars: list[str],
     mode: str = "lines+markers",
     relative: bool = False,
-    compact: bool = False,
     prefix: str | None = None,
 ) -> list[dict]:
     """Builds Plotly scatter traces for the given data_var keys, exploding
@@ -103,11 +87,7 @@ def build_traces(
     if "coords" not in ds:
         return []
     x = ds["coords"][x_var]["data"]
-    times, _ = format_timeseries_x(
-        ds["coords"]["uts"]["data"],
-        relative=relative,
-        compact=compact,
-    )
+    times, _ = format_timeseries_x(ds["coords"]["uts"]["data"], relative=relative)
 
     traces = []
     for y_name in y_vars:

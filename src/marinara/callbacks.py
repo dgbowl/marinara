@@ -9,7 +9,7 @@ from marinara import utils
 from marinara.utils import TOUT
 
 
-def periodic_data_store_update():
+def periodic_data_store_update(cap: int | None = None):
     # Data Store Updater
     @callback(
         Output({"type": "data-store", "index": MATCH}, "data"),
@@ -23,9 +23,10 @@ def periodic_data_store_update():
         port: int,
         ds: dict,
         id: dict,
+        cap: int | None = cap,
     ) -> dict | dash.NoUpdate:
         name = id["index"]
-        ret = utils.update_datastore(port=port, name=name, datastore=ds)
+        ret = utils.update_datastore(port=port, name=name, datastore=ds, cap=cap)
         return ret
 
 
