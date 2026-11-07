@@ -227,7 +227,7 @@ def update_available_units(
     for ds in datastores:
         if ds == {}:
             continue
-        labels.update(sorted(group_by_unit(ds), key=lambda u: (u == "", u)))
+        labels.update(group_by_unit(ds))
     ordered = sorted(labels, key=lambda u: (u == "", u))
     if ordered == current_labels:
         return dash.no_update
