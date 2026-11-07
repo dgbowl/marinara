@@ -15,9 +15,6 @@ from tomato import ketchup, tomato
 from marinara.utils import TOUT, create_header, triggered_pattern_index
 
 logger = logging.getLogger(__name__)
-# order=0: dash.page_registry is checked in alphabetical order by module name,
-# and without it job.py's "/jobs/<id>" template would match "/jobs/new" first,
-# treating "new" as an id.
 dash.register_page(__name__, path="/jobs/new", order=0, title="New Job")
 
 
@@ -747,13 +744,13 @@ def submit_new_job(
             tmp_path = tmp.name
 
         daemon_ret = tomato.status(stgrp="tomato", port=port, timeout=TOUT)
-        if not daemon_ret.success:
+        if not daemon_ret.success or daemon_ret.data is None:
             return submit_error(f"Tomato status error: {daemon_ret.msg}")
 
         ret = ketchup.submit(
             payload=tmp_path, jobname=jobname or None, daemon=daemon_ret.data
         )
-        if not ret.success:
+        if not ret.success or ret.data is None:
             return submit_error(f"Submit failed: {ret.msg}")
         return (
             html.Div(
