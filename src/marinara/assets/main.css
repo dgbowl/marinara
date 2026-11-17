@@ -440,7 +440,6 @@ input, textarea, select, .dash-dropdown {
     display: inline-block;
 }
 
-fix/sidebar-system-status
 .system-status-text {
     color: #10b981;
 }
@@ -455,10 +454,8 @@ fix/sidebar-system-status
     color: var(--danger-color);
 }   
 
-input:focus, select:focus {
 
 input:focus, textarea:focus, select:focus {
- main
     border-color: var(--accent-color) !important;
 }
 
