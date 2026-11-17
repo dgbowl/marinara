@@ -371,8 +371,8 @@ def get_constraint_str(attr: Attr):
     if attr.minimum is not None:
         constraints.append(f"min: {format_constraint(attr.minimum, attr.units)}")
     if attr.maximum is not None:
-        constraints.append(f"man: {format_constraint(attr.maximum, attr.units)}")
-    return f" ({', '.join(constraints)})" if constraints else ""
+        constraints.append(f"max: {format_constraint(attr.maximum, attr.units)}")
+    return ", ".join(constraints)
 
 
 JOB_STATUS_LABELS = {
@@ -403,7 +403,12 @@ def job_status_badge(status: str) -> html.Span:
     )
 
 
-def create_header(otype: str, oname: str, badge: html.Div | None = None) -> html.Div:
+def create_header(
+    otype: str,
+    oname: str = "",
+    badge: html.Div | None = None,
+    title: str | None = None,
+) -> html.Div:
     header = html.Div(
         children=[
             html.Div(
@@ -422,7 +427,7 @@ def create_header(otype: str, oname: str, badge: html.Div | None = None) -> html
                         },
                     ),
                     html.H2(
-                        f"{otype.capitalize()}: {oname}",
+                        title or f"{otype.capitalize()}: {oname}",
                         className="inline",
                         style={"margin": 0, "font-size": "22px"},
                     ),
@@ -463,22 +468,27 @@ def build_attr_rows(
             ),
         )
 
+        # Value, unit and Apply stay together; min/max wraps below the value
+        # when the row is too narrow, instead of below the label.
+        main = [control, html.Span(unit_str, className="attr-unit")]
         if attr.rw and rw:
-            apply_btn = html.Button(
-                "Apply",
-                id={"type": "attr-apply-btn", "index": f"{cname}/{aname}"},
-                className="attr-apply-btn",
+            main.append(
+                html.Button(
+                    "Apply",
+                    id={"type": "attr-apply-btn", "index": f"{cname}/{aname}"},
+                    className="attr-apply-btn",
+                )
             )
-        else:
-            apply_btn = html.Div()
+        controls = [html.Div(main, className="attr-main")]
+        if constraints_str:
+            controls.append(html.Span(constraints_str, className="attr-constraints"))
 
+        controls_class = "attr-controls" if rw else "attr-controls attr-readonly"
         attr_rows.append(
             html.Div(
                 children=[
                     html.Div(f"{aname}:", className="attr-label"),
-                    control,
-                    apply_btn,
-                    html.Span(f" {unit_str}{constraints_str}", className="attr-unit"),
+                    html.Div(controls, className=controls_class),
                     attr_val_store,
                     attr_param_store,
                 ],

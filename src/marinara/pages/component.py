@@ -4,7 +4,7 @@ import dash
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
 from tomato import passata
 
-from marinara import callbacks, plotting, utils
+from marinara import plotting, utils
 from marinara.utils import TOUT
 
 logger = logging.getLogger(__name__)
@@ -182,10 +182,11 @@ def group_by_unit(ds: dict) -> dict[str, list[str]]:
     """Groups data_var keys by their pint-normalized unit label ("" bucket for
     unitless vars), so equivalent units (e.g. "s" and "sec") share one tab."""
     groups = {}
-    for key in ds["data_vars"]:
-        raw_unit: str = ds["data_vars"][key].get("attrs", {}).get("units", "")
-        label = utils.get_unit_str(raw_unit)
-        groups.setdefault(label, []).append(key)
+    if "data_vars" in ds:
+        for key in ds["data_vars"]:
+            raw_unit: str = ds["data_vars"][key].get("attrs", {}).get("units", "")
+            label = utils.get_unit_str(raw_unit)
+            groups.setdefault(label, []).append(key)
     return groups
 
 
@@ -198,15 +199,6 @@ def unit_tab_id(label: str) -> str:
 def unit_tab_label(tab: str) -> str:
     """Decodes a unit-tab token (as produced by unit_tab_id) back to its label."""
     return tab.removeprefix("unit:")
-
-
-callbacks.periodic_data_store_update()
-callbacks.periodic_attr_val_update()
-callbacks.attr_display_val_update()
-callbacks.periodic_status_store_update()
-callbacks.attr_apply_btn_update()
-callbacks.attr_input_action_update_value()
-callbacks.attr_input_disable_status()
 
 
 # Tracks the set of distinct unit labels present in the data. Only changes
@@ -224,10 +216,13 @@ def update_available_units(
     # Deterministic order: units alphabetically, unitless variables last
     labels = set()
     for ds in datastores:
-        labels.update(sorted(group_by_unit(ds), key=lambda u: (u == "", u)))
-    if labels == current_labels:
+        if ds == {}:
+            continue
+        labels.update(group_by_unit(ds))
+    ordered = sorted(labels, key=lambda u: (u == "", u))
+    if ordered == current_labels:
         return dash.no_update
-    return list(labels)
+    return ordered
 
 
 # Renders the "All" / per-unit tab picker's options as a checklist styled
@@ -300,11 +295,9 @@ def render_component_data_graph_shells(
     theme: str,
 ) -> list[dcc.Graph]:
     active_tabs = active_tabs or ["all"]
-    # Shrink each graph when several are stacked so more fit on screen at once,
-    # and give stacked graphs extra breathing room so one graph's legend
-    # doesn't crowd against the next graph's title.
+    # Shrink each graph when several are stacked so more fit on screen at once.
     graph_height = "400px" if len(active_tabs) <= 1 else "280px"
-    graph_gap = "15px" if len(active_tabs) <= 1 else "40px"
+    graph_gap = "15px"
     return [
         dcc.Graph(
             id={"type": "data-graph", "index": tab},
@@ -336,12 +329,12 @@ def render_component_data_graph_layout(
 ) -> dict | dash.Patch:
     active_tabs = active_tabs or ["all"]
     tab = graph_id["index"]
+    is_last = tab == active_tabs[-1]
 
     has_data = False
     for ds in datastores:
         if ds == {}:
             continue
-
         if tab == "all":
             has_data = bool(ds["data_vars"])
             y_title = "Value"
@@ -357,9 +350,9 @@ def render_component_data_graph_layout(
     _, x_title = plotting.format_timeseries_x([], relative=relative)
     layout = plotting.build_layout(
         theme,
-        x_title=x_title,
+        x_title=x_title if is_last else None,
         y_title=y_title,
-        xaxis_extra={"tickangle": -30},
+        xaxis_extra={"tickangle": -30, "showticklabels": is_last},
         # Legend sits above the plot rather than below: with rotated x-axis
         # tick labels, a bottom-anchored legend collides with the axis title
         # (Plotly positions the title right after the tick labels, so a
@@ -368,11 +361,16 @@ def render_component_data_graph_layout(
         legend={
             "orientation": "h",
             "x": 0.5,
-            "y": 1.18,
+            "y": 1.02,
             "xanchor": "center",
             "yanchor": "bottom",
         },
-        margin={"t": 60 if len(active_tabs) <= 1 else 90, "b": 90, "l": 50, "r": 20},
+        margin={
+            "t": 60 if len(active_tabs) <= 1 else 40,
+            "b": 90 if is_last else 10,
+            "l": 50,
+            "r": 20,
+        },
     )
     patch = dash.Patch()
     patch["layout"] = layout
@@ -726,6 +724,8 @@ def render_custom_graph_layout(
             "Select variables above to view custom plot", theme
         )
     for ds in datastores:
+        if ds == {}:
+            continue
         consistent, msg = plotting.dims_consistency(x_var, y_vars, ds)
         if not consistent:
             return plotting.empty_figure(msg, theme)
@@ -779,6 +779,8 @@ def render_custom_graph_traces(
         traces = []
         consistent = True
         for ds in datastores:
+            if ds == {}:
+                continue
             consistent, _ = plotting.dims_consistency(x_var, y_vars, ds)
             if not consistent:
                 break

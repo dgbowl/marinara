@@ -234,7 +234,12 @@ def patch_traces(prev_figure: dict | None, traces: list[dict]) -> Patch:
 
 
 def dims_consistency(x_var: str, y_vars: list[str], ds: dict) -> tuple[bool, str]:
+    """Check that x_var is among the dimensions of each of the y_vars."""
+    if "data_vars" not in ds:
+        return False, "Supplied datastore is empty."
     for y_name in y_vars:
+        if y_name not in ds["data_vars"]:
+            return False, f"The Y axis variable {y_name!r} is not in datastore."
         y_dims = ds["data_vars"][y_name]["dims"]
         if x_var not in y_dims:
             return (

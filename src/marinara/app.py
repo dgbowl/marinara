@@ -3,6 +3,7 @@ import importlib.metadata
 import dash
 from dash import dcc, html
 
+from marinara import callbacks  # noqa: F401 (registers the shared callbacks once)
 from marinara.sidebar import create_sidebar
 
 __version__ = importlib.metadata.version("marinara")

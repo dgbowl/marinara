@@ -4,7 +4,7 @@ import dash
 from dash import ALL, Input, Output, State, callback, dcc, html
 from tomato import ketchup, passata, tomato
 
-from marinara import callbacks, plotting, utils
+from marinara import plotting, utils
 from marinara.icons import get_icon
 from marinara.utils import TOUT
 
@@ -305,11 +305,6 @@ def update_attrs_list(cnames: list[str], port: int):
         attr_rows = utils.build_attr_rows(attrs, avals, cname, rw=False)
         children.append(html.Div(children=attr_rows))
     return children
-
-
-callbacks.periodic_data_store_update(cap=50)
-callbacks.periodic_attr_val_update()
-callbacks.attr_display_val_update()
 
 
 # Layout only - traces are patched separately below

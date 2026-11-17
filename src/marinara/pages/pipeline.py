@@ -5,7 +5,7 @@ import dash
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
 from tomato import passata, tomato
 
-from marinara import callbacks, utils
+from marinara import utils
 from marinara.utils import TOUT
 
 logger = logging.getLogger(__name__)
@@ -251,12 +251,6 @@ def layout(port: int, name: str, **_) -> list[html.Div | dcc.Store]:
     return layout_children
 
 
-callbacks.periodic_data_store_update()
-callbacks.periodic_attr_val_update()
-callbacks.attr_display_val_update()
-callbacks.periodic_status_store_update()
-
-
 @callback(
     Output({"type": "data-container", "index": MATCH}, "children"),
     Input({"type": "data-store", "index": MATCH}, "data"),
@@ -273,6 +267,8 @@ def populate_data_container(
     aids: dict,
     old_children: list,
 ) -> list[html.Div] | dash.NoUpdate:
+    if ds == {}:
+        return dash.no_update
     cname = id["index"]
     attrs = {}
     for aid, attr in zip(aids, adicts):
@@ -299,7 +295,6 @@ def populate_data_container(
                         className="attr-control",
                         style={"width": "200px"},
                     ),
-                    html.Div(style={"width": "66px", "flex-shrink": "0"}),
                     html.Span(f" {units_str}", className="attr-unit"),
                 ],
                 id={"type": "component-data-key", "index": f"{cname}/{key}"},
@@ -309,12 +304,6 @@ def populate_data_container(
     if len(old_children) == len(div_data_ch):
         return dash.no_update
     return div_data_ch
-
-
-callbacks.attr_apply_btn_update()
-callbacks.attr_input_action_update_value()
-callbacks.attr_input_disable_status()
-callbacks.badge_update()
 
 
 @callback(
@@ -426,6 +415,8 @@ def live_data_update_display(
     vids: dict,
 ) -> list[Any | dash.NoUpdate]:
     nvals: list[Any | dash.NoUpdate] = [dash.no_update for v in vals]
+    if cdata == {}:
+        return nvals
     cname = cid["index"]
     for vi, vid in enumerate(vids):
         vcname, vattr = vid["index"].split("/")

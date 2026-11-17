@@ -9,7 +9,7 @@ from marinara import utils
 from marinara.utils import TOUT
 
 
-def periodic_data_store_update(cap: int | None = None):
+def periodic_data_store_update():
     # Data Store Updater
     @callback(
         Output({"type": "data-store", "index": MATCH}, "data"),
@@ -17,14 +17,17 @@ def periodic_data_store_update(cap: int | None = None):
         State("tomato-port", "data"),
         State({"type": "data-store", "index": MATCH}, "data"),
         State({"type": "data-store", "index": MATCH}, "id"),
+        State("url", "pathname"),
     )
     def periodic_data_store_update(
         _: int,
         port: int,
         ds: dict,
         id: dict,
-        cap: int | None = cap,
+        pathname: str,
     ) -> dict | dash.NoUpdate:
+        # The dashboard keeps only the last 50 points of each component.
+        cap = 50 if pathname == "/" else None
         name = id["index"]
         ret = utils.update_datastore(port=port, name=name, datastore=ds, cap=cap)
         return ret
@@ -183,3 +186,14 @@ def badge_update():
         status_badge_text = "RUNNING" if status else "STOPPED"
 
         return status_badge_text, status_badge_class
+
+
+# Register every shared callback exactly once, when this module is imported.
+periodic_data_store_update()
+periodic_attr_val_update()
+attr_display_val_update()
+attr_apply_btn_update()
+attr_input_action_update_value()
+periodic_status_store_update()
+attr_input_disable_status()
+badge_update()
