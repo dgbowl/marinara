@@ -723,6 +723,10 @@ SETTINGS_INPUTS = [Input(field_id, "value") for field_id in SETTINGS_FIELD_IDS]
 SETTINGS_STATES = [State(field_id, "value") for field_id in SETTINGS_FIELD_IDS]
 
 
+def snapshot_is_enabled(snapshot_enabled):
+    return bool(snapshot_enabled and "enabled" in snapshot_enabled)
+
+
 def build_settings_dict(
     output_path,
     output_prefix,
@@ -754,7 +758,7 @@ def build_settings_dict(
     if unlock_when_done and "unlock" in unlock_when_done:
         settings["unlock_when_done"] = True
 
-    if snapshot_enabled and "enabled" in snapshot_enabled:
+    if snapshot_is_enabled(snapshot_enabled):
         snapshot = {}
         snapshot_path = (snapshot_path or "").strip()
         if snapshot_path:
@@ -837,13 +841,29 @@ def warn_relative_output_path(output_path):
     return relative_path_warning(output_path, "Output")
 
 
-# Flags a relative snapshot path, which submit_new_job rejects
+# Flags a relative snapshot path, which submit_new_job rejects. Skipped while
+# snapshots are off, since the path is ignored then.
 @callback(
     Output("new-job-snapshot-path-warning", "children"),
     Input("new-job-snapshot-path", "value"),
+    Input("new-job-snapshot-enabled", "value"),
 )
-def warn_relative_snapshot_path(snapshot_path):
+def warn_relative_snapshot_path(snapshot_path, snapshot_enabled):
+    if not snapshot_is_enabled(snapshot_enabled):
+        return None
     return relative_path_warning(snapshot_path, "Snapshot")
+
+
+# The snapshot fields only count when snapshots are enabled, so grey them out otherwise
+@callback(
+    Output("new-job-snapshot-path", "disabled"),
+    Output("new-job-snapshot-prefix", "disabled"),
+    Output("new-job-snapshot-interval", "disabled"),
+    Input("new-job-snapshot-enabled", "value"),
+)
+def toggle_snapshot_fields(snapshot_enabled):
+    disabled = not snapshot_is_enabled(snapshot_enabled)
+    return disabled, disabled, disabled
 
 
 # Renders a best-effort live preview of the effective payload as YAML, for whichever tab is active
