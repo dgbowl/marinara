@@ -768,6 +768,17 @@ def assemble_payload_dict(sample_id, is_parent, method, settings=None, user=None
     return payload_dict
 
 
+def merge_dicts(base, overrides):
+    """Returns base with overrides applied recursively, leaving both inputs untouched."""
+    merged = dict(base)
+    for key, value in overrides.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = merge_dicts(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 def apply_uploaded_overrides(
     payload_dict, sample_id, is_parent, settings=None, user=None
 ):
@@ -778,7 +789,11 @@ def apply_uploaded_overrides(
         "sample_is_parent": bool(is_parent and "parent" in is_parent),
     }
     if settings:
-        payload_dict["settings"] = settings
+        # The form can only set values, not clear them, so keep whatever the upload has for fields left empty
+        uploaded_settings = payload_dict.get("settings")
+        if not isinstance(uploaded_settings, dict):
+            uploaded_settings = {}
+        payload_dict["settings"] = merge_dicts(uploaded_settings, settings)
     if user:
         payload_dict["user"] = {"identifier": user}
     return payload_dict

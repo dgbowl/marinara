@@ -1003,10 +1003,12 @@ label {
     border: 1px solid var(--border-color) !important;
 }
 
-/* Dash's own grid adds a second 12px left padding on top of the button's
+/* Dash's trigger adds a second 12px left padding on top of the button's
    10px (from the shared input/select/.dash-dropdown rule), so dropdown text
-   starts further right than a plain input's - drop it so both align. */
-.dash-dropdown-grid-container {
+   starts further right than a plain input's - drop it so both align.
+   Scoped to .attr-control: the popup's search box reuses the grid container
+   class, and the dropdowns outside the forms should keep Dash's spacing. */
+.attr-control .dash-dropdown-trigger {
     padding-left: 0 !important;
 }
 
@@ -1086,6 +1088,9 @@ label {
 
 .dash-dropdown-placeholder {
     color: var(--text-secondary) !important;
+}
+
+.attr-control .dash-dropdown-placeholder {
     font-weight: 400 !important;
     font-size: 16px !important;
 }
