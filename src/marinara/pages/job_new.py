@@ -252,10 +252,12 @@ def job_settings_card() -> html.Div:
                         id="new-job-snapshot-path",
                         type="text",
                         className="attr-control",
-                        placeholder="defaults to output path",
+                        debounce=True,
+                        placeholder="defaults to tomato's working directory",
                     ),
                 ],
             ),
+            html.Div(id="new-job-snapshot-path-warning"),
             html.Div(
                 className="attr-row",
                 children=[
@@ -816,7 +818,14 @@ def apply_uploaded_overrides(
     return payload_dict
 
 
-RELATIVE_PATH_MSG = "Output path must be absolute (tomato resolves relative paths against its own working directory)."
+RELATIVE_PATH_MSG = "{} path must be absolute (tomato resolves relative paths against its own working directory)."
+
+
+def relative_path_warning(path, label):
+    path = (path or "").strip()
+    if not path or Path(path).is_absolute():
+        return None
+    return html.Div(RELATIVE_PATH_MSG.format(label), className="attr-error")
 
 
 # Flags a relative output path, which submit_new_job rejects
@@ -825,10 +834,16 @@ RELATIVE_PATH_MSG = "Output path must be absolute (tomato resolves relative path
     Input("new-job-output-path", "value"),
 )
 def warn_relative_output_path(output_path):
-    output_path = (output_path or "").strip()
-    if not output_path or Path(output_path).is_absolute():
-        return None
-    return html.Div(RELATIVE_PATH_MSG, className="attr-error")
+    return relative_path_warning(output_path, "Output")
+
+
+# Flags a relative snapshot path, which submit_new_job rejects
+@callback(
+    Output("new-job-snapshot-path-warning", "children"),
+    Input("new-job-snapshot-path", "value"),
+)
+def warn_relative_snapshot_path(snapshot_path):
+    return relative_path_warning(snapshot_path, "Snapshot")
 
 
 # Renders a best-effort live preview of the effective payload as YAML, for whichever tab is active
@@ -907,6 +922,7 @@ def submit_new_job(
 ):
     settings = build_settings_dict(*settings_values)
     output_path = settings.get("output", {}).get("path", "")
+    snapshot = settings.get("snapshot", {})
     try:
         if tab == "select-payload":
             if not uploaded:
@@ -926,8 +942,15 @@ def submit_new_job(
             payload_dict = assemble_payload_dict(
                 sample_id, is_parent, method, settings, user=getpass.getuser()
             )
-        if output_path and not Path(output_path).is_absolute():
-            raise ValueError(RELATIVE_PATH_MSG)
+        for label, path in (
+            ("Output", output_path),
+            ("Snapshot", snapshot.get("path")),
+        ):
+            if path and not Path(path).is_absolute():
+                raise ValueError(RELATIVE_PATH_MSG.format(label))
+        interval = snapshot.get("interval")
+        if interval is not None and interval <= 0:
+            raise ValueError("Snapshot interval must be greater than 0.")
         payload = Payload(**payload_dict)
     # ValidationError subclasses ValueError, so it has to be caught first
     except ValidationError as e:
