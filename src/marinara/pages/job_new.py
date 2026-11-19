@@ -705,6 +705,22 @@ def validate_form(sample_id, method):
             raise ValueError(f"Task {i + 1}: set max duration and sampling interval.")
 
 
+# Job Settings fields, in the order build_settings_dict takes its arguments
+SETTINGS_FIELD_IDS = [
+    "new-job-output-path",
+    "new-job-output-prefix",
+    "new-job-output-repositories",
+    "new-job-verbosity",
+    "new-job-unlock-when-done",
+    "new-job-snapshot-enabled",
+    "new-job-snapshot-path",
+    "new-job-snapshot-prefix",
+    "new-job-snapshot-interval",
+]
+SETTINGS_INPUTS = [Input(field_id, "value") for field_id in SETTINGS_FIELD_IDS]
+SETTINGS_STATES = [State(field_id, "value") for field_id in SETTINGS_FIELD_IDS]
+
+
 def build_settings_dict(
     output_path,
     output_prefix,
@@ -751,14 +767,18 @@ def build_settings_dict(
     return settings
 
 
+def sample_dict(sample_id, is_parent):
+    return {
+        "identifier": sample_id,
+        "sample_is_parent": bool(is_parent and "parent" in is_parent),
+    }
+
+
 def assemble_payload_dict(sample_id, is_parent, method, settings=None, user=None):
     """Builds the payload_2_2-shaped dict shared by the YAML preview and submit callbacks."""
     payload_dict = {
         "version": "2.2",
-        "sample": {
-            "identifier": sample_id,
-            "sample_is_parent": bool(is_parent and "parent" in is_parent),
-        },
+        "sample": sample_dict(sample_id, is_parent),
         "method": method,
     }
     if settings:
@@ -784,10 +804,7 @@ def apply_uploaded_overrides(
 ):
     """Overlays the Select Payload tab's sample/settings/user onto an uploaded payload dict."""
     payload_dict = dict(payload_dict or {})
-    payload_dict["sample"] = {
-        "identifier": sample_id,
-        "sample_is_parent": bool(is_parent and "parent" in is_parent),
-    }
+    payload_dict["sample"] = sample_dict(sample_id, is_parent)
     if settings:
         # The form can only set values, not clear them, so keep whatever the upload has for fields left empty
         uploaded_settings = payload_dict.get("settings")
@@ -824,15 +841,7 @@ def warn_relative_output_path(output_path):
     Input("new-job-uploaded-payload-store", "data"),
     Input("new-job-upload-sample-identifier", "value"),
     Input("new-job-upload-sample-is-parent", "value"),
-    Input("new-job-output-path", "value"),
-    Input("new-job-output-prefix", "value"),
-    Input("new-job-output-repositories", "value"),
-    Input("new-job-verbosity", "value"),
-    Input("new-job-unlock-when-done", "value"),
-    Input("new-job-snapshot-enabled", "value"),
-    Input("new-job-snapshot-path", "value"),
-    Input("new-job-snapshot-prefix", "value"),
-    Input("new-job-snapshot-interval", "value"),
+    *SETTINGS_INPUTS,
 )
 def render_new_job_yaml_preview(
     tab,
@@ -842,27 +851,9 @@ def render_new_job_yaml_preview(
     uploaded,
     up_sample_id,
     up_is_parent,
-    output_path,
-    output_prefix,
-    output_repositories,
-    verbosity,
-    unlock_when_done,
-    snapshot_enabled,
-    snapshot_path,
-    snapshot_prefix,
-    snapshot_interval,
+    *settings_values,
 ):
-    settings = build_settings_dict(
-        output_path,
-        output_prefix,
-        output_repositories,
-        verbosity,
-        unlock_when_done,
-        snapshot_enabled,
-        snapshot_path,
-        snapshot_prefix,
-        snapshot_interval,
-    )
+    settings = build_settings_dict(*settings_values)
     if tab == "select-payload":
         if not uploaded:
             return "# Upload a payload file to preview it here."
@@ -897,16 +888,8 @@ def submit_error(msg):
     State("new-job-upload-sample-identifier", "value"),
     State("new-job-upload-sample-is-parent", "value"),
     State("new-job-name", "value"),
-    State("new-job-output-path", "value"),
-    State("new-job-output-prefix", "value"),
-    State("new-job-output-repositories", "value"),
-    State("new-job-verbosity", "value"),
-    State("new-job-unlock-when-done", "value"),
-    State("new-job-snapshot-enabled", "value"),
-    State("new-job-snapshot-path", "value"),
-    State("new-job-snapshot-prefix", "value"),
-    State("new-job-snapshot-interval", "value"),
     State("tomato-port", "data"),
+    *SETTINGS_STATES,
     prevent_initial_call=True,
 )
 def submit_new_job(
@@ -919,29 +902,11 @@ def submit_new_job(
     up_sample_id,
     up_is_parent,
     jobname,
-    output_path,
-    output_prefix,
-    output_repositories,
-    verbosity,
-    unlock_when_done,
-    snapshot_enabled,
-    snapshot_path,
-    snapshot_prefix,
-    snapshot_interval,
     port,
+    *settings_values,
 ):
-    settings = build_settings_dict(
-        output_path,
-        output_prefix,
-        output_repositories,
-        verbosity,
-        unlock_when_done,
-        snapshot_enabled,
-        snapshot_path,
-        snapshot_prefix,
-        snapshot_interval,
-    )
-    output_path = (output_path or "").strip()
+    settings = build_settings_dict(*settings_values)
+    output_path = settings.get("output", {}).get("path", "")
     try:
         if tab == "select-payload":
             if not uploaded:
