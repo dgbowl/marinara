@@ -8,7 +8,7 @@ from pathlib import Path
 import dash
 import yaml
 from dash import ALL, MATCH, Input, Output, State, callback, dcc, html
-from dgbowl_schemas.tomato.payload_2_2 import Payload
+from dgbowl_schemas.tomato.payload_2_2 import Payload, Settings
 from pydantic import ValidationError
 from tomato import ketchup, tomato
 
@@ -16,6 +16,28 @@ from marinara.utils import TOUT, create_header, triggered_pattern_index
 
 logger = logging.getLogger(__name__)
 dash.register_page(__name__, path="/jobs/new", order=0, title="New Job")
+
+DEFAULT_SNAPSHOT_INTERVAL = 3600
+
+# Job Settings fields, in the order build_settings_dict takes its arguments
+SETTINGS_FIELD_IDS = [
+    "new-job-output-path",
+    "new-job-output-prefix",
+    "new-job-output-repositories",
+    "new-job-verbosity",
+    "new-job-unlock-when-done",
+    "new-job-snapshot-enabled",
+    "new-job-snapshot-path",
+    "new-job-snapshot-prefix",
+    "new-job-snapshot-interval",
+]
+SETTINGS_INPUTS = [Input(field_id, "value") for field_id in SETTINGS_FIELD_IDS]
+SETTINGS_STATES = [State(field_id, "value") for field_id in SETTINGS_FIELD_IDS]
+SETTINGS_OUTPUTS = [Output(field_id, "value") for field_id in SETTINGS_FIELD_IDS]
+# swap_tab_settings writes the same fields as parse_uploaded_payload
+SETTINGS_DUPLICATE_OUTPUTS = [
+    Output(field_id, "value", allow_duplicate=True) for field_id in SETTINGS_FIELD_IDS
+]
 
 
 def sample_rows(identifier_id: str, is_parent_id: str) -> list[html.Div]:
@@ -278,7 +300,7 @@ def job_settings_card() -> html.Div:
                         id="new-job-snapshot-interval",
                         type="number",
                         className="attr-control",
-                        value=3600,
+                        value=DEFAULT_SNAPSHOT_INTERVAL,
                     ),
                 ],
             ),
@@ -337,6 +359,9 @@ layout = html.Div(
         dcc.Store(id="new-job-components-store", data={}),
         dcc.Store(id="new-job-pipelines-store", data={}),
         dcc.Store(id="new-job-uploaded-payload-store", data=None),
+        dcc.Store(
+            id="new-job-settings-store", data={"active": "new-payload", "values": {}}
+        ),
     ],
 )
 
@@ -415,17 +440,31 @@ def refresh_new_job_role_options(roles, current_values):
     return [options] * len(current_values), values
 
 
-# Parses an uploaded payload file and seeds the Select Payload tab's sample fields from it
+def upload_failed(message):
+    """Outputs of parse_uploaded_payload for an unusable file: shows message, changes nothing else."""
+    return (
+        None,
+        html.Div(message, className="attr-error"),
+        # sample identifier, sample is parent, the settings fields, repository options
+        *[dash.no_update] * (len(SETTINGS_OUTPUTS) + 3),
+    )
+
+
+# Parses an uploaded payload file and seeds the Select Payload tab's sample fields and
+# the Job Settings fields from it
 @callback(
     Output("new-job-uploaded-payload-store", "data"),
     Output("new-job-upload-status", "children"),
     Output("new-job-upload-sample-identifier", "value"),
     Output("new-job-upload-sample-is-parent", "value"),
+    *SETTINGS_OUTPUTS,
+    Output("new-job-output-repositories", "options", allow_duplicate=True),
     Input("new-job-payload-upload", "contents"),
     State("new-job-payload-upload", "filename"),
+    State("new-job-output-repositories", "options"),
     prevent_initial_call=True,
 )
-def parse_uploaded_payload(contents, filename):
+def parse_uploaded_payload(contents, filename, repository_options):
     try:
         _, content_string = contents.split(",", 1)
         decoded = base64.b64decode(content_string).decode("utf-8")
@@ -434,21 +473,44 @@ def parse_uploaded_payload(contents, filename):
             raise TypeError("file does not contain a payload mapping")
     except Exception as e:
         logger.warning("Exception during parse_uploaded_payload:", exc_info=e)
-        return (
-            None,
-            html.Div(f"Could not parse {filename!r}: {e}", className="attr-error"),
-            dash.no_update,
-            dash.no_update,
-        )
+        return upload_failed(f"Could not parse {filename!r}: {e}")
+
+    try:
+        settings = uploaded_settings(payload_dict)
+    except ValueError as e:
+        return upload_failed(f"Invalid settings in {filename!r}: {e}")
 
     sample = payload_dict.get("sample") or {}
     is_parent = ["parent"] if sample.get("sample_is_parent", True) else []
+    # The dropdown drops values that aren't in its options, so add the upload's repositories
+    uploaded_repositories = settings.get("output", {}).get("repositories", [])
     return (
         payload_dict,
         html.Div(f"Loaded {filename!r}.", className="text-secondary"),
         sample.get("identifier"),
         is_parent,
+        *settings_form_values(settings),
+        sorted({*(repository_options or []), *uploaded_repositories}),
     )
+
+
+# The Job Settings card is shared by both tabs, so each tab's values are stashed while
+# the other tab is active
+@callback(
+    *SETTINGS_DUPLICATE_OUTPUTS,
+    Output("new-job-settings-store", "data"),
+    Input("new-job-tabs", "value"),
+    State("new-job-settings-store", "data"),
+    *SETTINGS_STATES,
+    prevent_initial_call=True,
+)
+def swap_tab_settings(tab, stash, *current_values):
+    previous_tab = stash["active"]
+    if tab == previous_tab:
+        return [dash.no_update] * (len(SETTINGS_FIELD_IDS) + 1)
+    values = {**stash["values"], previous_tab: list(current_values)}
+    incoming = values.get(tab) or settings_form_values({})
+    return *incoming, {"active": tab, "values": values}
 
 
 # Manages adding and removing task cards
@@ -707,22 +769,6 @@ def validate_form(sample_id, method):
             raise ValueError(f"Task {i + 1}: set max duration and sampling interval.")
 
 
-# Job Settings fields, in the order build_settings_dict takes its arguments
-SETTINGS_FIELD_IDS = [
-    "new-job-output-path",
-    "new-job-output-prefix",
-    "new-job-output-repositories",
-    "new-job-verbosity",
-    "new-job-unlock-when-done",
-    "new-job-snapshot-enabled",
-    "new-job-snapshot-path",
-    "new-job-snapshot-prefix",
-    "new-job-snapshot-interval",
-]
-SETTINGS_INPUTS = [Input(field_id, "value") for field_id in SETTINGS_FIELD_IDS]
-SETTINGS_STATES = [State(field_id, "value") for field_id in SETTINGS_FIELD_IDS]
-
-
 def snapshot_is_enabled(snapshot_enabled):
     return bool(snapshot_enabled and "enabled" in snapshot_enabled)
 
@@ -773,6 +819,57 @@ def build_settings_dict(
     return settings
 
 
+def validation_problems(error, loc_prefix=()):
+    """Formats a pydantic ValidationError as 'field.path: message; ...' for the user."""
+    return "; ".join(
+        f"{'.'.join(map(str, (*loc_prefix, *err['loc'])))}: {err['msg']}"
+        for err in error.errors()
+    )
+
+
+def uploaded_settings(payload_dict):
+    """Returns the settings an uploaded payload sets, validated and normalized by Settings.
+
+    Raises ValueError with a user-facing message if they are invalid.
+    """
+    if "settings" not in payload_dict:
+        return {}
+    try:
+        settings = Settings.model_validate(payload_dict["settings"])
+    except ValidationError as e:
+        raise ValueError(validation_problems(e, ("settings",))) from e
+    # The schema allows null entries, but the form can't show them and ketchup.submit rejects them
+    if None in settings.output.repositories:
+        raise ValueError("settings.output.repositories: entries must not be empty")
+    return settings.model_dump(exclude_unset=True)
+
+
+def settings_form_values(settings):
+    """Maps a settings dict from uploaded_settings onto the Job Settings fields, in SETTINGS_FIELD_IDS order.
+
+    Anything the settings leave out gets the form's default.
+    """
+    output = settings.get("output", {})
+    snapshot = settings.get("snapshot")
+    snapshot_values = snapshot or {}
+    values = {
+        "new-job-output-path": output.get("path") or "",
+        "new-job-output-prefix": output.get("prefix") or "",
+        "new-job-output-repositories": output.get("repositories", []),
+        "new-job-verbosity": settings.get("verbosity"),
+        "new-job-unlock-when-done": (
+            ["unlock"] if settings.get("unlock_when_done") else []
+        ),
+        "new-job-snapshot-enabled": ["enabled"] if snapshot is not None else [],
+        "new-job-snapshot-path": snapshot_values.get("path") or "",
+        "new-job-snapshot-prefix": snapshot_values.get("prefix") or "",
+        "new-job-snapshot-interval": snapshot_values.get(
+            "interval", DEFAULT_SNAPSHOT_INTERVAL
+        ),
+    }
+    return [values[field_id] for field_id in SETTINGS_FIELD_IDS]
+
+
 def sample_dict(sample_id, is_parent):
     return {
         "identifier": sample_id,
@@ -794,29 +891,15 @@ def assemble_payload_dict(sample_id, is_parent, method, settings=None, user=None
     return payload_dict
 
 
-def merge_dicts(base, overrides):
-    """Returns base with overrides applied recursively, leaving both inputs untouched."""
-    merged = dict(base)
-    for key, value in overrides.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = merge_dicts(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
-
-
-def apply_uploaded_overrides(
-    payload_dict, sample_id, is_parent, settings=None, user=None
-):
+def apply_uploaded_overrides(payload_dict, sample_id, is_parent, settings, user=None):
     """Overlays the Select Payload tab's sample/settings/user onto an uploaded payload dict."""
     payload_dict = dict(payload_dict or {})
     payload_dict["sample"] = sample_dict(sample_id, is_parent)
+    # The form is seeded from the upload's settings, so it replaces them instead of merging
     if settings:
-        # The form can only set values, not clear them, so keep whatever the upload has for fields left empty
-        uploaded_settings = payload_dict.get("settings")
-        if not isinstance(uploaded_settings, dict):
-            uploaded_settings = {}
-        payload_dict["settings"] = merge_dicts(uploaded_settings, settings)
+        payload_dict["settings"] = settings
+    else:
+        payload_dict.pop("settings", None)
     if user:
         payload_dict["user"] = {"identifier": user}
     return payload_dict
@@ -941,8 +1024,6 @@ def submit_new_job(
     *settings_values,
 ):
     settings = build_settings_dict(*settings_values)
-    output_path = settings.get("output", {}).get("path", "")
-    snapshot = settings.get("snapshot", {})
     try:
         if tab == "select-payload":
             if not uploaded:
@@ -962,22 +1043,21 @@ def submit_new_job(
             payload_dict = assemble_payload_dict(
                 sample_id, is_parent, method, settings, user=getpass.getuser()
             )
+        payload = Payload(**payload_dict)
+        # Checked on the final settings so uploaded values are covered too
+        final_settings = payload.settings
+        snapshot = final_settings.snapshot
         for label, path in (
-            ("Output", output_path),
-            ("Snapshot", snapshot.get("path")),
+            ("Output", final_settings.output.path),
+            ("Snapshot", snapshot.path if snapshot else None),
         ):
             if path and not Path(path).is_absolute():
                 raise ValueError(RELATIVE_PATH_MSG.format(label))
-        interval = snapshot.get("interval")
-        if interval is not None and interval <= 0:
+        if snapshot and snapshot.interval <= 0:
             raise ValueError("Snapshot interval must be greater than 0.")
-        payload = Payload(**payload_dict)
     # ValidationError subclasses ValueError, so it has to be caught first
     except ValidationError as e:
-        problems = "; ".join(
-            f"{'.'.join(map(str, err['loc']))}: {err['msg']}" for err in e.errors()
-        )
-        return submit_error(f"Invalid payload: {problems}")
+        return submit_error(f"Invalid payload: {validation_problems(e)}")
     except ValueError as e:
         return submit_error(str(e))
 
