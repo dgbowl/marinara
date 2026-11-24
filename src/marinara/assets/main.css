@@ -440,6 +440,20 @@ input, textarea, select, .dash-dropdown {
     display: inline-block;
 }
 
+.system-status-text {
+    color: #10b981;
+}
+
+.status-off .status-dot {
+    background-color: var(--danger-color);
+    box-shadow: 0 0 8px var(--danger-color);
+}
+
+.status-off .system-status-text {
+    color: var(--danger-color);
+}
+
+
 input:focus, textarea:focus, select:focus {
     border-color: var(--accent-color) !important;
 }

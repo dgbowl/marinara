@@ -11,7 +11,7 @@ from tomato import passata
 from tomato.driverinterface_3_0 import Attr, Status
 
 PORT = 1234
-TOUT = 1000
+TOUT = 1
 logger = logging.getLogger(__name__)
 
 
