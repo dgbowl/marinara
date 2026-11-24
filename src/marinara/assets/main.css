@@ -444,7 +444,6 @@ input, textarea, select, .dash-dropdown {
     color: #10b981;
 }
 
-/* tomato does not answer on the selected port */
 .status-off .status-dot {
     background-color: var(--danger-color);
     box-shadow: 0 0 8px var(--danger-color);
@@ -452,7 +451,7 @@ input, textarea, select, .dash-dropdown {
 
 .status-off .system-status-text {
     color: var(--danger-color);
-}   
+}
 
 
 input:focus, textarea:focus, select:focus {

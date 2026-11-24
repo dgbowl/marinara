@@ -335,8 +335,6 @@ def apply_sidebar_state(state: str) -> tuple[str, Svg, str]:
     State("tomato-port", "data"),
 )
 def update_system_status(_: int, port: int) -> tuple[str, str]:
-    # Shorter than the 1 s interval, so the reply arrives before the next
-    # tick; otherwise Dash drops it and "Disconnected" never shows.
     ret = tomato.status(port=port, timeout=0.5)
     if ret.success:
         return "system-status-container", "System: Connected"
