@@ -15,14 +15,14 @@ maintainers = [
 ]
 description = "a dashboard for tomato"
 readme = "README.md"
+license = "GPL-3.0-or-later"
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
-    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+    "Development Status :: 4 - Beta",
     "Operating System :: OS Independent",
 ]
 requires-python = ">= 3.11"
 dependencies = [
-    "tomato >= 3.0rc2",
+    "tomato >= 3.0rc2, < 4.0",
     "dash >= 2.18",
     "dash_svg",
 ]
